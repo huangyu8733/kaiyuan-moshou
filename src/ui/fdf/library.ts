@@ -1,5 +1,6 @@
 import { parseWar3Skins, skinValue, WAR3SKINS } from "../../data/war3skins";
 import { OverlaidStrings } from "../../data/mapSkin";
+import { decodeGameText } from "../../data/text";
 import type { DataSource } from "../../vfs/types";
 import { parseFdf, type FdfFrame, type FdfProp } from "./parser";
 
@@ -73,7 +74,7 @@ export class FdfLibrary {
     this.loaded.add(key);
     if (!this.vfs.exists(path)) return; // GlobalStrings/includes are always present, but be safe
     const bytes = await this.vfs.read(path);
-    const src = new TextDecoder("latin1").decode(bytes); // FDF is 8-bit ASCII/Latin-1
+    const src = decodeGameText(bytes); // localized FDF text (ASCII/Latin-1 on enUS)
     const file = parseFdf(src);
     // Includes first, so their templates are registered before this file uses them.
     for (const inc of file.includes) await this.loadFile(inc);

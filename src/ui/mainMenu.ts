@@ -2,20 +2,25 @@ import type { AssetResolver } from "../assets/resolver";
 import { pickInstall, requestPersistence } from "../assets/opfs";
 import { loadProfile } from "../vfs/loader";
 import { DEFAULT_PROFILE } from "../vfs/profiles";
+import { t, type MessageKey } from "../i18n";
+import { createLanguageSwitch } from "../i18n/switch";
 
 // Main-menu shell (plan §10.1, §10.4). Layout/logic is our own code as HTML/CSS;
 // the 3D background renders behind it. Flat skin with no assets; once an install
 // is imported (Phase 1) layout switches to derive from MainMenu.fdf for fidelity.
 //
+// This is the ZERO-ASSET fallback menu (main.ts mounts it when the install has no glue FDFs).
+// Captions are i18n keys, not literals, because this screen is entirely ours — see src/i18n/.
+//
 // Button set per §10.1 — note "Battle.net" is intentionally renamed "Online":
 // OpenWar3 multiplayer targets our own server, not Blizzard's Battle.net.
 const BUTTONS = [
-  "Single Player",
-  "Online",
-  "Multiplayer", // the game's "Local Area Network" — see ui/fdfMainMenu.ts
-  "Options",
-  "Credits",
-] as const;
+  "menu.singlePlayer",
+  "menu.online",
+  "menu.multiplayer", // the game's "Local Area Network" — see ui/fdfMainMenu.ts
+  "menu.options",
+  "menu.credits",
+] as const satisfies readonly MessageKey[];
 
 export interface MenuHandlers {
   /** Start the Single Player flow (map picker → game-setup lobby). */
@@ -32,22 +37,20 @@ export function mountMainMenu(
 
   const title = document.createElement("h1");
   title.className = "menu-title";
-  title.textContent = "OpenWar3";
+  title.textContent = t("app.title");
   panel.appendChild(title);
 
   const status = document.createElement("p");
   status.className = "menu-status";
-  status.textContent = resolver.hasInstall
-    ? "Install loaded — authentic assets active."
-    : "No install — flying placeholder terrain (WASD / drag / wheel). Click to import your Warcraft III folder.";
+  status.textContent = resolver.hasInstall ? t("menu.installLoaded") : t("menu.noInstall");
 
   for (const label of BUTTONS) {
     panel.appendChild(
-      makeButton(label, () => onSelect(label, handlers, status)),
+      makeButton(t(label), () => onSelect(label, handlers, status)),
     );
   }
 
-  const quit = makeButton("Quit", () => window.close());
+  const quit = makeButton(t("menu.quit"), () => window.close());
   quit.classList.add("menu-quit");
   panel.appendChild(quit);
 
@@ -55,12 +58,13 @@ export function mountMainMenu(
   panel.appendChild(status);
 
   root.appendChild(panel);
+  root.appendChild(createLanguageSwitch());
 }
 
 async function importInstall(resolver: AssetResolver, status: HTMLElement): Promise<void> {
   const install = await pickInstall();
   if (!install) return;
-  status.textContent = "Loading archives…";
+  status.textContent = t("menu.loadingArchives");
   try {
     await requestPersistence();
     const { vfs, mounted, missing, fileCount } = await loadProfile(install, DEFAULT_PROFILE, (msg) => {
@@ -71,18 +75,18 @@ async function importInstall(resolver: AssetResolver, status: HTMLElement): Prom
     // the console — the Phase 1 exit criterion (plan §1).
     ((window as unknown as { openwar3: Record<string, unknown> }).openwar3 ??= {}).vfs = vfs;
     status.textContent =
-      `${DEFAULT_PROFILE.name}: mounted ${mounted.join(", ")}` +
-      (missing.length ? ` — missing ${missing.join(", ")}` : "") +
-      ` — ${fileCount.toLocaleString()} files. Try openwar3.vfs.list() in the console.`;
+      t("menu.mounted", { profile: DEFAULT_PROFILE.name, mounted: mounted.join(", ") }) +
+      (missing.length ? t("menu.missing", { missing: missing.join(", ") }) : "") +
+      t("menu.fileCount", { count: fileCount.toLocaleString() });
   } catch (err) {
-    status.textContent = `Import failed: ${(err as Error).message}`;
+    status.textContent = t("menu.importFailed", { error: (err as Error).message });
   }
 }
 
-function onSelect(label: string, handlers: MenuHandlers, _status: HTMLElement): void {
+function onSelect(label: MessageKey, handlers: MenuHandlers, _status: HTMLElement): void {
   // Single Player opens the map picker → game-setup lobby (Phase 5.5). Other
   // screens (Online lobby, Options...) arrive with later phases.
-  if (label === "Single Player" && handlers.onSinglePlayer) {
+  if (label === "menu.singlePlayer" && handlers.onSinglePlayer) {
     handlers.onSinglePlayer();
     return;
   }

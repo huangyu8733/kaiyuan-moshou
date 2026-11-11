@@ -1,5 +1,5 @@
 {
-  "name": "openwar3",
+  "name": "kaiyuan-moshou",
   "version": "0.3.82",
   "private": true,
   "description": "Browser-first, asset-compatible re-creation of the Warcraft III engine (TypeScript). Ships zero Blizzard assets.",
@@ -80,7 +80,7 @@
   "author": "elevchyt",
   "build": {
     "appId": "dev.elevchyt.openwar3",
-    "productName": "OpenWar3",
+    "productName": "开源魔兽争霸",
     "copyright": "OpenWar3 contributors",
     "icon": "build/icon.png",
     "files": [

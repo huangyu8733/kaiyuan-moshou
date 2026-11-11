@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { LoadingScene } from "../render/loadingScene";
 import type { DataSource } from "../vfs/types";
 
@@ -67,7 +68,9 @@ export async function showUpdateOverlay(
 
   const caption = document.createElement("p");
   caption.className = "update-overlay-caption";
-  caption.textContent = version ? `Downloading OpenWar3 ${version}…` : "Downloading the update…";
+  caption.textContent = version
+    ? t("update.downloading", { app: t("app.title"), version })
+    : t("update.downloadingGeneric");
   caption.style.bottom = `${(CAPTION_Y / UI_H) * 100}%`;
   caption.style.fontSize = `${(FONT / UI_H) * 100}vh`;
 

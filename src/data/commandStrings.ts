@@ -1,6 +1,7 @@
 import { MappedData } from "mdx-m3-viewer/dist/cjs/utils/mappeddata";
 import type { DataSource } from "../vfs/types";
 import { layCustomKeys } from "./customKeys";
+import { decodeGameText } from "./text";
 import type { PlayableRace } from "./races";
 
 // The game's own refusal messages — the gold line the console flashes when it won't
@@ -112,7 +113,7 @@ export function loadCommandStrings(vfs: DataSource): CommandStrings {
   const commands = new Map<string, CommandText>();
   const bytes = vfs.rawBytes("Units\\commandstrings.txt");
   if (!bytes) return new CommandStrings(errors, commands);
-  const data = new MappedData(new TextDecoder("windows-1252").decode(bytes));
+  const data = new MappedData(decodeGameText(bytes));
   // The player's own hotkeys/tips/slots over the top, when Options → Gameplay → "Hotkeys:" is
   // on Custom (data/customKeys.ts). The engine's OWN buttons are half of what a CustomKeys.txt
   // usually moves — a real one opens "[cmdrally] Hotkey=F" — and they are the only buttons in

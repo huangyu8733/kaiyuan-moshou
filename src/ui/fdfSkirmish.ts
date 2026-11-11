@@ -2,7 +2,7 @@ import { MELEE_NORMAL } from "../ai/ids";
 import { computerPlusDefault } from "../data/options";
 import { ADVANCED_OPTIONS_OVERRIDE, OW3_STRINGS } from "../overrides";
 import type { DataSource } from "../vfs/types";
-import { RACES, RACE_LABEL, type Race } from "../data/races";
+import { RACES, raceLabel, type Race } from "../data/races";
 import type { MapInfo } from "../world/mapInfo";
 import { PLAYER_COLORS } from "./hud";
 import type { FdfFrame } from "./fdf/parser";
@@ -340,7 +340,7 @@ export async function mountSkirmish(
       const seated = isSeated(slot);
       const race = s.popup(`RaceMenu${i}`);
       if (race) {
-        race.setOptions(RACES.map((r) => ({ value: r, label: RACE_LABEL[r] })));
+        race.setOptions(RACES.map((r) => ({ value: r, label: raceLabel(r) })));
         race.value = slot.race;
         race.onChange = (v) => { slot.race = v as Race; };
         // Note "fixed player settings" does NOT reach the race: on WarChasers (which sets the

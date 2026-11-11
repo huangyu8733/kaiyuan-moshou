@@ -75,6 +75,11 @@ import { applyGameFont } from "./ui/gameFont";
 import { setGameTipSkin } from "./ui/gameTip";
 import { tooltipSkinVars } from "./ui/hud";
 import { blpToCanvas } from "./render/blputil";
+import { initI18n } from "./i18n";
+
+// The engine's own UI language (?lang= → remembered → browser), stamped on <html> before the
+// first screen exists — the load gate and the menus translate through it (src/i18n/).
+initI18n();
 
 // Entry point (plan §6). WebGL scenes, one visible at a time:
 //   #menubg — the animated main-menu glue scene (issue #54), behind the FDF menu

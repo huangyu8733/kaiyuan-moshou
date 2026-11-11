@@ -1,6 +1,7 @@
 import type { FdfFrame } from "../ui/fdf/parser";
 import type { FdfLibrary } from "../ui/fdf/library";
 import { widescreen } from "../ui/widescreen";
+import { localizedFdfStrings } from "../i18n/fdfStrings";
 import advancedOptionsFdf from "./ui/AdvancedOptionsPane.fdf?raw";
 import advancedOptionsDisplayFdf from "./ui/AdvancedOptionsDisplay.fdf?raw";
 import globalStringsFdf from "./ui/GlobalStrings.fdf?raw";
@@ -80,8 +81,17 @@ export interface FdfOverride {
 }
 
 /** Strings the game has no key for. Layered by both screens below — a screen's own override
- *  carries frames, and the labels those frames name live in one place. */
-export const OW3_STRINGS: FdfOverride = { id: "ow3-strings", source: globalStringsFdf };
+ *  carries frames, and the labels those frames name live in one place.
+ *
+ *  `source` is a GETTER: the file is English, and `localizedFdfStrings` swaps its values for
+ *  the engine UI's language (src/i18n/fdfStrings.ts). The library reads it once at mount, and
+ *  a language switch reloads the page, so the getter is always asked in the right language. */
+export const OW3_STRINGS: FdfOverride = {
+  id: "ow3-strings",
+  get source() {
+    return localizedFdfStrings(globalStringsFdf);
+  },
+};
 
 /**
  * Options → Gameplay: out with the Game Port and the Chat Support gateway, in with the

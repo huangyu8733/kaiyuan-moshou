@@ -1,5 +1,6 @@
 import War3MapViewer from "mdx-m3-viewer/dist/cjs/viewer/handlers/w3x/viewer";
 import { dataSetFolder, isRoc } from "../data/edition";
+import { decodeGameText } from "../data/text";
 import ModelViewer from "mdx-m3-viewer/dist/cjs/viewer/viewer";
 import { unpackPlanes } from "mdx-m3-viewer/dist/cjs/common/gl-matrix-addon";
 import { mat4 } from "gl-matrix";
@@ -2829,7 +2830,7 @@ export class MapViewerScene {
 
   private slkText(path: string): string {
     const bytes = this.tables.rawBytes(path); // a map's own table first (src/vfs/mapTables.ts)
-    return bytes ? new TextDecoder("windows-1252").decode(bytes) : "";
+    return bytes ? decodeGameText(bytes) : "";
   }
 
   /** Shared match bring-up for both melee and custom starts: pick the local
@@ -4892,7 +4893,7 @@ export class MapViewerScene {
     for (const [table, paths] of tables) {
       for (const path of paths) {
         const bytes = map.rawBytes(path);
-        if (bytes?.length) table.load(new TextDecoder("windows-1252").decode(bytes));
+        if (bytes?.length) table.load(decodeGameText(bytes));
       }
     }
   }
@@ -8480,7 +8481,7 @@ export class MapViewerScene {
       for (const file of ["UI\\WorldEditStrings.txt", "UI\\WorldEditGameStrings.txt"]) {
         const bytes = this.vfs.rawBytes(file);
         if (!bytes) continue;
-        for (const line of new TextDecoder("windows-1252").decode(bytes).split(/\r?\n/)) {
+        for (const line of decodeGameText(bytes).split(/\r?\n/)) {
           const eq = line.indexOf("=");
           if (eq > 0 && line.startsWith("WESTRING")) {
             this.worldEditStrings.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim().replace(/^"|"$/g, ""));

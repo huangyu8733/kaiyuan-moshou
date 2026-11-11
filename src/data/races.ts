@@ -1,3 +1,5 @@
+import type { MessageKey } from "../i18n";
+import { t } from "../i18n";
 import { MELEE } from "./gameplayConstants";
 
 // Playable races (plan Phase 5.5). Central place for race identity + labels;
@@ -7,13 +9,18 @@ export type Race = "human" | "orc" | "undead" | "nightelf" | "random";
 
 export const RACES: Race[] = ["human", "orc", "undead", "nightelf", "random"];
 
-export const RACE_LABEL: Record<Race, string> = {
-  human: "Human",
-  orc: "Orc",
-  undead: "Undead",
-  nightelf: "Night Elf",
-  random: "Random",
+const RACE_LABEL_KEY: Record<Race, MessageKey> = {
+  human: "race.human",
+  orc: "race.orc",
+  undead: "race.undead",
+  nightelf: "race.nightelf",
+  random: "race.random",
 };
+
+/** The race's name as our UI shows it (the lobby's dropdown, the loading screen's slots). */
+export function raceLabel(race: Race): string {
+  return t(RACE_LABEL_KEY[race]);
+}
 
 // war3map.w3i player race field: 1=Human, 2=Orc, 3=Undead, 4=Night Elf.
 export function raceFromW3i(n: number): Race {

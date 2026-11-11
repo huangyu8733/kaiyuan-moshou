@@ -1,4 +1,4 @@
-# OpenWar3
+# 开源魔兽争霸（OpenWar3）
 
 <img src="public/demoscreens/game2.avif" width="800">
 <img src="public/demoscreens/game1.avif" width="800">

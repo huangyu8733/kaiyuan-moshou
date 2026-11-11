@@ -12,6 +12,7 @@
 // own in a networked match — three doors, so no one of them has to be the only one.
 
 import type { CheatKind } from "../game/rts";
+import { t, type MessageKey } from "../i18n";
 import { setGameTip } from "./gameTip";
 import type { HudDriver, SpawnEntry, SpawnOwner } from "./hud";
 import { wc3StripMarkup } from "./wc3Text";
@@ -19,16 +20,36 @@ import { wc3StripMarkup } from "./wc3Text";
 type Tab = "spawn" | "cheats" | "overlays";
 type Kind = SpawnEntry["kind"];
 
-const KINDS: ReadonlyArray<[Kind, string]> = [["hero", "Heroes"], ["unit", "Units"], ["building", "Buildings"], ["item", "Items"]];
-const RACE_LABEL: Record<string, string> = {
-  human: "Human", orc: "Orc", undead: "Undead", nightelf: "Night Elf", naga: "Naga", creeps: "Creeps",
-  demon: "Demon", critters: "Critters", commoner: "Commoner", other: "Other",
+// The labels are ours, not the game's, so every one comes from src/i18n. `KINDS` is the order
+// the segmented row shows them in; the ids are what the catalogue and the driver speak.
+const KINDS: ReadonlyArray<Kind> = ["hero", "unit", "building", "item"];
+const KIND_LABEL: Record<Kind, MessageKey> = {
+  hero: "dev.kind.hero", unit: "dev.kind.unit", building: "dev.kind.building", item: "dev.kind.item",
 };
-const RACE_ORDER = Object.keys(RACE_LABEL);
+const SINGULAR_KEY: Record<Kind, MessageKey> = {
+  hero: "dev.singular.hero", unit: "dev.singular.unit", building: "dev.singular.building", item: "dev.singular.item",
+};
+const RACE_KEY: Record<string, MessageKey> = {
+  human: "dev.race.human", orc: "dev.race.orc", undead: "dev.race.undead", nightelf: "dev.race.nightelf",
+  naga: "dev.race.naga", creeps: "dev.race.creeps", demon: "dev.race.demon", critters: "dev.race.critters",
+  commoner: "dev.race.commoner", other: "dev.race.other",
+};
+const RACE_ORDER = Object.keys(RACE_KEY);
+// Item classes are the World Editor's own bucket names, straight off an item's `classType`.
+const ITEM_CLASS_KEY: Record<string, MessageKey> = {
+  Artifact: "dev.item.artifact", Charged: "dev.item.charged", Miscellaneous: "dev.item.miscellaneous",
+  Permanent: "dev.item.permanent", PowerUp: "dev.item.powerup", Purchasable: "dev.item.purchasable",
+  Campaign: "dev.item.campaign",
+};
 // MAX_HERO_LEVEL is MiscGame's; these are only the presets the row offers.
 const LEVELS = [1, 3, 6, 10];
 const COUNTS = [1, 5, 10, 25];
-const SINGULAR: Record<Kind, string> = { hero: "Hero", unit: "Unit", building: "Building", item: "Item" };
+
+/** A group's label ("undead" → 不死族, "Artifact" → 神器); an unmapped group shows its raw id. */
+function groupLabel(group: string): string {
+  const key = RACE_KEY[group] ?? ITEM_CLASS_KEY[group];
+  return key ? t(key) : group;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -71,8 +92,8 @@ export class DevToolsDrawer {
   private readonly ownerLabel = el("span", "dev-owner-label");
   private readonly levelRow = el("div", "dev-row");
   private readonly countRow = el("div", "dev-row");
-  private readonly placeBtn = el("button", "dev-btn dev-btn-main", "Click map to place");
-  private readonly nowBtn = el("button", "dev-btn", "At camera");
+  private readonly placeBtn = el("button", "dev-btn dev-btn-main", t("dev.place"));
+  private readonly nowBtn = el("button", "dev-btn", t("dev.spawnCentre"));
   private readonly iconObserver: IntersectionObserver;
 
   // --- the Overlays tab's concede readout: beside the drawer, outside it, so it stays up
@@ -91,7 +112,7 @@ export class DevToolsDrawer {
     }, true);
 
     this.drawer = el("div", "dev-drawer");
-    this.handle = el("button", "dev-handle", "Dev Tools");
+    this.handle = el("button", "dev-handle", t("dev.title"));
     this.handle.onclick = () => this.setExpanded(true);
     this.concedeBox.hidden = true;
     this.root.append(this.drawer, this.handle, this.concedeBox);
@@ -109,14 +130,14 @@ export class DevToolsDrawer {
     }, { root: this.list });
 
     const tabs = el("div", "dev-tabs");
-    for (const [t, label] of [["spawn", "Spawn"], ["cheats", "Cheats"], ["overlays", "Overlays"]] as Array<[Tab, string]>) {
-      const b = el("button", "dev-tab", label);
-      b.onclick = () => this.setTab(t);
-      this.tabButtons.set(t, b);
+    for (const [tab, key] of [["spawn", "dev.tab.spawn"], ["cheats", "dev.tab.cheats"], ["overlays", "dev.tab.overlays"]] as Array<[Tab, MessageKey]>) {
+      const b = el("button", "dev-tab", t(key));
+      b.onclick = () => this.setTab(tab);
+      this.tabButtons.set(tab, b);
       tabs.append(b);
     }
     const close = el("button", "dev-close", "✕");
-    setGameTip(close, "Collapse the dev tools");
+    setGameTip(close, t("dev.collapse"));
     close.onclick = () => this.setExpanded(false);
     tabs.append(close);
     this.drawer.append(tabs);
@@ -194,7 +215,7 @@ export class DevToolsDrawer {
   private buildSpawn(): HTMLElement {
     const page = el("div", "dev-page dev-spawn");
     this.search.type = "text";
-    this.search.placeholder = "Search name or rawcode…";
+    this.search.placeholder = t("dev.search");
     this.search.spellcheck = false;
     this.search.autocomplete = "off";
     this.search.addEventListener("input", () => {
@@ -212,14 +233,14 @@ export class DevToolsDrawer {
     });
 
     const foot = el("div", "dev-foot");
-    this.ownerRow.append(el("span", "dev-label", "Owner"));
-    this.levelRow.append(el("span", "dev-label", "Level"));
-    this.countRow.append(el("span", "dev-label", "Count"));
+    this.ownerRow.append(el("span", "dev-label", t("dev.owner")));
+    this.levelRow.append(el("span", "dev-label", t("dev.level")));
+    this.countRow.append(el("span", "dev-label", t("dev.count")));
     const actions = el("div", "dev-row");
     const now = this.nowBtn;
-    setGameTip(now, "Spawn at the centre of the screen");
+    setGameTip(now, t("dev.spawnCentre"));
     now.onclick = () => this.spawnAt(null);
-    setGameTip(this.placeBtn, "Every left-click on the map spawns there; right-click or Esc stops");
+    setGameTip(this.placeBtn, t("dev.placeTip"));
     this.placeBtn.onclick = () => (this.placing ? this.disarm() : this.arm());
     actions.append(now, this.placeBtn);
     foot.append(this.ownerRow, this.levelRow, this.countRow, actions);
@@ -266,9 +287,9 @@ export class DevToolsDrawer {
 
   private renderKinds(): void {
     this.kindRow.replaceChildren();
-    for (const [k, label] of KINDS) {
+    for (const k of KINDS) {
       const b = el("button", "dev-seg-btn" + (k === this.kind && !this.query ? " on" : ""));
-      b.append(el("span", undefined, label), el("span", "dev-n", String(this.pool(k).length)));
+      b.append(el("span", undefined, t(KIND_LABEL[k])), el("span", "dev-n", String(this.pool(k).length)));
       b.onclick = () => {
         this.kind = k;
         this.group = "all";
@@ -298,10 +319,10 @@ export class DevToolsDrawer {
       };
       this.groupRow.append(b);
     };
-    chip("all", "All", pool.length);
-    for (const g of groups) chip(g, RACE_LABEL[g] ?? g, pool.filter((e) => e.group === g).length);
-    const melee = el("button", "dev-chip dev-chip-end" + (this.meleeOnly ? " on" : ""), "Melee only");
-    setGameTip(melee, "Hide the campaign-only types (a search always finds them)");
+    chip("all", t("dev.all"), pool.length);
+    for (const g of groups) chip(g, groupLabel(g), pool.filter((e) => e.group === g).length);
+    const melee = el("button", "dev-chip dev-chip-end" + (this.meleeOnly ? " on" : ""), t("dev.meleeOnly"));
+    setGameTip(melee, t("dev.meleeOnlyTip"));
     melee.onclick = () => {
       this.meleeOnly = !this.meleeOnly;
       this.renderKinds();
@@ -315,7 +336,7 @@ export class DevToolsDrawer {
     this.renderGroups();
     this.list.replaceChildren();
     const rows = this.visible();
-    if (!rows.length) this.list.append(el("div", "dev-empty", "Nothing matches."));
+    if (!rows.length) this.list.append(el("div", "dev-empty", t("dev.empty")));
     for (const e of rows) {
       const sel = this.picked.get(e.kind) === e.id && (this.query ? true : e.kind === this.kind);
       const row = el("button", "dev-item" + (sel ? " on" : ""));
@@ -328,13 +349,13 @@ export class DevToolsDrawer {
       const n = e.kind === "item" ? 0 : this.counts.get(e.id) ?? 0;
       if (n) {
         const badge = el("span", "dev-badge", `×${n}`);
-        setGameTip(badge, `${n} on the map now`);
+        setGameTip(badge, t("dev.onMap", { count: n }));
         ic.append(badge);
       }
       const text = el("span", "dev-item-text");
       const name = el("span", "dev-item-name", this.label(e) + (e.properName ? ` — ${e.properName}` : ""));
-      const kindWord = this.query ? `${SINGULAR[e.kind]} · ` : "";
-      const sub = el("span", "dev-item-sub", `${kindWord}${e.id}${e.campaign ? " · campaign" : ""}`);
+      const kindWord = this.query ? `${t(SINGULAR_KEY[e.kind])} · ` : "";
+      const sub = el("span", "dev-item-sub", `${kindWord}${e.id}${e.campaign ? t("dev.campaign") : ""}`);
       text.append(name, sub);
       row.append(ic, text);
       row.onclick = () => this.pick(e);
@@ -381,8 +402,8 @@ export class DevToolsDrawer {
     // LEVEL — heroes only.
     this.levelRow.hidden = kind !== "hero";
     this.levelRow.replaceChildren(this.levelRow.firstChild!, this.steps(LEVELS, this.level, (v) => (this.level = v)));
-    const learn = el("button", "dev-chip" + (this.learnAll ? " on" : ""), "Learn all");
-    setGameTip(learn, "Every skill at its top rank, and a full mana bar");
+    const learn = el("button", "dev-chip" + (this.learnAll ? " on" : ""), t("dev.learnAll"));
+    setGameTip(learn, t("dev.learnAllTip"));
     learn.onclick = () => {
       this.learnAll = !this.learnAll;
       this.renderFoot();
@@ -392,13 +413,13 @@ export class DevToolsDrawer {
     // Nothing picked yet: there is nothing to spawn, and the two buttons say so by being dead.
     this.nowBtn.disabled = this.placeBtn.disabled = !cur;
     this.placeBtn.classList.toggle("on", this.placing);
-    this.placeBtn.textContent = this.placing ? "Placing — right-click stops" : "Click map to place";
+    this.placeBtn.textContent = this.placing ? t("dev.placing") : t("dev.place");
   }
 
   private ownerText(o: SpawnOwner): string {
     const parts = [o.name];
-    if (o.you) parts.push("You");
-    if (o.team !== null) parts.push(`Team ${o.team + 1}`);
+    if (o.you) parts.push(t("dev.you"));
+    if (o.team !== null) parts.push(t("dev.team", { team: o.team + 1 }));
     return parts.join(" · ");
   }
 
@@ -462,17 +483,24 @@ export class DevToolsDrawer {
       b.onclick = () => this.driver.cheatSelected(kind);
       return b;
     };
-    const kill = sel("Kill/Destroy", "kill");
-    setGameTip(kill, "Kill every selected unit, or destroy every selected building");
+    const kill = sel(t("dev.cheat.kill"), "kill");
+    setGameTip(kill, t("dev.cheat.killTip"));
     page.append(
-      this.section("Economy", [mk("+5000 Gold", "gold"), mk("+5000 Lumber", "lumber"), mk("+Food", "food")]),
+      this.section(t("dev.section.economy"), [
+        mk(t("dev.cheat.gold"), "gold"), mk(t("dev.cheat.lumber"), "lumber"), mk(t("dev.cheat.food"), "food"),
+      ]),
       // `whosyourdaddy`, `riseandshine`, `lightsout` and `sharpandshiny` — the original game's cheats.
-      this.section("Cheats", [mk("Fast Build", "fastbuild"), mk("God Mode", "godmode"), mk("Set Day", "day"), mk("Set Night", "night"), mk("All Upgrades", "upgrades")]),
-      this.section("Selection", [sel("Full HP", "hp"), sel("Full MP", "mp"), sel("Reset Cooldown", "cooldown"), kill]),
+      this.section(t("dev.section.cheats"), [
+        mk(t("dev.cheat.fastBuild"), "fastbuild"), mk(t("dev.cheat.godMode"), "godmode"),
+        mk(t("dev.cheat.day"), "day"), mk(t("dev.cheat.night"), "night"), mk(t("dev.cheat.upgrades"), "upgrades"),
+      ]),
+      this.section(t("dev.section.selection"), [
+        sel(t("dev.cheat.hp"), "hp"), sel(t("dev.cheat.mp"), "mp"), sel(t("dev.cheat.cooldown"), "cooldown"), kill,
+      ]),
       this.buildSpeed(),
     );
-    setGameTip(this.cheatButtons.get("fastbuild")!, "Builds and training finish in about a second");
-    setGameTip(this.cheatButtons.get("upgrades")!, "Research every upgrade in the game at its highest level");
+    setGameTip(this.cheatButtons.get("fastbuild")!, t("dev.cheat.fastBuildTip"));
+    setGameTip(this.cheatButtons.get("upgrades")!, t("dev.cheat.upgradesTip"));
     return page;
   }
 
@@ -513,8 +541,8 @@ export class DevToolsDrawer {
       input.blur();
     });
     input.addEventListener("change", () => apply(Number(input.value)));
-    setGameTip(input, "Game pace as a percentage of the Game Speed (100% = as set). Enter to apply.");
-    row.append(el("span", "dev-label", "Pace"), input, unit);
+    setGameTip(input, t("dev.speed.tip"));
+    row.append(el("span", "dev-label", t("dev.speed.pace")), input, unit);
     const grid = el("div", "dev-grid");
     for (const pct of [100, 300, 1000, 3000, 10000]) {
       const b = el("button", "dev-btn", `${pct}%`);
@@ -524,7 +552,7 @@ export class DevToolsDrawer {
       grid.append(b);
     }
     show(1);
-    box.append(el("div", "dev-label", "Sim Speed"), row, grid);
+    box.append(el("div", "dev-label", t("dev.speed.title")), row, grid);
     return box;
   }
 
@@ -554,25 +582,25 @@ export class DevToolsDrawer {
       return b;
     };
     const colliders = legend([
-      ["rgb(64,255,115)", "Click / selection"],
-      ["rgb(255,72,51)", "Pathing obstruction"],
-      ["rgb(77,166,255)", "Fog-of-war (line-of-sight) blocker"],
+      ["rgb(64,255,115)", t("dev.legend.click")],
+      ["rgb(255,72,51)", t("dev.legend.obstruction")],
+      ["rgb(77,166,255)", t("dev.legend.fogBlocker")],
     ]);
     const pathing = legend([
-      ["rgb(140,158,184)", "Pathing grid"],
-      ["rgb(255,64,51)", "Blocked cell"],
-      ["rgb(255,217,51)", "Unit path"],
+      ["rgb(140,158,184)", t("dev.legend.pathingGrid")],
+      ["rgb(255,64,51)", t("dev.legend.blockedCell")],
+      ["rgb(255,217,51)", t("dev.legend.unitPath")],
     ]);
-    const regions = toggle("Show Regions", () => this.driver.toggleRegions());
+    const regions = toggle(t("dev.overlays.regions"), () => this.driver.toggleRegions());
     // "Show Regions": the map's named trigger regions (gg_rct_*) with their name inside each.
-    setGameTip(regions, "Outline the map's named trigger regions (gg_rct_*)");
+    setGameTip(regions, t("dev.overlays.regionsTip"));
     // "Show Concede": every Computer+ seat's concession reading, live. OFF by default.
-    const concede = toggle("Show Concede", () => this.toggleConcede());
-    setGameTip(concede, "Show each Computer+ player's concede reading (despair against the line, and the dwell)");
+    const concede = toggle(t("dev.overlays.concede"), () => this.toggleConcede());
+    setGameTip(concede, t("dev.overlays.concedeTip"));
     page.append(
-      this.section("Overlays", [
-        toggle("Show Colliders", () => this.driver.toggleColliders(), colliders),
-        toggle("Show Pathing", () => this.driver.togglePathing(), pathing),
+      this.section(t("dev.tab.overlays"), [
+        toggle(t("dev.overlays.colliders"), () => this.driver.toggleColliders(), colliders),
+        toggle(t("dev.overlays.pathing"), () => this.driver.togglePathing(), pathing),
         regions,
         concede,
       ]),
@@ -601,12 +629,12 @@ export class DevToolsDrawer {
     const readings = this.driver.concedeReadings();
     const owners = new Map(this.driver.spawnOwners().map((o) => [o.player, o]));
     const box = this.concedeBox;
-    box.replaceChildren(el("div", "dev-concede-title", "Concede — Computer+"));
+    box.replaceChildren(el("div", "dev-concede-title", t("dev.concede.title")));
     if (!readings.length) {
-      box.append(el("div", "dev-concede-none", "No Computer+ players"));
+      box.append(el("div", "dev-concede-none", t("dev.concede.none")));
       return;
     }
-    const secs = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+    const secs = (time: number) => `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, "0")}`;
     for (const r of readings) {
       const owner = owners.get(r.player);
       const row = el("div", "dev-concede-row");
@@ -614,28 +642,29 @@ export class DevToolsDrawer {
       const sw = el("span", "dev-legend-swatch");
       sw.style.background = owner?.color ?? "#808080";
       const value = el("span", "dev-concede-value", `${r.despair.toFixed(2)} / ${r.concedeAt.toFixed(2)}`);
-      head.append(sw, el("span", "dev-concede-name", owner?.name ?? `Player ${r.player + 1}`), value);
+      head.append(sw, el("span", "dev-concede-name", owner?.name ?? t("dev.concede.player", { player: r.player + 1 })), value);
       const bar = el("div", "dev-concede-bar");
       const fill = el("div", "dev-concede-fill");
       fill.style.width = `${Math.min(1, r.despair / r.concedeAt) * 100}%`;
       bar.append(fill);
       const terms = r.terms.length
         ? r.terms.map(([k, w]) => `${k} ${w.toFixed(2)}`).join(" · ")
-        : "no terms live";
+        : t("dev.concede.noTerms");
       // What `mannersPass` would do with this reading, in its own order of tests.
       let state: string;
       let tone = "";
-      if (r.gone) state = "left the game";
-      else if (r.conceded) { state = "conceded — leaving"; tone = "hot"; }
-      else if (r.teamLost) { state = "half the team gone — concedes now"; tone = "hot"; }
-      else if (r.clock < r.notBefore) state = `nothing decided before ${secs(r.notBefore)} (now ${secs(r.clock)})`;
-      else if (r.hopeless) {
-        const why = r.clause ? `clause ${r.clause}` : "despair";
+      if (r.gone) state = t("dev.concede.left");
+      else if (r.conceded) { state = t("dev.concede.conceded"); tone = "hot"; }
+      else if (r.teamLost) { state = t("dev.concede.teamLost"); tone = "hot"; }
+      else if (r.clock < r.notBefore) {
+        state = t("dev.concede.notBefore", { time: secs(r.notBefore), now: secs(r.clock) });
+      } else if (r.hopeless) {
+        const why = r.clause ? t("dev.concede.clause", { clause: r.clause }) : t("dev.concede.despair");
         state = r.dwell >= 0
-          ? `hopeless (${why}) ${r.dwell.toFixed(1)} / ${r.concedeAfter} s`
-          : `hopeless (${why}) — dwell starts next pass`;
+          ? t("dev.concede.hopeless", { why, dwell: r.dwell.toFixed(1), after: r.concedeAfter })
+          : t("dev.concede.hopelessStart", { why });
         tone = "warm";
-      } else state = "playing on";
+      } else state = t("dev.concede.playingOn");
       const status = el("div", "dev-concede-state", state);
       if (tone) { row.classList.add(`dev-concede-${tone}`); }
       row.append(head, bar, el("div", "dev-concede-terms", terms), status);

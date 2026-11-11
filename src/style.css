@@ -3581,6 +3581,31 @@ body.in-game .fdf-screen.fdf-ingame {
   cursor: pointer;
 }
 
+/* --- Engine UI language switch (src/i18n/) -------------------------------------
+   A quiet corner link on the screens that exist before a match: the load gate, the
+   fallback menu and the FDF main menu. Fixed, so an FDF rebuild on resize cannot
+   take it with it; removed with its screen, so it never follows the player in game. */
+.language-switch {
+  position: fixed;
+  left: 18px;
+  bottom: 14px;
+  z-index: 12;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: #c9c2ad;
+  opacity: 0.75;
+  text-shadow: 1px 1px 0 #000;
+  cursor: pointer;
+}
+
+.language-switch:hover {
+  color: var(--ow3-gold);
+  opacity: 1;
+}
+
 /* --- Load-files gate (issue #54) ------------------------------------------------
    Shown BEFORE the main menu: the game files are required to build the menu, so we
    prompt for them first. Zero-asset by necessity (no install is mounted yet), so

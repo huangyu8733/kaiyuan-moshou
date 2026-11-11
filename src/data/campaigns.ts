@@ -1,6 +1,7 @@
 import type { DataSource } from "../vfs/types";
 import { parseWar3Skins, skinValue, WAR3SKINS } from "./war3skins";
 import { isRoc, skinVersionSuffix } from "./edition";
+import { decodeGameText } from "./text";
 
 // The campaign index (issue #101) — what the Campaign screen is a view of.
 //
@@ -128,7 +129,7 @@ export async function loadCampaigns(vfs: DataSource): Promise<Campaign[]> {
   const file = skinValue(skins, "Default", "CampaignFile" + skinVersionSuffix())
     ?? (isRoc() ? ROC_CAMPAIGN_INDEX : CAMPAIGN_INDEX);
   if (!vfs.exists(file)) return [];
-  const src = new TextDecoder("latin1").decode(await vfs.read(file));
+  const src = decodeGameText(await vfs.read(file));
   // war3skins spells the backdrop `.mdl` (the World Editor's own spelling); the archives ship
   // the compiled `.mdx`. Same swap as everywhere else a data file names a model
   // (render/dayNight.ts, mapViewer.ts) — without it the campaign screen has no background.

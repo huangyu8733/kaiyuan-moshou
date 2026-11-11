@@ -5,6 +5,8 @@ import { mountFdfScreen, type FdfScreen } from "./fdf/render";
 import { arg, findFrame, num, setProp, str } from "./mapBrowser";
 import { isRoc } from "../data/edition";
 import { setGameTip } from "./gameTip";
+import { t } from "../i18n";
+import { createLanguageSwitch } from "../i18n/switch";
 
 // The main menu, constructed from the game's own UI\FrameDef\Glue\MainMenu.fdf
 // (issue #54) rather than hand-authored DOM. This is the payoff of the FDF engine:
@@ -70,13 +72,13 @@ export interface MainMenuHandlers {
   onQuit?: () => void;
 }
 
-export function mountFdfMainMenu(
+export async function mountFdfMainMenu(
   container: HTMLElement,
   vfs: DataSource,
   h: MainMenuHandlers,
 ): Promise<FdfScreen> {
   const log = (name: string) => () => console.log(`[OpenWar3] menu: ${name}`);
-  return mountFdfScreen({
+  const screen = await mountFdfScreen({
     container,
     vfs,
     fdfPath: "UI\\FrameDef\\Glue\\MainMenu.fdf",
@@ -103,7 +105,7 @@ export function mountFdfMainMenu(
     // The letter is N, not O: Options already owns O, and picking a LATER letter of the word is
     // the game's own answer to a collision rather than ours — the same table gilds "C|Cffffffffa|Rncel",
     // "E|Cffffffffx|Rit" and "Repla|Cffffffffy|R" for exactly this reason.
-    textOverrides: { BattleNetButtonText: "O|Cffffffffn|Rline" },
+    textOverrides: { BattleNetButtonText: t("menu.onlineCaption") },
     shortcutOverrides: { BattleNetButton: "N" },
     handlers: {
       SinglePlayerButton: h.onSinglePlayer,
@@ -124,9 +126,21 @@ export function mountFdfMainMenu(
       // after every switch (Glue.crossWorlds), so this is asked afresh each time. The names are
       // OURS: no string table in the install spells either edition out.
       const edition = s.frame("EditionButton");
-      if (edition) setGameTip(edition, isRoc() ? "The Frozen Throne" : "Reign of Chaos");
+      if (edition) setGameTip(edition, t(isRoc() ? "menu.editionTft" : "menu.editionRoc"));
     },
   });
+
+  // The language switch lives OUTSIDE the FDF overlay, so a resize (which rebuilds the
+  // whole tree) does not take it with it. Removed with the screen, so it never follows the
+  // player into a match.
+  const language = createLanguageSwitch();
+  container.appendChild(language);
+  const dispose = screen.dispose.bind(screen);
+  screen.dispose = (): void => {
+    language.remove();
+    dispose();
+  };
+  return screen;
 }
 
 /**

@@ -11,6 +11,7 @@ import {
 } from "../data/gameplayConstants";
 import type { MinimapPing } from "../jass/runtime";
 import { escapeHtml, wc3StripMarkup, wc3ToHtml } from "./wc3Text";
+import { t } from "../i18n";
 import { DevToolsDrawer } from "./devTools";
 
 import { CHAT_MAX_LENGTH, sanitizeChat, type ChatTarget } from "../game/chat";
@@ -3350,8 +3351,8 @@ export class GameHud {
     this.selStats.className = "hud-sel-stats";
     // Left column: Damage + Armor blocks (icon + "Label:" over the value). Right
     // column: ONE primary-attribute icon beside the three attribute value lines.
-    this.attackStat = makeStatBlock("Damage");
-    this.armorStat = makeStatBlock("Armor");
+    this.attackStat = makeStatBlock(t("hud.damage"));
+    this.armorStat = makeStatBlock(t("hud.armor"));
     const leftCol = document.createElement("div");
     leftCol.className = "hud-stat-col";
     leftCol.append(this.attackStat.row, this.armorStat.row);
@@ -3383,7 +3384,7 @@ export class GameHud {
     this.selStatus.hidden = true;
     const statusLabel = document.createElement("div");
     statusLabel.className = "hud-buff-label";
-    statusLabel.textContent = "Status:";
+    statusLabel.textContent = t("hud.status");
     const statusIcons = document.createElement("div");
     statusIcons.className = "hud-buff-icons";
     for (let i = 0; i < 8; i++) {
@@ -3456,7 +3457,7 @@ export class GameHud {
       // The console art draws its own inventory title.
       const title = document.createElement("div");
       title.className = "hud-inv-title";
-      title.textContent = "Inventory";
+      title.textContent = t("hud.inventory");
       inv.appendChild(title);
     }
     const grid = document.createElement("div");
@@ -3990,7 +3991,7 @@ export class GameHud {
   private showTooltip(c: CommandButton): void {
     const title = gridHotkeys()
       ? gridTitle(c)
-      : c.tip ? wc3ToHtml(c.tip) : highlightHotkey(c.id.startsWith("build:") ? `Build ${c.name}` : c.name, c.hotkey);
+      : c.tip ? wc3ToHtml(c.tip) : highlightHotkey(c.id.startsWith("build:") ? t("hud.build", { name: c.name }) : c.name, c.hotkey);
     const r = this.driver.resources();
     const sel = this.driver.selection();
     const costs =
@@ -4067,7 +4068,7 @@ export class GameHud {
         this.selStats.hidden = true;
         this.selSub.textContent = "";
         this.selCarry.hidden = false;
-        this.selCarry.textContent = `Gold: ${sel.goldRemaining}`;
+        this.selCarry.textContent = t("hud.gold", { gold: sel.goldRemaining });
       } else if (sel.cargo.length > 0) {
         // A hold with somebody INSIDE: the cargo panel takes the place of the stat lines —
         // the name, then one gold pocket per seat with the passengers' icons and health in
@@ -4189,8 +4190,10 @@ export class GameHud {
           this.xpBar.classList.remove("summon");
           // The bar reads "Level 1 Demon Hunter", as the game writes it; the raw XP
           // numbers are the bar's hover tooltip, not its label.
-          this.xpText.innerHTML = `Level ${sel.level} ${wc3ToHtml(sel.name)}`;
-          setGameTip(this.xpBar, span > 0 ? `Experience: ${into} / ${span}` : "Experience: (max level)");
+          this.xpText.innerHTML = t("hud.levelName", { level: sel.level, name: wc3ToHtml(sel.name) });
+          setGameTip(this.xpBar, span > 0
+            ? t("hud.experience", { into, span })
+            : t("hud.experienceMax"));
           this.xpFill.style.width = `${span > 0 ? Math.max(0, Math.min(1, into / span)) * 100 : 100}%`;
         } else if (sel.isSummon) {
           this.selSub.textContent = "";
@@ -4242,7 +4245,7 @@ export class GameHud {
         // substituted with. A number is also the wrong thing to print: an immune unit's armour
         // does not reduce anything, because nothing is being reduced.
         this.armorStat.value.innerHTML = sel.invulnerable
-          ? `<span class="hud-stat-invuln">Invulnerable</span>`
+          ? `<span class="hud-stat-invuln">${t("hud.invulnerable")}</span>`
           : `${sel.armor}${bonusHtml(sel.armorBonus)}`;
         // Hero attributes: ONE primary-attribute icon beside the three value lines.
         if (sel.isHero) {
@@ -4250,16 +4253,17 @@ export class GameHud {
           this.attrLines.hidden = false;
           const prim = sel.primaryAttr === PrimaryAttribute.Agility ? "agi" : sel.primaryAttr === PrimaryAttribute.Intelligence ? "int" : "str";
           this.setIcon(this.attrIconEl, attrIcon(prim));
-          this.strLine.innerHTML = attrLineHtml("Strength", sel.strength, sel.strengthBonus);
-          this.agiLine.innerHTML = attrLineHtml("Agility", sel.agility, sel.agilityBonus);
-          this.intLine.innerHTML = attrLineHtml("Intelligence", sel.intelligence, sel.intelligenceBonus);
+          this.strLine.innerHTML = attrLineHtml(t("hud.strength"), sel.strength, sel.strengthBonus);
+          this.agiLine.innerHTML = attrLineHtml(t("hud.agility"), sel.agility, sel.agilityBonus);
+          this.intLine.innerHTML = attrLineHtml(t("hud.intelligence"), sel.intelligence, sel.intelligenceBonus);
         } else {
           this.attrIconEl.hidden = true;
           this.attrLines.hidden = true;
         }
         this.renderStatus(sel.buffs);
-        this.selCarry.textContent =
-          sel.carryGold > 0 ? `Carrying ${sel.carryGold} gold` : sel.carryLumber > 0 ? `Carrying ${sel.carryLumber} lumber` : "";
+        this.selCarry.textContent = sel.carryGold > 0
+          ? t("hud.carryingGold", { gold: sel.carryGold })
+          : sel.carryLumber > 0 ? t("hud.carryingLumber", { lumber: sel.carryLumber }) : "";
       }
     } else {
       this.selName.textContent = "";
@@ -5052,7 +5056,7 @@ function makeStatBlock(label: string): StatBlock {
   text.className = "hud-stat-text";
   const lab = document.createElement("div");
   lab.className = "hud-stat-label";
-  lab.textContent = `${label}:`;
+  lab.textContent = label;
   const value = document.createElement("div");
   value.className = "hud-stat-value";
   text.append(lab, value);
@@ -5104,7 +5108,7 @@ function bonusHtml(bonus: number): string {
 // than one running its label and value together on a line. All three are identical; the
 // primary attribute is named by the ICON beside them, not by the text.
 function attrLineHtml(label: string, value: number, bonus: number): string {
-  return `<span class="hud-attr-line"><span class="attr-name">${label}:</span><span class="attr-value">${value}${bonusHtml(bonus)}</span></span>`;
+  return `<span class="hud-attr-line"><span class="attr-name">${label}</span><span class="attr-value">${value}${bonusHtml(bonus)}</span></span>`;
 }
 
 // WC3 infocard type icons (real BLPs under UI\Widgets\Console\Human\). Attack/
@@ -5272,7 +5276,7 @@ const KEYCAP: Record<string, string> = {
 };
 
 function gridTitle(c: CommandButton): string {
-  const raw = c.tip || (c.id.startsWith("build:") ? `Build ${c.name}` : c.name);
+  const raw = c.tip || (c.id.startsWith("build:") ? t("hud.build", { name: c.name }) : c.name);
   const plain = raw.replace(/\|[cC][0-9a-fA-F]{8}/g, "").replace(/\|[rR]/g, "");
   const key = gridCommandKey(c.row, c.col);
   return wc3ToHtml(key ? `${plain} (|cfffed312${key}|r)` : plain);

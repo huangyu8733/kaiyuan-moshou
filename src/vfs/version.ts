@@ -1,5 +1,6 @@
 import { buildInfoVersion, isCascInstall } from "./casc";
 import type { PickedInstall } from "../assets/opfs";
+import { t } from "../i18n";
 
 // Which Warcraft III an install has to be, and why the answer is not "any of them".
 //
@@ -42,8 +43,8 @@ export const isDowngradable = (version: string | null): boolean =>
  *  routes and must not word it differently. */
 export const wrongVersionMessage = (version: string | null): string =>
   version
-    ? `That folder is Warcraft III ${version}. OpenWar3 plays ${REQUIRED_VERSION} — every player has to be on the same game data, so this is checked every launch.`
-    : `That folder does not say which Warcraft III it is. OpenWar3 plays ${REQUIRED_VERSION} (The Frozen Throne).`;
+    ? t("gate.wrongVersion", { version, required: REQUIRED_VERSION })
+    : t("gate.unknownVersion", { required: REQUIRED_VERSION });
 
 export interface VersionVerdict {
   ok: boolean;
@@ -66,7 +67,7 @@ export function checkVersion(install: PickedInstall): VersionVerdict {
     return {
       ok: false,
       version: null,
-      message: `That folder has no Warcraft III game data in it (no Data folder). Select the Warcraft III ${REQUIRED_VERSION} folder itself — the one with Warcraft III.exe in it.`,
+      message: t("gate.noGameData", { required: REQUIRED_VERSION }),
     };
   }
   if (!isCascInstall(install.casc)) {
@@ -75,7 +76,7 @@ export function checkVersion(install: PickedInstall): VersionVerdict {
     return {
       ok: false,
       version: null,
-      message: `That folder is a Warcraft III older than ${REQUIRED_VERSION}. OpenWar3 plays ${REQUIRED_VERSION} (The Frozen Throne) — every player has to be on the same game data, so this is checked every launch.`,
+      message: t("gate.oldVersion", { required: REQUIRED_VERSION }),
     };
   }
   const version = buildInfoVersion(install.casc.buildInfo);

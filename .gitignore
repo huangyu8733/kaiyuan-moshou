@@ -6,6 +6,7 @@ dist/
 # Never commit Blizzard assets (see plan §0)
 Warcraft III 1.30.4/
 Warcraft III/
+Warcraft III enUS/
 *.mpq
 *.w3x
 *.w3m

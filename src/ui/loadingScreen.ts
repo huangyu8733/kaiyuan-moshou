@@ -6,7 +6,7 @@ import {
   GENERIC_LOADING_SCREEN, loadLoadingScreens, multiplayerLoadingScreen,
   type LoadingScreenDef,
 } from "../data/loadingScreens";
-import { RACE_LABEL, type Race } from "../data/races";
+import { raceLabel, type Race } from "../data/races";
 import type { DataSource } from "../vfs/types";
 import type { MapInfo } from "../world/mapInfo";
 import { cloneNamespaced, FdfLibrary } from "./fdf/library";
@@ -592,7 +592,7 @@ function captions(
     // absent reads as the slot's own index (SlotConfig.color).
     const dot = dotted ? teamColorHex(opts.vfs, row.slot.color ?? row.slot.id) : null;
     out[`LoadingPlayerSlotName${i}`] = dot ? `|c${dot}${CHAT_PLAYER_DOT}|r ${name}` : name;
-    out[`LoadingPlayerSlotRace${i}`] = RACE_LABEL[row.slot.race];
+    out[`LoadingPlayerSlotRace${i}`] = raceLabel(row.slot.race);
     // LoadingPlayerSlotLevel is the ladder level Battle.net puts beside a name. A local game
     // has no ladder, so it stays empty — as it does in the real client's local games.
   });

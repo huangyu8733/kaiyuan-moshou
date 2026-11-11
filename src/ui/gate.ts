@@ -7,6 +7,8 @@ import { loadProfile } from "../vfs/loader";
 import { REQUIRED_VERSION, wrongVersionMessage } from "../vfs/version";
 import { DEFAULT_PROFILE } from "../vfs/profiles";
 import type { DataSource } from "../vfs/types";
+import { t } from "../i18n";
+import { createLanguageSwitch } from "../i18n/switch";
 import { bindHotkeys, createGlueButton, createPanel, createProgressBar } from "@openwar3/ui/dom";
 
 // The load-files gate (issue #54). WC3's menus are constructed from the game's own
@@ -34,9 +36,6 @@ export interface GateLoad {
   maps: Map<string, File>;
 }
 
-/** What the bar says while the install mounts. */
-const LOADING = "Loading game data…";
-
 export interface LoadGate {
   dispose(): void;
 }
@@ -50,20 +49,20 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
 
   const title = document.createElement("h1");
   title.className = "ow3-heading load-gate-title";
-  title.textContent = "OpenWar3";
+  title.textContent = t("app.title");
 
   const sub = document.createElement("p");
   sub.className = "load-gate-sub";
   // "Required", not "recommended": the version is a gate now (src/vfs/version.ts), and a screen
   // that suggests where the game refuses is a screen that reads as broken.
-  sub.textContent = native
-    ? `Select your Warcraft III (The Frozen Throne ${REQUIRED_VERSION}) folder. That version is required — every player has to be on the same game data — and it is checked at every launch. You will only be asked once: the game remembers where it is. Nothing is uploaded; your install is read from your own disk.`
-    : `Select your Warcraft III (The Frozen Throne ${REQUIRED_VERSION}) folder to begin. That version is required — every player has to be on the same game data. The menu is built from the game's own files, so they're loaded first. Nothing is uploaded — your install is read locally in the browser.`;
+  sub.textContent = t(native ? "gate.subtitleNative" : "gate.subtitleBrowser", {
+    version: REQUIRED_VERSION,
+  });
 
   /** What the button says when it is not busy. The desktop app changes it once — a player who
    *  is being asked a SECOND time is choosing a folder, not loading files — so a failure has to
    *  restore this rather than the original wording. */
-  let idleLabel = "Load Game Files";
+  let idleLabel = t("gate.load");
   const btn = createGlueButton({ label: idleLabel, hotkey: "L", size: "lg", bordered: true });
 
   // The bar takes the button's place while the install mounts: there is nothing left to press,
@@ -88,13 +87,13 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
   const dlToggle = document.createElement("button");
   dlToggle.type = "button";
   dlToggle.className = "load-gate-link";
-  dlToggle.textContent = "Download game files";
+  dlToggle.textContent = t("gate.download");
   dlToggle.hidden = !downloadable;
 
   const dlCancel = document.createElement("button");
   dlCancel.type = "button";
   dlCancel.className = "load-gate-link load-gate-cancel";
-  dlCancel.textContent = "Cancel";
+  dlCancel.textContent = t("gate.cancel");
   dlCancel.hidden = true;
 
   /** `cancelable` is the download's own: the mount that follows it has nothing to cancel. */
@@ -123,7 +122,7 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
     // One line for the whole wait. The mount narrates itself stage by stage (which archive,
     // the content index, a percentage) and that is a developer's reading, not a player's: what a
     // player needs from this screen is "it is loading", then "it loaded" — or, in red, why not.
-    bar.setLabel(LOADING);
+    bar.setLabel(t("gate.loading"));
     showBar(true);
     try {
       // Browser only: the desktop app reads the folder off disk and has no quota to be evicted
@@ -134,7 +133,7 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
       // how far through it is once it knows, which is what the bar draws.
       const load = await loadProfile(install, DEFAULT_PROFILE, (_msg, fraction) => bar.set(fraction ?? null));
       bar.set(1);
-      bar.setLabel("Data successfully loaded");
+      bar.setLabel(t("gate.loaded"));
       // Let the full bar and that line reach the screen and be READ first: building the menu
       // holds the main thread, and whatever frame was painted last is what the player looks at
       // until it lets go — a confirmation shown for one frame is a confirmation nobody saw.
@@ -142,7 +141,7 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
       await new Promise((r) => requestAnimationFrame(() => setTimeout(r)));
       onLoaded(load);
     } catch (err) {
-      fail(`Couldn't load that folder: ${(err as Error).message}`);
+      fail(t("gate.loadFailed", { error: (err as Error).message }));
     }
   };
 
@@ -165,18 +164,18 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
     status.textContent = "";
     status.classList.remove("error");
     bar.set(0);
-    bar.setLabel("Connecting…");
+    bar.setLabel(t("gate.connecting"));
     showBar(true, true);
     /** Which source the bytes are coming from — said only once it is a mirror, since the
      *  primary is the ordinary case and needs no name on the bar. */
     let from = "";
     const onSource = (source: GameFilesSource, index: number): void => {
-      from = index > 0 ? ` from ${source.name}` : "";
-      if (index > 0) bar.setLabel(`Trying ${source.name}…`);
+      from = index > 0 ? t("gate.fromSource", { source: source.name }) : "";
+      if (index > 0) bar.setLabel(t("gate.trying", { source: source.name }));
     };
     const progress = (p: DownloadProgress): void => {
       bar.set(p.fraction);
-      bar.setLabel(`Downloading game files${from}… ${gb(p.received)} of ${gb(p.total)}`);
+      bar.setLabel(t("gate.downloading", { from, received: gb(p.received), total: gb(p.total) }));
     };
     try {
       if (native) {
@@ -190,7 +189,7 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
         if (!folder) {
           showBar(false);
           btn.setDisabled(false);
-          status.textContent = dlCancelled ? "Cancelled." : "No folder chosen.";
+          status.textContent = t(dlCancelled ? "gate.cancelled" : "gate.noFolderChosen");
           return;
         }
         return mount(await loadNativeInstall());
@@ -204,12 +203,12 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
       if (dlCancelled) {
         showBar(false);
         btn.setDisabled(false);
-        status.textContent = "Cancelled.";
+        status.textContent = t("gate.cancelled");
         return;
       }
       // An IPC rejection arrives wrapped in Electron's own words around the shell's message.
       const msg = (err as Error).message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, "");
-      fail(`Couldn't download the game files: ${msg}`);
+      fail(t("gate.downloadFailed", { error: msg }));
     } finally {
       dlAbort = null;
     }
@@ -224,16 +223,17 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
       // The shell's own folder dialog, and it refuses a folder that is not an install before
       // anything is mounted — so "that is not it" arrives at the moment of choosing.
       const path = await pickNativeInstall();
-      if (!path) { status.textContent = "No Warcraft III folder selected."; return; }
+      if (!path) { status.textContent = t("gate.noWar3Folder"); return; }
       return mount(await loadNativeInstall());
     }
     const install = await pickInstall();
-    if (!install) { status.textContent = "No folder selected."; return; }
+    if (!install) { status.textContent = t("gate.noFolder"); return; }
     return mount(install);
   };
 
   panel.append(title, sub, action, dlToggle, dlCancel, status);
   gate.appendChild(panel);
+  gate.appendChild(createLanguageSwitch());
   root.appendChild(gate);
   const unbindHotkeys = bindHotkeys(gate);
 
@@ -248,10 +248,10 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
       // folder that is still exactly where it was but has been PATCHED is not a folder that
       // moved. The game checks the version at every launch (src/vfs/version.ts), so this is the
       // screen a player who updated Warcraft III between sessions arrives at.
-      if (path) idleLabel = "Choose Warcraft III Folder";
+      if (path) idleLabel = t("gate.chooseFolder");
       btn.setDisabled(false);
       btn.setLabel(idleLabel);
-      if (path && !present) fail(`Your Warcraft III folder is no longer at ${path}.`);
+      if (path && !present) fail(t("gate.folderMissing", { path }));
       else if (path) fail(wrongVersionMessage(version));
     });
   }

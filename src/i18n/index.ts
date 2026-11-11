@@ -1,0 +1,480 @@
+// OpenWar3's own UI language (i18n).
+//
+// The GAME's text — unit names, tooltips, menu captions built from the install's FDFs —
+// already follows the player's Warcraft III install (src/data/text.ts). This module covers
+// the other half: the screens and labels that are OURS, which have no install string to
+// come from (the load-files gate, the fallback menu, and the extra option rows we lay over
+// the game's panels in src/overrides/).
+//
+// One locale at a time, resolved in this order:
+//   1. `?lang=zhCN` / `?lang=enUS` on the URL — an explicit override, and the only way to
+//      look at the other language without changing what the machine remembers;
+//   2. `localStorage["openwar3.language"]` — what the language button last chose;
+//   3. the browser's own language (`navigator.language`), so a Chinese browser opens in
+//      Chinese and an English one in English;
+//   4. English.
+//
+// Switching is a PAGE RELOAD rather than an in-place swap: the FDF screens cache the
+// strings they layered at mount (ui/fdf/library.ts), so re-rendering them in place would
+// mean rebuilding every mounted screen. A reload is honest, instant and always complete.
+
+export type Locale = "enUS" | "zhCN";
+
+/** The languages the engine's own UI is translated into, in the order the switcher shows. */
+export const LOCALES: ReadonlyArray<{ id: Locale; label: string }> = [
+  { id: "enUS", label: "English" },
+  { id: "zhCN", label: "中文（简体）" },
+];
+
+const STORAGE_KEY = "openwar3.language";
+const URL_PARAM = "lang";
+
+// The engine's own messages. Every key exists in both catalogues — `zhCN` is typed as
+// `Record<MessageKey, string>`, so a missing translation is a compile error rather than an
+// English sentence in the middle of a Chinese screen.
+const EN = {
+  // The product name; the window/tab title and the brand the gate prints.
+  "app.title": "OpenWar3",
+  "update.downloading": "Downloading {app} {version}…",
+  "update.downloadingGeneric": "Downloading the update…",
+  "gate.subtitleNative":
+    "Select your Warcraft III (The Frozen Throne {version}) folder. That version is required — every player has to be on the same game data — and it is checked at every launch. You will only be asked once: the game remembers where it is. Nothing is uploaded; your install is read from your own disk.",
+  "gate.subtitleBrowser":
+    "Select your Warcraft III (The Frozen Throne {version}) folder to begin. That version is required — every player has to be on the same game data. The menu is built from the game's own files, so they're loaded first. Nothing is uploaded — your install is read locally in the browser.",
+  "gate.load": "Load Game Files",
+  "gate.chooseFolder": "Choose Warcraft III Folder",
+  "gate.download": "Download game files",
+  "gate.cancel": "Cancel",
+  "gate.loading": "Loading game data…",
+  "gate.loaded": "Data successfully loaded",
+  "gate.connecting": "Connecting…",
+  "gate.trying": "Trying {source}…",
+  "gate.downloading": "Downloading game files{from}… {received} of {total}",
+  "gate.fromSource": " from {source}",
+  "gate.cancelled": "Cancelled.",
+  "gate.noFolderChosen": "No folder chosen.",
+  "gate.noWar3Folder": "No Warcraft III folder selected.",
+  "gate.noFolder": "No folder selected.",
+  "gate.loadFailed": "Couldn't load that folder: {error}",
+  "gate.downloadFailed": "Couldn't download the game files: {error}",
+  "gate.folderMissing": "Your Warcraft III folder is no longer at {path}.",
+  "gate.wrongVersion":
+    "That folder is Warcraft III {version}. OpenWar3 plays {required} — every player has to be on the same game data, so this is checked every launch.",
+  "gate.unknownVersion":
+    "That folder does not say which Warcraft III it is. OpenWar3 plays {required} (The Frozen Throne).",
+  "gate.noGameData":
+    "That folder has no Warcraft III game data in it (no Data folder). Select the Warcraft III {required} folder itself — the one with Warcraft III.exe in it.",
+  "gate.oldVersion":
+    "That folder is a Warcraft III older than {required}. OpenWar3 plays {required} (The Frozen Throne) — every player has to be on the same game data, so this is checked every launch.",
+
+  "menu.singlePlayer": "Single Player",
+  "menu.online": "Online",
+  "menu.multiplayer": "Multiplayer",
+  "menu.options": "Options",
+  "menu.credits": "Credits",
+  "menu.quit": "Quit",
+  "menu.installLoaded": "Install loaded — authentic assets active.",
+  "menu.noInstall":
+    "No install — flying placeholder terrain (WASD / drag / wheel). Click to import your Warcraft III folder.",
+  "menu.loadingArchives": "Loading archives…",
+  "menu.mounted": "{profile}: mounted {mounted}",
+  "menu.missing": " — missing {missing}",
+  "menu.fileCount": " — {count} files. Try openwar3.vfs.list() in the console.",
+  "menu.importFailed": "Import failed: {error}",
+
+  // Our own captions on the game's FDF menu, carrying the accelerator markup the other
+  // buttons carry. "Online" is ours: OpenWar3 multiplayer targets our own service.
+  "menu.onlineCaption": "O|Cffffffffn|Rline",
+  "menu.editionTft": "The Frozen Throne",
+  "menu.editionRoc": "Reign of Chaos",
+
+  // The few console labels the HUD draws itself rather than reading from an FDF.
+  "hud.status": "Status:",
+  "hud.inventory": "Inventory",
+  "hud.damage": "Damage:",
+  "hud.armor": "Armor:",
+  "hud.strength": "Strength:",
+  "hud.agility": "Agility:",
+  "hud.intelligence": "Intelligence:",
+  "hud.levelName": "Level {level} {name}",
+  "hud.experience": "Experience: {into} / {span}",
+  "hud.experienceMax": "Experience: (max level)",
+  "hud.gold": "Gold: {gold}",
+  "hud.invulnerable": "Invulnerable",
+  "hud.carryingGold": "Carrying {gold} gold",
+  "hud.carryingLumber": "Carrying {lumber} lumber",
+  "hud.build": "Build {name}",
+
+  // The lobby's race dropdown and the loading screen's slot rows (data/races.ts).
+  "race.human": "Human",
+  "race.orc": "Orc",
+  "race.undead": "Undead",
+  "race.nightelf": "Night Elf",
+  "race.random": "Random",
+
+  // The dev tools drawer (ui/devTools.ts) — ours, not the game's: WC3 has no debug UI.
+  "dev.title": "Dev Tools",
+  "dev.collapse": "Collapse the dev tools",
+  "dev.tab.spawn": "Spawn",
+  "dev.tab.cheats": "Cheats",
+  "dev.tab.overlays": "Overlays",
+  "dev.kind.hero": "Heroes",
+  "dev.kind.unit": "Units",
+  "dev.kind.building": "Buildings",
+  "dev.kind.item": "Items",
+  "dev.singular.hero": "Hero",
+  "dev.singular.unit": "Unit",
+  "dev.singular.building": "Building",
+  "dev.singular.item": "Item",
+  "dev.race.human": "Human",
+  "dev.race.orc": "Orc",
+  "dev.race.undead": "Undead",
+  "dev.race.nightelf": "Night Elf",
+  "dev.race.naga": "Naga",
+  "dev.race.creeps": "Creeps",
+  "dev.race.demon": "Demon",
+  "dev.race.critters": "Critters",
+  "dev.race.commoner": "Commoner",
+  "dev.race.other": "Other",
+  "dev.item.artifact": "Artifact",
+  "dev.item.charged": "Charged",
+  "dev.item.miscellaneous": "Miscellaneous",
+  "dev.item.permanent": "Permanent",
+  "dev.item.powerup": "PowerUp",
+  "dev.item.purchasable": "Purchasable",
+  "dev.item.campaign": "Campaign",
+  "dev.search": "Search name or rawcode…",
+  "dev.all": "All",
+  "dev.meleeOnly": "Melee only",
+  "dev.meleeOnlyTip": "Hide the campaign-only types (a search always finds them)",
+  "dev.empty": "Nothing matches.",
+  "dev.onMap": "{count} on the map now",
+  "dev.campaign": " · campaign",
+  "dev.owner": "Owner",
+  "dev.level": "Level",
+  "dev.count": "Count",
+  "dev.spawnCentre": "Spawn at the centre of the screen",
+  "dev.placeTip": "Every left-click on the map spawns there; right-click or Esc stops",
+  "dev.learnAll": "Learn all",
+  "dev.learnAllTip": "Every skill at its top rank, and a full mana bar",
+  "dev.place": "Click map to place",
+  "dev.placing": "Placing — right-click stops",
+  "dev.you": "You",
+  "dev.team": "Team {team}",
+  "dev.cheat.kill": "Kill/Destroy",
+  "dev.cheat.killTip": "Kill every selected unit, or destroy every selected building",
+  "dev.section.economy": "Economy",
+  "dev.section.cheats": "Cheats",
+  "dev.section.selection": "Selection",
+  "dev.cheat.gold": "+5000 Gold",
+  "dev.cheat.lumber": "+5000 Lumber",
+  "dev.cheat.food": "+Food",
+  "dev.cheat.fastBuild": "Fast Build",
+  "dev.cheat.godMode": "God Mode",
+  "dev.cheat.day": "Set Day",
+  "dev.cheat.night": "Set Night",
+  "dev.cheat.upgrades": "All Upgrades",
+  "dev.cheat.hp": "Full HP",
+  "dev.cheat.mp": "Full MP",
+  "dev.cheat.cooldown": "Reset Cooldown",
+  "dev.cheat.fastBuildTip": "Builds and training finish in about a second",
+  "dev.cheat.upgradesTip": "Research every upgrade in the game at its highest level",
+  "dev.speed.pace": "Pace",
+  "dev.speed.title": "Sim Speed",
+  "dev.speed.tip": "Game pace as a percentage of the Game Speed (100% = as set). Enter to apply.",
+  "dev.overlays.regions": "Show Regions",
+  "dev.overlays.regionsTip": "Outline the map's named trigger regions (gg_rct_*)",
+  "dev.overlays.concede": "Show Concede",
+  "dev.overlays.concedeTip":
+    "Show each Computer+ player's concede reading (despair against the line, and the dwell)",
+  "dev.overlays.colliders": "Show Colliders",
+  "dev.overlays.pathing": "Show Pathing",
+  "dev.legend.click": "Click / selection",
+  "dev.legend.obstruction": "Pathing obstruction",
+  "dev.legend.fogBlocker": "Fog-of-war (line-of-sight) blocker",
+  "dev.legend.pathingGrid": "Pathing grid",
+  "dev.legend.blockedCell": "Blocked cell",
+  "dev.legend.unitPath": "Unit path",
+  "dev.concede.title": "Concede — Computer+",
+  "dev.concede.none": "No Computer+ players",
+  "dev.concede.player": "Player {player}",
+  "dev.concede.noTerms": "no terms live",
+  "dev.concede.left": "left the game",
+  "dev.concede.conceded": "conceded — leaving",
+  "dev.concede.teamLost": "half the team gone — concedes now",
+  "dev.concede.notBefore": "nothing decided before {time} (now {now})",
+  "dev.concede.clause": "clause {clause}",
+  "dev.concede.despair": "despair",
+  "dev.concede.hopeless": "hopeless ({why}) {dwell} / {after} s",
+  "dev.concede.hopelessStart": "hopeless ({why}) — dwell starts next pass",
+  "dev.concede.playingOn": "playing on",
+
+  "language.switch": "Language: {language}",
+  "language.next": "Switch to {language}",
+} as const;
+
+export type MessageKey = keyof typeof EN;
+
+const ZH: Record<MessageKey, string> = {
+  "app.title": "开源魔兽争霸",
+  "update.downloading": "正在下载{app} {version}…",
+  "update.downloadingGeneric": "正在下载更新…",
+  "gate.subtitleNative":
+    "选择你的《魔兽争霸 III：冰封王座》（{version}）文件夹。该版本是必需的——所有玩家必须使用相同的游戏数据——且每次启动都会检查。你只会被询问一次：游戏会记住它的位置。不会上传任何内容；安装只从本地磁盘读取。",
+  "gate.subtitleBrowser":
+    "选择你的《魔兽争霸 III：冰封王座》（{version}）文件夹以开始。该版本是必需的——所有玩家必须使用相同的游戏数据。菜单由游戏自身的文件构建，因此会先加载它们。不会上传任何内容——安装只在浏览器本地读取。",
+  "gate.load": "加载游戏文件",
+  "gate.chooseFolder": "选择《魔兽争霸 III》文件夹",
+  "gate.download": "下载游戏文件",
+  "gate.cancel": "取消",
+  "gate.loading": "正在加载游戏数据…",
+  "gate.loaded": "数据加载成功",
+  "gate.connecting": "正在连接…",
+  "gate.trying": "正在尝试 {source}…",
+  "gate.downloading": "正在下载游戏文件{from}… {received} / {total}",
+  "gate.fromSource": "（{source}）",
+  "gate.cancelled": "已取消。",
+  "gate.noFolderChosen": "未选择文件夹。",
+  "gate.noWar3Folder": "未选择《魔兽争霸 III》文件夹。",
+  "gate.noFolder": "未选择文件夹。",
+  "gate.loadFailed": "无法加载该文件夹：{error}",
+  "gate.downloadFailed": "无法下载游戏文件：{error}",
+  "gate.folderMissing": "你的《魔兽争霸 III》文件夹已不在 {path}。",
+  "gate.wrongVersion":
+    "该文件夹是《魔兽争霸 III》{version}。开源魔兽争霸 使用 {required}——所有玩家必须使用相同的游戏数据，因此每次启动都会检查。",
+  "gate.unknownVersion": "无法确定该文件夹是哪个版本的《魔兽争霸 III》。开源魔兽争霸 使用 {required}（冰封王座）。",
+  "gate.noGameData":
+    "该文件夹中没有《魔兽争霸 III》游戏数据（缺少 Data 文件夹）。请选择《魔兽争霸 III》{required} 文件夹本身——即包含 Warcraft III.exe 的那个文件夹。",
+  "gate.oldVersion":
+    "该文件夹是早于 {required} 的《魔兽争霸 III》。开源魔兽争霸 使用 {required}（冰封王座）——所有玩家必须使用相同的游戏数据，因此每次启动都会检查。",
+
+  "menu.singlePlayer": "单人游戏",
+  "menu.online": "在线",
+  "menu.multiplayer": "多人游戏",
+  "menu.options": "选项",
+  "menu.credits": "制作人员",
+  "menu.quit": "退出",
+  "menu.installLoaded": "安装已加载——正在使用原版资源。",
+  "menu.noInstall": "未找到安装——正在使用飞行占位地形（WASD / 拖动 / 滚轮）。点击导入《魔兽争霸 III》文件夹。",
+  "menu.loadingArchives": "正在加载档案…",
+  "menu.mounted": "{profile}：已挂载 {mounted}",
+  "menu.missing": "——缺少 {missing}",
+  "menu.fileCount": "——{count} 个文件。可在控制台尝试 openwar3.vfs.list()。",
+  "menu.importFailed": "导入失败：{error}",
+
+  // No white letter to gild: a Chinese caption carries no Latin accelerator, and the
+  // button still answers N through `shortcutOverrides` (ui/fdfMainMenu.ts).
+  "menu.onlineCaption": "在线",
+  "menu.editionTft": "冰封王座",
+  "menu.editionRoc": "混乱之治",
+
+  // The few console labels the HUD draws itself rather than reading from an FDF.
+  "hud.status": "状态：",
+  "hud.inventory": "物品栏",
+  "hud.damage": "伤害：",
+  "hud.armor": "护甲：",
+  "hud.strength": "力量：",
+  "hud.agility": "敏捷：",
+  "hud.intelligence": "智力：",
+  "hud.levelName": "等级 {level} {name}",
+  "hud.experience": "经验：{into} / {span}",
+  "hud.experienceMax": "经验：（已满级）",
+  "hud.gold": "金币：{gold}",
+  "hud.invulnerable": "无敌",
+  "hud.carryingGold": "携带 {gold} 金币",
+  "hud.carryingLumber": "携带 {lumber} 木材",
+  "hud.build": "建造 {name}",
+
+  "race.human": "人族",
+  "race.orc": "兽族",
+  "race.undead": "不死族",
+  "race.nightelf": "暗夜精灵",
+  "race.random": "随机",
+
+  "dev.title": "开发者工具",
+  "dev.collapse": "收起开发者工具",
+  "dev.tab.spawn": "生成",
+  "dev.tab.cheats": "作弊",
+  "dev.tab.overlays": "叠加层",
+  "dev.kind.hero": "英雄",
+  "dev.kind.unit": "单位",
+  "dev.kind.building": "建筑",
+  "dev.kind.item": "物品",
+  "dev.singular.hero": "英雄",
+  "dev.singular.unit": "单位",
+  "dev.singular.building": "建筑",
+  "dev.singular.item": "物品",
+  "dev.race.human": "人族",
+  "dev.race.orc": "兽族",
+  "dev.race.undead": "不死族",
+  "dev.race.nightelf": "暗夜精灵",
+  "dev.race.naga": "娜迦",
+  "dev.race.creeps": "野怪",
+  "dev.race.demon": "恶魔",
+  "dev.race.critters": "小动物",
+  "dev.race.commoner": "平民",
+  "dev.race.other": "其他",
+  "dev.item.artifact": "神器",
+  "dev.item.charged": "充能",
+  "dev.item.miscellaneous": "杂项",
+  "dev.item.permanent": "永久",
+  "dev.item.powerup": "能量提升",
+  "dev.item.purchasable": "可购买",
+  "dev.item.campaign": "战役",
+  "dev.search": "搜索名称或代码…",
+  "dev.all": "全部",
+  "dev.meleeOnly": "仅对战",
+  "dev.meleeOnlyTip": "隐藏仅战役出现的类型（搜索始终能找到它们）",
+  "dev.empty": "没有匹配项。",
+  "dev.onMap": "地图上现有 {count} 个",
+  "dev.campaign": " · 战役",
+  "dev.owner": "所属",
+  "dev.level": "等级",
+  "dev.count": "数量",
+  "dev.spawnCentre": "在屏幕中央生成",
+  "dev.placeTip": "在地图上左键即可在该处生成；右键或 Esc 停止",
+  "dev.learnAll": "学满技能",
+  "dev.learnAllTip": "所有技能升到最高等级，并充满法力",
+  "dev.place": "点击地图放置",
+  "dev.placing": "放置中——右键停止",
+  "dev.you": "你",
+  "dev.team": "队伍 {team}",
+  "dev.cheat.kill": "杀死/摧毁",
+  "dev.cheat.killTip": "杀死所有选中的单位，或摧毁所有选中的建筑",
+  "dev.section.economy": "经济",
+  "dev.section.cheats": "作弊",
+  "dev.section.selection": "选中单位",
+  "dev.cheat.gold": "+5000 金币",
+  "dev.cheat.lumber": "+5000 木材",
+  "dev.cheat.food": "+人口",
+  "dev.cheat.fastBuild": "快速建造",
+  "dev.cheat.godMode": "无敌模式",
+  "dev.cheat.day": "设为白天",
+  "dev.cheat.night": "设为夜晚",
+  "dev.cheat.upgrades": "全部升级",
+  "dev.cheat.hp": "满生命",
+  "dev.cheat.mp": "满法力",
+  "dev.cheat.cooldown": "重置冷却",
+  "dev.cheat.fastBuildTip": "建造与训练约一秒完成",
+  "dev.cheat.upgradesTip": "研究游戏中所有升级至最高等级",
+  "dev.speed.pace": "速度",
+  "dev.speed.title": "模拟速度",
+  "dev.speed.tip": "游戏节奏相对于“游戏速度”的百分比（100% = 按设定值）。回车应用。",
+  "dev.overlays.regions": "显示区域",
+  "dev.overlays.regionsTip": "勾出地图中命名的触发区域（gg_rct_*）",
+  "dev.overlays.concede": "显示认输读数",
+  "dev.overlays.concedeTip": "显示每个 Computer+ 玩家的认输读数（绝望值与阈值，以及持续时间）",
+  "dev.overlays.colliders": "显示碰撞体",
+  "dev.overlays.pathing": "显示寻路",
+  "dev.legend.click": "点击 / 选择",
+  "dev.legend.obstruction": "寻路阻挡",
+  "dev.legend.fogBlocker": "战争迷雾（视线）阻挡",
+  "dev.legend.pathingGrid": "寻路网格",
+  "dev.legend.blockedCell": "阻挡格",
+  "dev.legend.unitPath": "单位路径",
+  "dev.concede.title": "认输 — Computer+",
+  "dev.concede.none": "没有 Computer+ 玩家",
+  "dev.concede.player": "玩家 {player}",
+  "dev.concede.noTerms": "无生效条款",
+  "dev.concede.left": "已离开游戏",
+  "dev.concede.conceded": "已认输——正在离开",
+  "dev.concede.teamLost": "队伍半数已失——立即认输",
+  "dev.concede.notBefore": "{time} 之前不做判定（当前 {now}）",
+  "dev.concede.clause": "条款 {clause}",
+  "dev.concede.despair": "绝望值",
+  "dev.concede.hopeless": "无望（{why}）{dwell} / {after} 秒",
+  "dev.concede.hopelessStart": "无望（{why}）——下一轮开始计时",
+  "dev.concede.playingOn": "继续游戏",
+
+  "language.switch": "语言：{language}",
+  "language.next": "切换到{language}",
+};
+
+/** Parse a BCP-47 tag (or a WC3 locale name) into a locale this module knows. */
+function normalize(tag: string | null | undefined): Locale | null {
+  if (!tag) return null;
+  const lower = tag.toLowerCase();
+  if (lower.startsWith("zh")) return "zhCN";
+  if (lower.startsWith("en")) return "enUS";
+  return null;
+}
+
+function urlLocale(): Locale | null {
+  if (typeof location === "undefined") return null;
+  try {
+    return normalize(new URLSearchParams(location.search).get(URL_PARAM));
+  } catch {
+    return null;
+  }
+}
+
+function storedLocale(): Locale | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    return normalize(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return null;
+  }
+}
+
+let cached: Locale | null = null;
+
+/** The locale the engine's own UI is drawn in. Resolved once, then cached. */
+export function currentLocale(): Locale {
+  if (cached) return cached;
+  // Chinese is this build's default: `?lang=` wins, then the language the player picked
+  // last time, then zhCN — we no longer sniff `navigator.language`, so an English system
+  // still opens in Chinese. English stays one click away (the language switch) or `?lang=enUS`.
+  cached = urlLocale() ?? storedLocale() ?? "zhCN";
+  return cached;
+}
+
+/** Set the UI language and remember it. Callers that want the change on screen NOW reload
+ *  the page (see the header); the API itself only persists and notifies. */
+export function setLocale(locale: Locale): void {
+  cached = locale;
+  try {
+    localStorage.setItem(STORAGE_KEY, locale);
+  } catch {
+    /* storage disabled — the choice stands for this session only */
+  }
+  applyDocumentLang();
+}
+
+/** Translate a key, interpolating `{name}` placeholders. */
+export function t(key: MessageKey, params?: Record<string, string | number>): string {
+  const template = (currentLocale() === "zhCN" ? ZH : EN)[key];
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    name in params ? String(params[name]) : whole,
+  );
+}
+
+/** The language NAME for the switcher, in the other language — "English" while the UI is
+ *  Chinese, "中文（简体）" while it is English. */
+export function otherLocaleLabel(): string {
+  const other = currentLocale() === "zhCN" ? LOCALES[0] : LOCALES[1];
+  return other.label;
+}
+
+/** The locale's own name, for the current-language readout. */
+export function currentLocaleLabel(): string {
+  return (currentLocale() === "zhCN" ? LOCALES[1] : LOCALES[0]).label;
+}
+
+function applyDocumentLang(): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.lang = currentLocale() === "zhCN" ? "zh-CN" : "en-US";
+  document.documentElement.dataset.locale = currentLocale();
+  document.title = t("app.title");
+}
+
+/**
+ * Boot hook: resolve the language and stamp it on `<html>` (so the browser hyphenates, the
+ * font stack and assistive tech all see it). Safe to call more than once.
+ */
+export function initI18n(): Locale {
+  const locale = currentLocale();
+  applyDocumentLang();
+  return locale;
+}

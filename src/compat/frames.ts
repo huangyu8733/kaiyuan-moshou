@@ -1,5 +1,6 @@
 import type { NativeCtx, Runtime } from "../jass/runtime";
 import { asInt, asNum, asStr, jBool, jHandle, jInt, jStr, JNULL, truthy, type JassValue } from "../jass/values";
+import { decodeGameText } from "../data/text";
 import { FdfLibrary } from "../ui/fdf/library";
 import type { FdfFrame } from "../ui/fdf/parser";
 import type { DataSource } from "../vfs/types";
@@ -172,12 +173,12 @@ export function registerFrameNatives(rt: Runtime): void {
     const toc = read(path);
     if (!toc) return jBool(false);
     const m = model(c);
-    for (const line of new TextDecoder("latin1").decode(toc).split(/\r?\n/)) {
+    for (const line of decodeGameText(toc).split(/\r?\n/)) {
       const fdf = line.trim();
       if (!fdf || m.sources.some((s) => s.id === fdf)) continue;
       const bytes = read(fdf);
       if (!bytes) continue;
-      const text = new TextDecoder("latin1").decode(bytes);
+      const text = decodeGameText(bytes);
       m.lib.loadOverride(fdf, text);
       m.sources.push({ id: fdf, text });
     }

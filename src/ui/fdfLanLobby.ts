@@ -1,5 +1,5 @@
 import type { DataSource } from "../vfs/types";
-import { RACES, RACE_LABEL } from "../data/races";
+import { RACES, raceLabel } from "../data/races";
 import type { MapInfo } from "../world/mapInfo";
 import { startsExplored } from "../world/mapKind";
 import type { MapPreview } from "../world/mapPreview";
@@ -680,7 +680,7 @@ export async function mountLanLobbyScreen(
 
       const race = s.popup(`RaceMenu${i}`);
       if (race) {
-        race.setOptions(RACES.map((r) => ({ value: r, label: RACE_LABEL[r] })));
+        race.setOptions(RACES.map((r) => ({ value: r, label: raceLabel(r) })));
         race.value = slot.race;
         race.onChange = (v) => change(i, { race: v });
         race.setEnabled(!locked && seated && ours);
