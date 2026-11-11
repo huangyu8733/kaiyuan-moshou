@@ -22,6 +22,7 @@
 // text and focus.
 
 import { setGameTip } from "./gameTip";
+import { t } from "../i18n";
 
 /** What the box needs from the map browser it searches. */
 export interface FindHost {
@@ -40,7 +41,7 @@ export interface FindHost {
 }
 
 /** What the empty box says. Ours: the 2003 UI has no search to borrow it from. */
-const PLACEHOLDER = "Search maps (Ctrl+F)";
+const PLACEHOLDER = (): string => t("mapsearch.placeholder");
 
 /**
  * How long the box waits after a keystroke before it searches. Ours. A search is not free — it
@@ -82,10 +83,10 @@ export class MapFind {
     const input = document.createElement("input");
     input.className = "ow3-find-input";
     input.type = "text";
-    input.placeholder = PLACEHOLDER;
+    input.placeholder = PLACEHOLDER();
     input.spellcheck = false;
     input.autocomplete = "off";
-    input.setAttribute("aria-label", PLACEHOLDER);
+    input.setAttribute("aria-label", PLACEHOLDER());
     input.addEventListener("input", () => this.queue());
     input.addEventListener("keydown", (e) => this.onKey(e));
     input.addEventListener("focus", () => { this.wantFocus = true; this.host.warm(); });
@@ -93,9 +94,9 @@ export class MapFind {
     clear.type = "button";
     clear.className = "ow3-find-close";
     clear.textContent = "×";
-    clear.setAttribute("aria-label", "Clear");
+    clear.setAttribute("aria-label", t("mapsearch.clear"));
     // An in-game hint, not the browser's `title` bubble, and never both (ui/gameTip.ts).
-    setGameTip(clear, "Clear (Esc)");
+    setGameTip(clear, t("mapsearch.clearTip"));
     clear.addEventListener("click", () => { this.empty(); input.focus(); });
     box.append(glass, input, clear);
     root.append(box);

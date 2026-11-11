@@ -36,7 +36,7 @@
 //
 // (Same shape as CreateTimerDialogBJ in 7.21: the BJ shows it, the native doesn't.)
 
-import type { JassFogArea, JassPlayer, NativeCtx, Runtime } from "../runtime";
+import type { JassFogArea, JassPlayer, JassUnit, NativeCtx, Runtime } from "../runtime";
 import { asInt, asNum, jBool, jHandle, JNULL, truthy, type JassValue } from "../values";
 
 type NativeFn = (ctx: NativeCtx, args: JassValue[]) => JassValue;
@@ -89,6 +89,20 @@ export function registerVisionNatives(rt: Runtime): void {
   def(rt, "GetPlayerAlliance", (c, a) =>
     jBool(c.rt.hooks?.getPlayerAlliance?.(playerIndex(c, a[0]), playerIndex(c, a[1]), c.rt.enumIndex(a[2])) ?? false),
   );
+  // IsVisibleToPlayer(x, y, whichPlayer) — the POINT form of IsUnitVisible. A player's sight is
+  // the vision set's own answer (the one the screen is drawn from), so what a script believes
+  // is seen cannot drift from what that player is shown.
+  def(rt, "IsVisibleToPlayer", (c, a) =>
+    jBool(c.rt.hooks?.isPointVisibleTo?.(asNum(a[0]), asNum(a[1]), playerIndex(c, a[2])) ?? false),
+  );
+  // UnitShareVision(whichUnit, toWhichPlayer, share) — "lend this unit's sight to that player".
+  // It is the ALLIANCE_SHARED_VISION bit of the directed alliance matrix, the same bit the GUI's
+  // "Make X treat Y as an ally" ladder rides on (common.j: ConvertAllianceType(5)).
+  def(rt, "UnitShareVision", (c, a) => {
+    const u = c.rt.data<JassUnit>(a[0]);
+    if (u) c.rt.hooks?.setPlayerAlliance?.(u.player, playerIndex(c, a[1]), 5, truthy(a[2]));
+    return JNULL;
+  });
   // CripplePlayer(whichPlayer, toWhichPlayers, flag) — reveal a player's units to a
   // force. MeleeExposePlayer calls it TWICE: once with an empty force and `false` to
   // clear any previous exposure, then with the force of every non-co-allied player and

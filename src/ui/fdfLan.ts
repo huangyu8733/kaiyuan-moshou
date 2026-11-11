@@ -22,6 +22,7 @@ import {
 import { widescreen } from "./widescreen";
 import { localMapPath, requestMapWriteAccess } from "../assets/downloadedMaps";
 import { showMapDownload } from "./mapDownload";
+import { t } from "../i18n";
 
 // The Multiplayer screen (the game's "Local Area Network"), built from the game's own
 // UI\FrameDef\Glue\LocalMultiplayerJoin.fdf.
@@ -99,7 +100,7 @@ export async function mountLanScreen(
   let serversDialog: JoinAddressDialog | null = null;
 
   // The name you appear as. WC3 remembers this between sessions; so do we.
-  const savedName = localStorage.getItem("openwar3.playerName") || "Player";
+  const savedName = localStorage.getItem("openwar3.playerName") || t("lan.playerDefault");
   const playerName = (): string => screen.editBox("PlayerNameEditBox")?.value?.trim() || savedName;
 
   /** Read the map a room is advertising, out of OUR install. */
@@ -136,12 +137,12 @@ export async function mountLanScreen(
     overrides: [OW3_STRINGS, LAN_JOIN_OVERRIDE],
     // The engine's own strings assume Blizzard's LAN browser; ours says what it does.
     textOverrides: {
-      CustomCreateTitle: "Multiplayer",
-      CustomCreateInfo: "Games on your network appear below.",
-      GameListTitle: "Network Games",
-      CreateButtonText: "Create Game",
-      ServersListButtonText: "Servers List",
-      JoinButtonText: "Join Game",
+      CustomCreateTitle: t("lan.title"),
+      CustomCreateInfo: t("lan.gamesInfo"),
+      GameListTitle: t("lan.gamesTitle"),
+      CreateButtonText: t("lan.createGame"),
+      ServersListButtonText: t("lan.serversList"),
+      JoinButtonText: t("lan.joinGame"),
     },
     // Load a saved game over the network — not in scope, and greying it out is more honest
     // than a button that does nothing.
@@ -287,7 +288,7 @@ export async function mountLanScreen(
       list.onActivate = () => join();
       if (picked) list.select(picked);
     }
-    s.setText("GameListTitle", "Network Games");
+    s.setText("GameListTitle", t("lan.gamesTitle"));
     // The two rows under the summary: who made the game, and the speed the host set it to on
     // the create screen's slider (src/data/gameSpeed.ts) — Fast when the room does not say.
     const room = picked ? st.rooms.find((r) => r.key === picked) : null;
@@ -300,10 +301,10 @@ export async function mountLanScreen(
         "CustomCreateInfo",
         missing
               // One line where it can be — the panel has room for one above our reachability line.
-              ? `Joining will download ${missing}.`
+              ? t("lan.willDownload", { map: missing })
           : st.rooms.length
-            ? "Select a game and choose Join."
-            : "No games found. Create one.",
+            ? t("lan.selectGame")
+            : t("lan.noGames"),
       );
     }
 

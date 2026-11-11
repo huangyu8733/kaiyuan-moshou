@@ -19,6 +19,7 @@ import { gameFontsReady, onGameFontsReady } from "./gameFont";
 import type { ListItem } from "./fdf/widgets";
 import { mountWorking } from "./workingIndicator";
 import { modalOver } from "./modal";
+import { t } from "../i18n";
 
 // The map browser: the folder-browsing map list (MapListBox.fdf) and the map summary pane
 // (MapInfoPane.fdf), which are the SAME two widgets on every screen that picks a map.
@@ -120,8 +121,14 @@ export function readMapPreviewBytes(vfs: DataSource, bytes: Uint8Array): MapPrev
  * DOM, is where "which folder, which map" lives.
  */
 export class MapBrowser {
-  /** Every map on the list — re-derived when one arrives from a map site (`addMap`). */
+  /** Every map on the list — re-derived when the shared table grows (`syncEntries`). */
   private entries: MapEntry[];
+  /** How big the shared `maps` table was when `entries` was last derived — the whole of the
+   *  "has anything arrived since?" test, so a screen does not rescan hundreds of paths on
+   *  every rebuild. */
+  private mapsSeen: number;
+  /** The empty-and-ready list has been reported once, so a rebuild does not repeat it. */
+  private emptyLogged = false;
   private readonly icons: Icons;
   private readonly minimapIcons: MinimapIcons;
   /** The folder the list is showing. */
@@ -171,11 +178,13 @@ export class MapBrowser {
     private readonly maps: Map<string, File>,
   ) {
     this.entries = mapEntries(maps);
+    this.mapsSeen = maps.size;
     this.icons = loadIcons(vfs);
     this.minimapIcons = loadMinimapIcons(vfs);
     // WC3 opens on the expansion's own maps folder — that is where a Frozen Throne
-    // install's melee maps live.
-    this.cwd = this.entries.some((e) => e.folder.toLowerCase() === "frozenthrone") ? "FrozenThrone" : "";
+    // install's melee maps live. The folder's OWN spelling, not the name typed here: a store
+    // that files its maps under a lower-case `Maps\frozenthrone\` is still that folder.
+    this.cwd = resolveFolder(this.entries, "FrozenThrone") ?? "";
     // A count badge is canvas-baked in the game font; if the browser is built before the
     // archives' face lands, its digits are the fallback's and won't self-heal. Redraw them
     // (and re-fill the list that shows them) when the real face arrives (issue #82). Only when
@@ -229,16 +238,46 @@ export class MapBrowser {
     this.maps.set(m.key, m.file);
     mapCache.delete(m.key); // a second download of the same name is a different map
     previewCache.delete(m.key);
-    // Every OTHER entry is kept as it is: its name and player count were read out of its file
-    // (`readFolder`), and a fresh entry is only its file name again.
-    const known = new Map(this.entries.map((x) => [x.path, x]));
-    this.entries = mapEntries(this.maps).map((x) => (x.path === m.key ? x : known.get(x.path) ?? x));
+    this.syncEntries(m.key);
     const e = this.entries.find((x) => x.path === m.key);
-    readFolders.delete(e?.folder ?? ""); // the new one is read on the way in, its neighbours are cached
     // A list the search box has narrowed was narrowed before this map existed: ask it again, so
     // the map the player went and got for that search is among its answers.
     if (this.filter && this.finder.query) this.filter = this.search(this.finder.query).map((x) => x.path);
     if (e) await this.jumpTo(e);
+  }
+
+  /**
+   * Re-derive the list from the SHARED `maps` table when it has grown since the last look.
+   *
+   * The table is handed in by the caller and outlives this browser: a map can arrive from a map
+   * site (through `addMap`, below), from the LAN lobby's download, or from an install whose
+   * maps were still being collected when the screen was built. The screen was built with a
+   * SNAPSHOT of it (`entries`), so without this a map that arrived a moment later never showed
+   * up on the screen already open — which is what an empty map list with no loading ring was.
+   *
+   * `fresh` is a path that must be re-read even though the table was already known (a second
+   * download under the same name is a different map). Its folder is forgotten either way, so the
+   * rows it belongs to are read again before they are shown.
+   *
+   * Returns whether anything changed.
+   */
+  private syncEntries(fresh?: string): boolean {
+    if (!fresh && this.maps.size === this.mapsSeen) return false;
+    this.mapsSeen = this.maps.size;
+    // Every OTHER entry is kept as it is: its name and player count were read out of its file
+    // (`readFolder`), and a fresh entry is only its file name again.
+    const known = new Map(this.entries.map((x) => [x.path, x]));
+    this.entries = mapEntries(this.maps).map((x) => (x.path === fresh ? x : known.get(x.path) ?? x));
+    for (const e of this.entries) {
+      if (e.path === fresh || !known.has(e.path)) readFolders.delete(e.folder);
+    }
+    return true;
+  }
+
+  /** The open folder's maps changed under it: read them again, then let the screen fill. */
+  private async reloadFolder(folder: string): Promise<void> {
+    await this.readFolder(folder);
+    if (this.alive && this.cwd === folder) this.onChange();
   }
 
   /** Hand over the screen's FDF library, for the strings the list shows. */
@@ -267,18 +306,24 @@ export class MapBrowser {
    * answering nothing) until its folder is in, and then it is right the first time.
    */
   async openFolder(folder: string): Promise<void> {
-    this.cwd = folder;
+    // The folder's OWN spelling, whatever case the caller asked in — and with no such folder in
+    // the install, the top level rather than a name nothing can match.
+    const real = resolveFolder(this.entries, folder) ?? "";
+    this.cwd = real;
     this.cursor = null;
     this.listScroll = 0; // a new folder starts at its top
     this.onChange(); // empty + disabled: this folder has not been read yet
-    await this.readFolder(folder);
-    if (!this.alive || this.cwd !== folder) return; // the player left, or moved on
+    await this.readFolder(real);
+    if (!this.alive || this.cwd !== real) return; // the player left, or moved on
     this.onChange();
   }
 
   /** Fill the map list and the summary pane on `s`. Call from the screen's `onBuild`. */
   fill(s: FdfScreen): void {
     this.screen = s;
+    // Maps that arrived since this screen was built — download, another screen, a slow install —
+    // join the list here, and the folder showing them is read again before it is filled.
+    if (this.syncEntries() && this.cwd && !readFolders.has(this.cwd)) void this.reloadFolder(this.cwd);
     // The search box FIRST: it takes room off the list's rows, and `fillList` scrolls a found
     // map into view — into the room that is left, not under the box.
     this.finder.place(s.element, s.frame("MapListBox"));
@@ -301,6 +346,19 @@ export class MapBrowser {
     const rows = !ready ? [] : filtered ?? folderRows(this.entries, this.cwd);
     list.setItems(rows.map((r) => toListItem(r, this.icons, upOneLevel)));
     list.setEnabled(ready);
+    // An empty list that is READY looks exactly like an install with no maps. Say which it is,
+    // once, in the console: the player can quote it, and it is the one thing the screen has no
+    // room to draw (a folder still being read shows the ring instead).
+    if (ready && rows.length === 0 && !this.emptyLogged) {
+      this.emptyLogged = true;
+      console.info("[OpenWar3] map list is empty", {
+        maps: this.maps.size,
+        entries: this.entries.length,
+        foldersRead: readFolders.size,
+        cwd: this.cwd,
+        search: this.filter?.length ?? null,
+      });
+    }
     // …and while it is empty because its folder is still being read (or the search box is still
     // answering), it SAYS so: an empty, dead list reads as "no maps here" for exactly as long as
     // the reads take.
@@ -375,7 +433,7 @@ export class MapBrowser {
    * visited twice is instant the second time.
    */
   private async readFolder(folder: string): Promise<void> {
-    for (const e of this.entries.filter((x) => x.folder === folder)) {
+    for (const e of this.entries.filter((x) => sameFolder(x.folder, folder))) {
       if (!this.alive) return; // the player left; stop reading files for a screen that is gone
       // An INVALID map is hidden, the way the game leaves out of its list a file it cannot open
       // as a map: one whose w3i will not parse (five of the install's Download maps are saved in
@@ -620,7 +678,7 @@ export function fillMapInfo(
   if (author) author.style.display = "none";
   s.setText("MaxPlayersValue", String(info.maxPlayers));
   s.setText("MapNameValue", info.name);
-  s.setText("SuggestedPlayersValue", info.recommendedPlayers || `${info.maxPlayers} players`);
+  s.setText("SuggestedPlayersValue", info.recommendedPlayers || t("mapsites.players", { count: info.maxPlayers }));
   // "Map Size" is a WORD, not a measurement: the game buckets a map by its player count
   // (UI\MiscData.txt [BattleNetCustomFilter]), which is how a 1v1 reads "Small".
   s.setText("MapSizeValue", mapSizeLabel(info.maxPlayers));
@@ -830,6 +888,21 @@ interface MapEntry {
   unsupported?: string;
 }
 
+/** Whether two folder names are the same folder. A Warcraft III install's `Maps\` casing is
+ *  whatever the copy on disk (or the archive the store keeps) says, and nothing that looks a
+ *  folder up may depend on typing it back exactly: `Maps\frozenthrone\` is the same folder as
+ *  `Maps\FrozenThrone\`. */
+function sameFolder(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+/** `want` as the install actually spells it, or null when it has no such folder. The EMPTY
+ *  folder — the top level — is always there. */
+function resolveFolder(entries: MapEntry[], want: string): string | null {
+  if (!want) return "";
+  return entries.find((e) => sameFolder(e.folder, want))?.folder ?? null;
+}
+
 /** Every playable map in the install, with the folder it lives in. */
 function mapEntries(maps: Map<string, File>): MapEntry[] {
   const all: MapEntry[] = [...maps.keys()].map((path) => {
@@ -851,11 +924,11 @@ function mapEntries(maps: Map<string, File>): MapEntry[] {
 function folderRows(all: MapEntry[], cwd: string): Array<MapEntry | FolderRow> {
   // An invalid map is not a row — and a folder holding nothing else is not a row either.
   const entries = all.filter((e) => !e.invalid);
-  const inCwd = entries.filter((e) => e.folder === cwd);
+  const inCwd = entries.filter((e) => sameFolder(e.folder, cwd));
   const prefix = cwd ? `${cwd}\\` : "";
   const subFolders = [...new Set(
     entries
-      .filter((e) => e.folder.startsWith(prefix) && e.folder !== cwd)
+      .filter((e) => !sameFolder(e.folder, cwd) && e.folder.toLowerCase().startsWith(prefix.toLowerCase()))
       .map((e) => e.folder.slice(prefix.length).split("\\")[0]),
   )].sort();
 

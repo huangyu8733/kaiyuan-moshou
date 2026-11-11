@@ -34,6 +34,7 @@ import { blankItemDef, type ItemDef, type ItemRegistry } from "./items";
 import type { UpgradeDef, UpgradeRegistry } from "./upgrades";
 import type { TechDef, TechRegistry } from "./techtree";
 import { parseWts } from "../jass/wts";
+import { localizeWtsTable } from "../i18n/campaignZh";
 
 type Val = number | string;
 const s = (v: Val): string => (typeof v === "string" ? v : String(v));
@@ -619,7 +620,9 @@ function cloneDef(base: UnitDef, id: string): UnitDef {
  */
 /** Build a TRIGSTR_-resolver from a map's war3map.wts bytes (identity if none). */
 export function makeTrigStr(wtsBytes?: Uint8Array): (v: string) => string {
-  const table = wtsBytes ? parseWts(new TextDecoder("utf-8").decode(wtsBytes)) : null;
+  const table = wtsBytes
+    ? localizeWtsTable(parseWts(new TextDecoder("utf-8").decode(wtsBytes)))
+    : null;
   return (v: string): string => {
     if (!table || !v.startsWith("TRIGSTR_")) return v;
     const id = parseInt(v.slice("TRIGSTR_".length), 10);

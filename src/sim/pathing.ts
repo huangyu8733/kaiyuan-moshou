@@ -124,6 +124,11 @@ export class PathingGrid {
   // footprint releases exactly the cells it took, and only once nothing else claims them.
   private blockStamps: Uint16Array | null = null; // red channel → unwalkable
   private buildStamps: Uint16Array | null = null; // blue channel → unbuildable
+  // SCRIPT overrides (SetTerrainPathable): a cell the map's own triggers have declared pathable
+  // or unpathable, ahead of the terrain and the stamps. Kept per domain — walkability and
+  // flyability are different questions about the same cell — and NOT counted, because the native
+  // is an absolute statement about that cell (DotA's call sites set, then clear, the same point).
+  private scriptPath = new Map<string, boolean>();
   // Static connectivity labels, keyed by domain AND footprint size — see `regionAt`. The
   // arrays are kept and refilled rather than reallocated: a rebuild is triggered by a felled
   // tree or a building going up, and a fresh Int32Array per key per event is megabytes of
@@ -289,15 +294,28 @@ export class PathingGrid {
    *  stops both — a pier is in the way of a boat as much as of a Footman. */
   walkable(cx: number, cy: number, domain: PathDomain = "ground"): boolean {
     if (!this.inBounds(cx, cy)) return false;
-    // The air domain asks a different question and reads no stamps: a flyer passes over the
-    // pier as readily as over the trees under it (see PathDomain).
-    if (domain === "air") return this.playable(cx, cy);
     // …and a ghost asks nothing at all, the boundary included: it is the script saying this
     // body is not in the world's way, and nothing in the world is in its.
     if (domain === "ghost") return true;
+    // The script's own answer wins over the terrain and every stamp (SetTerrainPathable).
+    if (this.scriptPath.size) {
+      const forced = this.scriptPath.get(`${domain}:${cy * this.width + cx}`);
+      if (forced !== undefined) return forced;
+    }
+    // The air domain asks a different question and reads no stamps: a flyer passes over the
+    // pier as readily as over the trees under it (see PathDomain).
+    if (domain === "air") return this.playable(cx, cy);
     const i = cy * this.width + cx;
     const flag = domain === "water" ? PathingFlag.NoWater : PathingFlag.Unwalkable;
     return (this.flags[i] & flag) === 0 && !(this.blockStamps && this.blockStamps[i] > 0);
+  }
+
+  /** SetTerrainPathable — the map's own verdict on one cell, ahead of terrain and footprints. */
+  setScriptPathable(cx: number, cy: number, domain: PathDomain, pathable: boolean): void {
+    if (!this.inBounds(cx, cy)) return;
+    this.scriptPath.set(`${domain}:${cy * this.width + cx}`, pathable);
+    this.regionsDirty = true;
+    this.stampVersion++;
   }
 
   /** True if a building may be founded on this cell: not unbuildable *and* not

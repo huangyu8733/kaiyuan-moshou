@@ -944,6 +944,25 @@ export interface EngineHooks {
   /** AddUnitAnimationProperties — add (true) or remove (false) an animation TAG ("alternate",
    *  "work", "upgrade first") that picks which of the model's clips the unit wears. */
   addUnitAnimationProperties?(unitId: number, props: string, add: boolean): void;
+  /** SetUnitAnimationByIndex — the same, but the script names the clip by its ORDINAL in the
+   *  model (common.j: "an animation index"), which is how custom models expose the clips whose
+   *  names their author never wrote. Out of range / no model = ignore. */
+  setUnitAnimationByIndex?(unitId: number, index: number): void;
+  /** UnitIsSleeping — a creep asleep for the night (`SimUnit.asleep`), which is a world fact
+   *  and not a buff: it cannot act, and damage or proximity wakes it. */
+  isUnitSleeping?(unitId: number): boolean;
+  /** UnitWakeUp — wake it without damage (common.j: "the unit will not be woken by damage it
+   *  has already taken"). */
+  wakeUnit?(unitId: number): void;
+  /** IsVisibleToPlayer — is this world POINT inside what `player` sees right now? The point
+   *  form of IsUnitVisible, answered by the same vision set the screen is drawn from. */
+  isPointVisibleTo?(x: number, y: number, player: number): boolean;
+  /** SetTerrainPathable — a script's pathing override on the cell under (x, y) (`pathingType`
+   *  is common.j's ConvertPathingType index: 1 WALKABILITY, 2 FLYABILITY). */
+  setTerrainPathable?(x: number, y: number, pathingType: number, pathable: boolean): void;
+  /** IssueNeutralImmediateOrderById — order a NEUTRAL unit (a shop) to serve `player`:
+   *  the "buy from a shop that is nobody's" command, which ownership cannot express. */
+  issueNeutralImmediateOrder?(player: number, shopUnitId: number, typeId: string): boolean;
   /** Player resource / state: SetPlayerState & GetPlayerState. `state` is the raw
    *  playerstate index (1 = gold, 2 = lumber, 4 = food cap, 5 = food used). */
   setPlayerState?(player: number, state: number, value: number): void;

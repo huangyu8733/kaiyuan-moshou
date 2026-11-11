@@ -24,6 +24,8 @@ import { downloadedMapKey, keepDownloadedMap, requestMapWriteAccess } from "../a
 // (assets/downloadedMaps.ts): `Maps\Download\<file name>`, an ordinary map of the install from
 // then on.
 
+import { t } from "../i18n";
+
 export type MapSiteId = "hive" | "epicwar" | "wc3maps";
 
 export interface MapSite {
@@ -42,20 +44,20 @@ export const MAP_SITES: readonly MapSite[] = [
   {
     id: "epicwar",
     name: "EpicWar",
-    blurb: "A huge archive of custom maps, new and old.",
+    blurb: t("mapsites.blurb.epicwar"),
     home: "https://www.epicwar.com/maps/",
     searchUrl: (q) => `https://www.epicwar.com/maps/?n=${encodeURIComponent(q)}`,
   },
   {
     id: "hive",
     name: "Hive Workshop",
-    blurb: "The largest modding community — reviewed and approved maps.",
+    blurb: t("mapsites.blurb.hive"),
     home: "https://www.hiveworkshop.com/repositories/maps.564/",
   },
   {
     id: "wc3maps",
     name: "wc3maps",
-    blurb: "An archive of every map played on Battle.net, with its statistics.",
+    blurb: t("mapsites.blurb.wc3maps"),
     home: "https://wc3maps.com/",
   },
 ];
@@ -117,12 +119,12 @@ async function siteBytes(url: string, signal?: AbortSignal): Promise<Uint8Array>
   const b = bridge();
   if (b) {
     const r = await b.fetch(url);
-    if (r.status >= 400) throw new Error(`The site answered ${r.status}.`);
+    if (r.status >= 400) throw new Error(t("mapsites.siteAnswered", { status: r.status }));
     return r.bytes;
   }
-  if (!import.meta.env.DEV) throw new Error("This copy of the game cannot reach the map sites.");
+  if (!import.meta.env.DEV) throw new Error(t("mapsites.notReachable"));
   const res = await fetch(DEV_PROXY + encodeURIComponent(url), { signal });
-  if (!res.ok) throw new Error(`The site answered ${res.status}.`);
+  if (!res.ok) throw new Error(t("mapsites.siteAnswered", { status: res.status }));
   return new Uint8Array(await res.arrayBuffer());
 }
 
@@ -239,7 +241,7 @@ export const askToKeep = (): Promise<boolean> => requestMapWriteAccess();
 
 /** Download an EpicWar result and keep it. */
 export async function downloadEpicWar(m: EpicWarMap, signal?: AbortSignal): Promise<ArrivedMap> {
-  if (!m.playable) throw new Error("That file is not a map this game can play.");
+  if (!m.playable) throw new Error(t("mapsites.notPlayable"));
   const bytes = await siteBytes(m.download, signal);
   return keepDownloadedMap(m.fileName, bytes);
 }

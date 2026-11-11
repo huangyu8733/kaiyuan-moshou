@@ -41,6 +41,7 @@ import { cloneNamespaced, type FdfLibrary } from "./fdf/library";
 import { mountFdfScreen, playFdfClick, type FdfScreen } from "./fdf/render";
 import { setGameTip } from "./gameTip";
 import { speakerIcon } from "./voiceHud";
+import { t } from "../i18n";
 
 const ALLIANCE_FDF = "UI\\FrameDef\\UI\\AllianceDialog.fdf";
 const ALLIANCE_SLOT_FDF = "UI\\FrameDef\\UI\\AllianceSlot.fdf";
@@ -334,7 +335,7 @@ export class AllianceDialogOverlay {
       const muted = this.model.isMuted(player);
       button.classList.toggle("muted", muted);
       button.setAttribute("aria-pressed", String(muted));
-      setGameTip(button, muted ? "Unmute" : "Mute");
+      setGameTip(button, muted ? t("hud.unmute") : t("hud.mute"));
       button.replaceChildren(speakerIcon("fdf-mute-art", muted));
     };
     draw();

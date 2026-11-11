@@ -1,14 +1,14 @@
-import { pickInstall, requestPersistence, type PickedInstall } from "../assets/opfs";
+import { pickInstall, readInstallDir, rememberedInstallHandle, anyRememberedInstallHandle, requestPersistence, type DirHandle, type PickedInstall } from "../assets/opfs";
 import {
   downloadInstall, gameFilesSources, gb, storedInstall, type DownloadProgress, type GameFilesSource,
 } from "../assets/downloadInstall";
 import { cancelNativeDownload, downloadNativeInstall, isDesktopApp, loadNativeInstall, pickNativeInstall, rememberedInstall } from "../assets/nativeInstall";
 import { loadProfile } from "../vfs/loader";
-import { REQUIRED_VERSION, wrongVersionMessage } from "../vfs/version";
+import { wrongVersionMessage } from "../vfs/version";
 import { DEFAULT_PROFILE } from "../vfs/profiles";
 import type { DataSource } from "../vfs/types";
 import { t } from "../i18n";
-import { createLanguageSwitch } from "../i18n/switch";
+import { createLanguagePicker } from "../i18n/switch";
 import { bindHotkeys, createGlueButton, createPanel, createProgressBar } from "@openwar3/ui/dom";
 
 // The load-files gate (issue #54). WC3's menus are constructed from the game's own
@@ -40,24 +40,63 @@ export interface LoadGate {
   dispose(): void;
 }
 
-export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void): LoadGate {
+export interface GateOptions {
+  /** Mount a remembered install by itself at boot (the ordinary launch). `false` is the MAIN
+   *  MENU's Quit, which asks for this screen as the place to be, not to be carried past it: the
+   *  same install is still one press away, on the button. */
+  auto?: boolean;
+}
+
+export function mountLoadGate(
+  root: HTMLElement,
+  onLoaded: (r: GateLoad) => void,
+  opts: GateOptions = {},
+): LoadGate {
   const native = isDesktopApp();
+  const auto = opts.auto !== false;
   const gate = document.createElement("div");
-  gate.className = "load-gate";
+  gate.className = "launcher";
 
-  const panel = createPanel("div", "load-gate-panel");
+  // The battle-platform frame this screen wears: a wide scenic backdrop, a top bar with the
+  // platform's name and the language to speak, then a hero that says what to do and a card that
+  // says what the player is about to agree to. The portable half of a launcher — the bit that
+  // matters before any game files are mounted — is that the way IN is one obvious button.
+  const backdrop = document.createElement("div");
+  backdrop.className = "launcher-backdrop";
+  backdrop.setAttribute("aria-hidden", "true");
 
-  const title = document.createElement("h1");
-  title.className = "ow3-heading load-gate-title";
-  title.textContent = t("app.title");
+  const top = document.createElement("header");
+  top.className = "launcher-top";
+  const brand = document.createElement("div");
+  brand.className = "launcher-brand";
+  const mark = document.createElement("span");
+  mark.className = "launcher-mark";
+  mark.setAttribute("aria-hidden", "true");
+  const name = document.createElement("h1");
+  name.className = "launcher-name";
+  name.textContent = t("app.title");
+  const tagline = document.createElement("p");
+  tagline.className = "launcher-tagline";
+  tagline.textContent = t("gate.tagline");
+  const nameBox = document.createElement("div");
+  nameBox.className = "launcher-name-box";
+  nameBox.append(name, tagline);
+  brand.append(mark, nameBox);
+  top.append(brand, createLanguagePicker());
+
+  const hero = createPanel("section", "launcher-hero");
+  const kicker = document.createElement("p");
+  kicker.className = "launcher-kicker";
+  kicker.textContent = t("gate.edition");
+  const headline = document.createElement("h2");
+  headline.className = "launcher-headline";
+  headline.textContent = t("gate.headline");
 
   const sub = document.createElement("p");
-  sub.className = "load-gate-sub";
+  sub.className = "launcher-lead";
   // "Required", not "recommended": the version is a gate now (src/vfs/version.ts), and a screen
   // that suggests where the game refuses is a screen that reads as broken.
-  sub.textContent = t(native ? "gate.subtitleNative" : "gate.subtitleBrowser", {
-    version: REQUIRED_VERSION,
-  });
+  sub.textContent = t(native ? "gate.subtitleNative" : "gate.subtitleBrowser");
 
   /** What the button says when it is not busy. The desktop app changes it once — a player who
    *  is being asked a SECOND time is choosing a folder, not loading files — so a failure has to
@@ -65,42 +104,48 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
   let idleLabel = t("gate.load");
   const btn = createGlueButton({ label: idleLabel, hotkey: "L", size: "lg", bordered: true });
 
-  // The bar takes the button's place while the install mounts: there is nothing left to press,
+  // The bar takes the buttons' place while the install mounts: there is nothing left to press,
   // and the mount is the one wait on this screen worth watching.
   const bar = createProgressBar({ scale: 1.5 });
-  bar.root.classList.add("load-gate-progress");
+  bar.root.classList.add("launcher-progress");
   bar.root.hidden = true;
 
-  const action = document.createElement("div");
-  action.className = "load-gate-action";
-  action.append(btn.root, bar.root);
-
-  const status = document.createElement("p");
-  status.className = "load-gate-status";
+  const actions = document.createElement("div");
+  actions.className = "launcher-actions";
+  actions.append(btn.root);
 
   // "Download game files": the player's OWN install, zipped and kept somewhere they can reach from
-  // a new machine (src/assets/downloadInstall.ts). A link under the button rather than a second
-  // button beside it — picking the folder is still THE way in, and this is for the player who
-  // has no folder on this machine to pick. The press IS the start: it goes straight down the
-  // link the game ships with (GAME_FILES_LINK) into the bar below, Cancel under it.
+  // a new machine (src/assets/downloadInstall.ts). It sits BESIDE the way in, as launchers put
+  // install and repair next to play, but reads as the secondary: picking a folder is still THE
+  // way in, and this is for the player who has no folder on this machine to pick. The press IS
+  // the start: it goes straight down the link the game ships with (GAME_FILES_LINK) into the bar
+  // below, Cancel under it.
   const downloadable = native || !!navigator.storage?.getDirectory;
-  const dlToggle = document.createElement("button");
-  dlToggle.type = "button";
-  dlToggle.className = "load-gate-link";
-  dlToggle.textContent = t("gate.download");
-  dlToggle.hidden = !downloadable;
+  const dlBtn = createGlueButton({ label: t("gate.download"), size: "lg" });
+  dlBtn.root.classList.add("launcher-download");
+  dlBtn.root.hidden = !downloadable;
+  actions.append(dlBtn.root);
+
+  const dlHint = document.createElement("p");
+  dlHint.className = "launcher-download-hint";
+  dlHint.textContent = t("gate.downloadHint");
+  dlHint.hidden = !downloadable;
 
   const dlCancel = document.createElement("button");
   dlCancel.type = "button";
-  dlCancel.className = "load-gate-link load-gate-cancel";
+  dlCancel.className = "launcher-cancel";
   dlCancel.textContent = t("gate.cancel");
   dlCancel.hidden = true;
+
+  const status = document.createElement("p");
+  status.className = "launcher-status";
 
   /** `cancelable` is the download's own: the mount that follows it has nothing to cancel. */
   const showBar = (on: boolean, cancelable = false): void => {
     bar.root.hidden = !on;
     btn.root.hidden = on;
-    dlToggle.hidden = on || !downloadable;
+    dlBtn.root.hidden = on || !downloadable;
+    dlHint.hidden = on || !downloadable;
     dlCancel.hidden = !on || !cancelable;
   };
 
@@ -214,8 +259,16 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
     }
   };
 
-  dlToggle.onclick = (): void => void download();
+  dlBtn.button.onclick = (): void => void download();
   dlCancel.onclick = (): void => cancelled();
+
+  /** A folder this origin picked before, whose grant did not survive a reload (assets/opfs.ts).
+   *  The click below is the gesture that can ask for it back. */
+  let rememberedHandle: DirHandle | null = null;
+  /** A copy an earlier "Download game files" left in this origin (assets/downloadInstall.ts).
+   *  Only handed over when the gate was asked NOT to mount by itself (the menu's Quit), so the
+   *  press below opens the same install instead of a folder a downloaded copy never had. */
+  let stored: PickedInstall | null = null;
 
   btn.button.onclick = async (): Promise<void> => {
     status.classList.remove("error");
@@ -226,14 +279,65 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
       if (!path) { status.textContent = t("gate.noWar3Folder"); return; }
       return mount(await loadNativeInstall());
     }
+    // A remembered folder is re-granted from THIS click rather than found again by a second
+    // dialog — the same folder the player had, not the same question twice. It outranks a copy
+    // an earlier "Download game files" left in this origin: the folder is the thing the player
+    // keeps and edits (a fixed map, a translation), and mounting the snapshot instead would make
+    // every one of those edits invisible for good.
+    if (rememberedHandle) {
+      const handle = rememberedHandle;
+      rememberedHandle = null;
+      const allowed = (await handle.requestPermission?.({ mode: "read" })) ?? "granted";
+      if (allowed === "granted") {
+        try {
+          return mount(await readInstallDir(handle));
+        } catch (err) {
+          fail(t("gate.loadFailed", { error: (err as Error).message }));
+          return;
+        }
+      }
+    }
+    // Only when there is no folder to go back to: the copy a download left behind, then asking.
+    if (stored) {
+      const install = stored;
+      stored = null;
+      return mount(install);
+    }
     const install = await pickInstall();
     if (!install) { status.textContent = t("gate.noFolder"); return; }
     return mount(install);
   };
 
-  panel.append(title, sub, action, dlToggle, dlCancel, status);
-  gate.appendChild(panel);
-  gate.appendChild(createLanguageSwitch());
+  hero.append(kicker, headline, sub, actions, bar.root, dlCancel, dlHint, status);
+
+  // What the player is agreeing to, on the side the way a launcher's patch notes sit: the
+  // privacy line is the one thing here that is not obvious from the buttons.
+  const side = createPanel("section", "launcher-side");
+  const sideTitle = document.createElement("h3");
+  sideTitle.className = "launcher-side-title";
+  sideTitle.textContent = t("gate.before");
+  const points = document.createElement("ul");
+  points.className = "launcher-points";
+  for (const text of [
+    t("gate.pointLocal"),
+    t("gate.pointVersion"),
+    t("gate.pointPlay"),
+  ]) {
+    const item = document.createElement("li");
+    item.textContent = text;
+    points.append(item);
+  }
+  side.append(sideTitle, points);
+
+  const foot = document.createElement("footer");
+  foot.className = "launcher-foot";
+  foot.textContent = t("gate.footer");
+
+  const stage = document.createElement("main");
+  stage.className = "launcher-stage";
+  stage.append(hero, side);
+
+  gate.append(backdrop, top, stage, foot);
   root.appendChild(gate);
   const unbindHotkeys = bindHotkeys(gate);
 
@@ -258,13 +362,35 @@ export function mountLoadGate(root: HTMLElement, onLoaded: (r: GateLoad) => void
 
   // The browser's twin of that: a copy an earlier "Download game files" left in this origin's
   // storage is this browser's install, so it is mounted without asking — the same as the desktop
-  // app's remembered folder, and for the same reason.
+  // app's remembered folder, and for the same reason. A FOLDER picked last visit (IndexedDB,
+  // assets/opfs.ts) comes second: "Change Game Folder" on the menu is that pick plus a reload,
+  // and this is the boot that has to honour it.
   if (!native && downloadable) {
     btn.setDisabled(true);
-    void storedInstall().then((install) => {
-      if (install) return mount(install);
+    void (async () => {
+      const install = await storedInstall();
+      if (install) {
+        if (auto) return mount(install);
+        stored = install; // the press below opens it — this screen is where the player asked to be
+        btn.setDisabled(false);
+        return;
+      }
+      const remembered =
+        (await rememberedInstallHandle()) ?? (await anyRememberedInstallHandle());
+      if (remembered) {
+        const allowed = (await remembered.queryPermission?.({ mode: "read" })) ?? "granted";
+        if (allowed === "granted") {
+          try {
+            if (auto) return mount(await readInstallDir(remembered));
+          } catch (err) {
+            console.warn("[OpenWar3] the remembered install could not be read:", err);
+          }
+        }
+        // Restored in a new session: the click below is the gesture that can ask again.
+        rememberedHandle = remembered;
+      }
       btn.setDisabled(false);
-    });
+    })();
   }
 
   return {

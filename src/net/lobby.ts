@@ -3,6 +3,7 @@ import { edition } from "../data/edition";
 import type { Transport } from "./transportTypes";
 import { localStorageStore, reconnectPlan, type RejoinSession, type SessionStore } from "./reconnect";
 import { answerMapGet, chunkCount, type MapGet, type MapPart, type MapWire } from "./mapTransfer";
+import { t } from "../i18n";
 
 // Client-side LAN lobby state: the game list, the room you are in, and who is in it.
 //
@@ -48,12 +49,12 @@ export interface RelayInfo {
   source: RelaySource;
 }
 
-export type RelaySource = "typed" | "found" | "official";
+export type RelaySource = "typed" | "found" | "official" | "primary";
 
 /** Which claim on an address wins when two arrive for the same one: the official server stays
  *  official whoever else types it, and a machine the player typed stays theirs when a beacon
  *  also carries it. */
-const SOURCE_RANK: Record<RelaySource, number> = { found: 0, typed: 1, official: 2 };
+const SOURCE_RANK: Record<RelaySource, number> = { found: 0, typed: 1, official: 2, primary: 3 };
 
 /** A place a game can be announced (`LanLobby.hostTargets`). */
 export interface HostTarget {
@@ -199,16 +200,14 @@ export function reachabilityLine(host: HostInfo | null): { text: string; warn: b
       // Three lines is what the panel has (src/overrides/ui/LocalMultiplayerJoin.fdf), so both
       // say the CONSEQUENCE first and the cause second — a player who reads no further has
       // still learned the thing that matters, which is that nobody can see them.
-      text: host.kind === "dev"
-        ? "Other computers cannot see your games. Restart the server with --host."
-        : "Other computers cannot see your games — this computer is not on a network.",
+      text: host.kind === "dev" ? t("lan.unreachableDev") : t("lan.unreachableNoNetwork"),
     };
   }
   if (!host.addresses.length) return null;
   // One address is the ordinary case. Several means several networks (wifi and ethernet, a VPN),
   // and there is no way to know which one the other player is on, so offer them all rather than
   // guessing — a wrong single address is worse than a short list.
-  return { warn: false, text: `Other players join at ${host.addresses.join(" or ")}` };
+  return { warn: false, text: t("lan.joinAt", { addresses: host.addresses.join(" / ") }) };
 }
 
 export class LanLobby {
@@ -371,7 +370,7 @@ export class LanLobby {
       return;
     }
     this.reconnecting = true;
-    this.set({ error: "Reconnecting…" });
+    this.set({ error: t("lan.reconnecting") });
     this.onLinkLost();
     // Re-open the socket. On success the relay sends the game list, and `handle` consults it for
     // our room (`reconnectPlan`). A failure is RETRIED until `REJOIN_PATIENCE_MS` is spent: the
@@ -436,7 +435,7 @@ export class LanLobby {
   host(name: string, playerName: string, mapName: string, mapPath: string, maxPlayers = 12, observers = false, on = "", speed?: number): void {
     if (on && on !== this.primaryUrl) {
       const entry = this.remotes.get(on);
-      if (!entry?.connected || !entry.transport) throw new Error("That server is not answering.");
+      if (!entry?.connected || !entry.transport) throw new Error(t("lan.serverSilent"));
       this.promote(on);
     }
     this.transport?.send({ t: "create", name, playerName, mapName, mapPath, maxPlayers, observers, edition: edition(), speed });
@@ -501,11 +500,12 @@ export class LanLobby {
    */
   addRelay(input: string, source: RelaySource = "typed"): void {
     const url = normalizeRelayUrl(input);
-    if (!url) throw new Error(`"${input}" is not an address. Try 192.168.1.42 or 192.168.1.42:${DEFAULT_RELAY_PORT}.`);
-    if (this.isOurOwn(url)) throw new Error("That address is this computer — your own games are already listed.");
+    if (!url) throw new Error(t("lan.badAddress", { input, port: String(DEFAULT_RELAY_PORT) }));
+    if (this.isOurOwn(url)) throw new Error(t("lan.ownAddress"));
     if (source === "official" && !this.officialList.includes(url)) this.officialList.push(url);
-    // Already the connection we play on (a promoted server): its games are already the list.
-    if (url === this.primaryUrl) return;
+    // Already the connection we play on (a promoted server), or the very relay behind this page:
+    // its games are already the list, and dialling it again would double every room.
+    if (url === this.primaryUrl || url === this.servedRelayUrl) return;
     const already = this.remotes.get(url);
     if (already) {
       // A machine the player had already typed in, now also heard on the network, stays THEIRS:
@@ -593,12 +593,28 @@ export class LanLobby {
     // removed, and a row that vanished whenever you hosted or joined a game there would read as
     // exactly that.
     const here = this.primaryUrl;
-    if (here && this.officialList.includes(here) && !this.remotes.has(here)) {
+    const officialHere = !!here && this.officialList.includes(here);
+    if (here && officialHere && !this.remotes.has(here)) {
       rows.push({ url: here, connected: this.transport?.connected ?? false, source: "official" });
     }
     // Official first, in their own order — they are on every player's list, and the rows the
     // player manages go under them. The rest keep the order they were added in (a stable sort).
-    return rows.sort((a, b) => this.officialRank(a.url) - this.officialRank(b.url));
+    const sorted = rows.sort((a, b) => this.officialRank(a.url) - this.officialRank(b.url));
+    // The connection we play on is a server too, and this dialog is where players look for it.
+    // It is never the player's to remove, so it sits at the top with no ✕.
+    const playing = this.servedRelayUrl;
+    if (playing && !officialHere && !this.remotes.has(playing)) {
+      sorted.unshift({ url: playing, connected: this.transport?.connected ?? false, source: "primary" });
+    }
+    return sorted;
+  }
+
+  /** The relay behind this page when nothing has been dialled explicitly — the dev server's
+   *  `/relay`, or the one nginx proxies beside a static build. */
+  private get servedRelayUrl(): string | null {
+    if (this.primaryUrl) return this.primaryUrl;
+    if (typeof location === "undefined") return null;
+    return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${RELAY_PATH}`;
   }
 
   /** Stop watching one. Its games leave the list with it — they were never ours to show once
@@ -755,7 +771,7 @@ export class LanLobby {
    *  (`onRejoined`); a refusal ends it (`onDisconnected`). */
   reclaimSeat(): void {
     const s = this.store.load();
-    if (!s || !this.transport) return this.giveUp("The game has ended.");
+    if (!s || !this.transport) return this.giveUp(t("lan.gameEnded"));
     // Its own flag, not `reconnecting`: that one also answers every game list that arrives with
     // a rejoin of its own (`tryRejoin`), and a second `join` in flight is refused.
     this.reclaiming = true;
@@ -989,7 +1005,7 @@ export class LanLobby {
     } else {
       this.reconnecting = false;
       this.store.save(null);
-      this.set({ ...EMPTY, phase: "browsing", error: "The game has ended." });
+      this.set({ ...EMPTY, phase: "browsing", error: t("lan.gameEnded") });
       this.onDisconnected();
     }
   }

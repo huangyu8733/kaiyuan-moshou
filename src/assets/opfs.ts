@@ -1,5 +1,6 @@
 import { fileReader, type CascFiles } from "../vfs/casc";
 import type { CustomKeysWriter } from "../data/customKeys";
+import { currentLocale } from "../i18n";
 import { DOWNLOAD_FOLDER, type MapWriter } from "./downloadedMaps";
 
 // Asset import + persistence (plan §1.2). Import once → read the user's own WC3
@@ -59,8 +60,8 @@ export interface DirHandle {
   /** The write half, used only by `customKeysWriter` and `mapWriter`. */
   getFileHandle?(name: string, opts: { create: boolean }): Promise<{ createWritable(): Promise<WritableFile> }>;
   getDirectoryHandle?(name: string, opts: { create: boolean }): Promise<DirHandle>;
-  queryPermission?(opts: { mode: "readwrite" }): Promise<"granted" | "denied" | "prompt">;
-  requestPermission?(opts: { mode: "readwrite" }): Promise<"granted" | "denied" | "prompt">;
+  queryPermission?(opts: { mode: "read" | "readwrite" }): Promise<"granted" | "denied" | "prompt">;
+  requestPermission?(opts: { mode: "read" | "readwrite" }): Promise<"granted" | "denied" | "prompt">;
 }
 interface WritableFile {
   write(data: Uint8Array): Promise<void>;
@@ -191,6 +192,107 @@ function emptyCasc(): CascFiles {
 }
 
 /**
+ * The folder the player picked, carried across visits.
+ *
+ * A directory handle is structured-cloneable, so IndexedDB can hold one where localStorage
+ * cannot — the picker's answer then survives a reload. "Change Game Folder" on the main menu
+ * leans on this (ui/fdfMainMenu.ts): it picks, stores and reloads, and the load gate mounts
+ * what is stored here. `queryPermission` still has to say yes; a handle restored in a NEW
+ * browser session has lost its grant, and ui/gate.ts re-asks on the click that owns the
+ * gesture rather than failing silently.
+ */
+const HANDLE_DB = "openwar3.install";
+const HANDLE_STORE = "install";
+/** The pre-binding key. Still READ (as the last fallback) so an install picked before the
+ *  language binding existed keeps working. */
+const HANDLE_KEY = "folder";
+
+/**
+ * IndexedDB key of the folder remembered for a language — the language the player was in when
+ * they picked it.
+ *
+ * A 1.30.4 install IS its language (one locale per folder, no runtime switch), so the folder and
+ * the language are one fact and belong under one key. Switching language (i18n/switch.ts)
+ * reloads with `?lang=`, and the boot (ui/gate.ts) mounts the folder remembered FOR THAT
+ * language — pick a Chinese folder in Chinese and an English one in English, and the corner
+ * button becomes a real language switch for the game data too.
+ */
+const handleKey = (locale: string): string => `folder:${locale}`;
+
+function handleDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(HANDLE_DB, 1);
+    request.onupgradeneeded = () => { request.result.createObjectStore(HANDLE_STORE); };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/** Keep `handle` as the install a reload should mount, for `locale` (default: the language in
+ *  use now — a pick is always made in the language its folder speaks). Silent on failure: private
+ *  mode and a denied quota both mean "this visit only", which is what the old behaviour was. */
+export async function rememberInstallHandle(handle: DirHandle, locale = currentLocale()): Promise<void> {
+  try {
+    const db = await handleDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(HANDLE_STORE, "readwrite");
+      tx.objectStore(HANDLE_STORE).put(handle, handleKey(locale));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    /* nothing to remember with */
+  }
+}
+
+/** The handle the last pick in `locale` left, or null. */
+export async function rememberedInstallHandle(locale = currentLocale()): Promise<DirHandle | null> {
+  try {
+    const db = await handleDb();
+    const handle = await new Promise<DirHandle | null>((resolve, reject) => {
+      const tx = db.transaction(HANDLE_STORE, "readonly");
+      const request = tx.objectStore(HANDLE_STORE).get(handleKey(locale));
+      request.onsuccess = () => resolve((request.result as DirHandle | undefined) ?? null);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return handle;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Some remembered folder, whatever language it was picked under — the fallback for a language
+ * that has none: switching to English before ever picking an English folder leaves the one
+ * Chinese install mounted (it plays fine; only its text is Chinese), which beats an empty gate.
+ * The language-specific key wins when several exist, hence the `folder:` prefix check first.
+ */
+export async function anyRememberedInstallHandle(): Promise<DirHandle | null> {
+  try {
+    const db = await handleDb();
+    const entries = await new Promise<Array<[IDBValidKey, DirHandle]>>((resolve, reject) => {
+      const tx = db.transaction(HANDLE_STORE, "readonly");
+      const request = tx.objectStore(HANDLE_STORE).getAll();
+      const keys = tx.objectStore(HANDLE_STORE).getAllKeys();
+      tx.oncomplete = () => {
+        const values = (request.result as DirHandle[]) ?? [];
+        const names = (keys.result as IDBValidKey[]) ?? [];
+        resolve(values.map((v, i) => [names[i], v] as [IDBValidKey, DirHandle]));
+      };
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+    const localeFirst = entries.find(([key]) => String(key).startsWith("folder:"));
+    const legacy = entries.find(([key]) => key === HANDLE_KEY);
+    return (localeFirst ?? legacy ?? entries[0])?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Pick a WC3 folder and return what it holds: MPQ archives or a CASC store, plus every map
  * under `Maps\`. Uses showDirectoryPicker on Chromium, falling back to <input webkitdirectory>
  * on Firefox/Safari. Returns null if the user cancels or nothing is selected.
@@ -207,6 +309,9 @@ export async function pickInstall(): Promise<PickedInstall | null> {
     } catch {
       return null; // user cancelled
     }
+    // Remembered before it is read: the next boot mounts this folder without asking (ui/gate.ts),
+    // and "Change Game Folder" (ui/fdfMainMenu.ts) is this plus a reload.
+    await rememberInstallHandle(handle);
     return readInstallDir(handle);
   }
 
@@ -308,6 +413,26 @@ async function customKeysIn(dir: DirEntry): Promise<{ text: string; name: string
   return null;
 }
 
+/** The names a Warcraft III folder holds at its TOP level. A `webkitRelativePath` that starts
+ *  with one of them is already relative to the install (`Maps\…`), not to the folder above it. */
+const INSTALL_TOP = new Set(["maps", "data", "customkeybindings", BUILD_INFO, CUSTOM_KEYS_PATHS[0]]);
+
+/**
+ * `webkitRelativePath`'s segments, minus the picked folder's own name.
+ *
+ * Chrome and WebKit put the picked folder first ("War3/Maps/FrozenThrone/x.w3x"), and dropping
+ * it is what makes a key look like the install's own. But not every engine agrees on whether the
+ * root is there — a path that already starts at `Maps\` / `Data\` / an archive has no root to
+ * drop, and blindly slicing it off used to throw every map away while the MPQs still mounted:
+ * the game ran, and the map list was empty with nothing to show why.
+ */
+function stripPickedRoot(parts: string[]): string[] {
+  if (parts.length <= 1) return parts;
+  const first = parts[0].toLowerCase();
+  if (INSTALL_TOP.has(first) || isMpq(first)) return parts;
+  return parts.slice(1);
+}
+
 /** Firefox/Safari fallback: a directory <input>. webkitRelativePath gives the same keys. */
 function pickViaInput(): Promise<PickedInstall | null> {
   return new Promise((resolve) => {
@@ -322,9 +447,9 @@ function pickViaInput(): Promise<PickedInstall | null> {
         const casc = emptyCasc();
         let customKeys: string | null = null;
         for (const file of Array.from(list)) {
-          // webkitRelativePath is "<pickedFolder>/Maps/FrozenThrone/(2)EchoIsles.w3x";
-          // drop the folder the user picked, and speak WC3's separator.
-          const parts = file.webkitRelativePath.split("/").slice(1);
+          // webkitRelativePath is usually "<pickedFolder>/Maps/FrozenThrone/(2)EchoIsles.w3x";
+          // drop the folder the user picked (when it is there), and speak WC3's separator.
+          const parts = stripPickedRoot(file.webkitRelativePath.split("/"));
           const top = parts[0]?.toLowerCase();
           if (parts.length === 1 && isMpq(file.name)) { files.set(file.name.toLowerCase(), file); continue; }
           if (parts.length === 1 && file.name.toLowerCase() === BUILD_INFO) { casc.buildInfo = await file.text(); continue; }

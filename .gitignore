@@ -4,9 +4,11 @@ dist/
 .DS_Store
 .vscode/
 # Never commit Blizzard assets (see plan §0)
-Warcraft III 1.30.4/
-Warcraft III/
+Warcraft III
 Warcraft III enUS/
+Warcraft III zhCN/
+# Any other local game install dropped next to the project (War3_1.31, etc.)
+War3_*/
 *.mpq
 *.w3x
 *.w3m

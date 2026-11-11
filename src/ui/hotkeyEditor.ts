@@ -11,6 +11,7 @@ import { showGlueDialog } from "./glueDialog";
 import { keyName } from "../data/commandStrings";
 import { canSaveCustomKeys, customKeysText, saveCustomKeys } from "../data/customKeys";
 import { CustomKeysDoc, encodeAnsi, joinList, retip, splitList } from "../data/customKeysDoc";
+import { t, type MessageKey } from "../i18n";
 import {
   CATALOG_RACES, HotkeyCatalog, hotkeyField, posField, tipField,
   type CatalogButton, type CatalogCard, type CatalogRace, type CatalogUnit, type KeyVariant,
@@ -53,10 +54,10 @@ const RACE_TAB: Record<CatalogRace, string> = {
 const RACE_STRING: Record<CatalogRace, string> = {
   human: "HUMAN", orc: "ORC", nightelf: "NIGHT_ELF", undead: "UNDEAD", neutral: "NEUTRAL",
 };
-const GROUP_LABEL: Record<CatalogUnit["group"], string> = {
-  hero: "Heroes", unit: "Units", building: "Buildings", special: "Special",
+const GROUP_LABEL: Record<CatalogUnit["group"], MessageKey> = {
+  hero: "hotkey.heroes", unit: "hotkey.units", building: "hotkey.buildings", special: "hotkey.special",
 };
-const PAGE_LABEL: Record<CatalogCard["id"], string> = { main: "Commands", build: "Build", learn: "Learn" };
+const PAGE_LABEL: Record<CatalogCard["id"], MessageKey> = { main: "hotkey.commands", build: "hotkey.build", learn: "hotkey.learn" };
 
 /** The gold the game gilds a hotkey letter in (every stock Tip: `|cffffcc00M|rove`). */
 const GILD = "|cffffcc00";
@@ -291,7 +292,7 @@ export async function showHotkeyEditor(opts: HotkeyEditorOptions): Promise<void>
     show("HotkeyUnCheckBox", un);
     show("HotkeyUnLabel", un);
     if (!b) {
-      s.setText("HotkeyButtonName", "|cffa0a0a0Select a button on the card.|r");
+      s.setText("HotkeyButtonName", `|cffa0a0a0${t("hotkey.selectButton")}|r`);
       s.setText("HotkeyButtonInfo", "");
       return;
     }
@@ -305,16 +306,17 @@ export async function showHotkeyEditor(opts: HotkeyEditorOptions): Promise<void>
 
     const lines: string[] = [];
     const levels = catalog.levels(b.section, v);
-    if (levels > 1) lines.push(`One key for all ${levels} levels.`);
+    if (levels > 1) lines.push(t("hotkey.oneKeyAllLevels", { levels }));
     const k = keyOf(b, v);
     const clash = k ? card().buttons.filter((o) => o !== b && keyOf(o) === k) : [];
-    if (clash.length) lines.push(`|cffff6060${keyCap(k)} is also ${clash.map((o) => o.name).join(", ")} on this card.|r`);
+    if (clash.length) lines.push(`|cffff6060${t("hotkey.clash", { key: keyCap(k), names: clash.map((o) => o.name).join(", ") })}|r`);
     const users = catalog.usedBy(b.section).filter((u) => u !== unit);
     if (users.length) {
       const names = [...new Set(users.map((u) => u.name))];
-      lines.push(`Also on: ${names.slice(0, 6).join(", ")}${names.length > 6 ? ` and ${names.length - 6} more` : ""}.`);
+      const more = names.length > 6 ? t("hotkey.andMore", { count: names.length - 6 }) : "";
+      lines.push(t("hotkey.alsoOn", { names: names.slice(0, 6).join(", ") + more }));
     }
-    if (b.opens) lines.push(`Double-click to open its card.`);
+    if (b.opens) lines.push(t("hotkey.doubleClick"));
     s.setText("HotkeyButtonInfo", lines.join("|n"));
   };
 
@@ -327,7 +329,7 @@ export async function showHotkeyEditor(opts: HotkeyEditorOptions): Promise<void>
       if (u.race !== race) continue;
       if (u.group !== group) {
         group = u.group;
-        items.push({ value: `#${group}`, label: `${GILD}${GROUP_LABEL[group]}|r` });
+        items.push({ value: `#${group}`, label: `${GILD}${t(GROUP_LABEL[group])}|r` });
       }
       items.push({ value: u.id, label: u.name, icon: iconCanvas(u.icon) });
     }
@@ -345,18 +347,18 @@ export async function showHotkeyEditor(opts: HotkeyEditorOptions): Promise<void>
     if (mainEl) mainEl.hidden = !sub;
     if (subEl) subEl.hidden = !sub;
     if (sub) {
-      s.setText("HotkeyPageSubText", PAGE_LABEL[sub.id]);
+      s.setText("HotkeyPageSubText", t(PAGE_LABEL[sub.id]));
       s.setEnabled("HotkeyPageMain", page !== "main");
       s.setEnabled("HotkeyPageSub", page !== sub.id);
     }
     s.setText(
       "HotkeyCardHint",
-      "Click a button to change its key. Drag it onto another slot to move it.",
+      t("hotkey.cardHint"),
     );
     drawCard();
     paintDetails(s);
     const dirty = doc.dirty;
-    s.setText("HotkeyStatus", status || (dirty ? "|cffffcc00Unsaved changes|r" : ""));
+    s.setText("HotkeyStatus", status || (dirty ? `|cffffcc00${t("hotkey.unsaved")}|r` : ""));
   };
 
   const pickRace = (r: CatalogRace): void => {
@@ -396,7 +398,7 @@ export async function showHotkeyEditor(opts: HotkeyEditorOptions): Promise<void>
     void showGlueDialog({
       container: scrim,
       vfs: opts.vfs,
-      text: "Discard your changes to the hotkeys?",
+      text: t("hotkey.discard"),
       buttons: "yesno",
       dimmed: true,
       onConfirm: close,
@@ -419,7 +421,7 @@ export async function showHotkeyEditor(opts: HotkeyEditorOptions): Promise<void>
     void showGlueDialog({
       container: scrim,
       vfs: opts.vfs,
-      text: "Reset every hotkey, button position and tooltip to the game's defaults?",
+      text: t("hotkey.resetConfirm"),
       buttons: "yesno",
       dimmed: true,
       onConfirm: () => {
@@ -490,14 +492,14 @@ export async function showHotkeyEditor(opts: HotkeyEditorOptions): Promise<void>
       centerRoot: true,
       noShortcutKeys: true, // the key box takes letters; no accelerator may fire under it
       textOverrides: {
-        HotkeyEditorTitle: "Hotkey Editor",
-        HotkeyKeyLabel: "Hotkey:",
-        HotkeyUnLabel: "Active state",
-        HotkeyResetButtonText: "Reset",
-        HotkeyResetAllButtonText: "Reset All",
-        HotkeySaveButtonText: "Save",
-        HotkeyCancelButtonText: "Cancel",
-        HotkeyPageMainText: PAGE_LABEL.main,
+        HotkeyEditorTitle: t("hotkey.title"),
+        HotkeyKeyLabel: t("hotkey.keyLabel"),
+        HotkeyUnLabel: t("hotkey.activeState"),
+        HotkeyResetButtonText: t("hotkey.reset"),
+        HotkeyResetAllButtonText: t("hotkey.resetAll"),
+        HotkeySaveButtonText: t("hotkey.save"),
+        HotkeyCancelButtonText: t("hotkey.cancel"),
+        HotkeyPageMainText: t(PAGE_LABEL.main),
       },
       handlers: {
         HotkeyRaceHuman: () => pickRace("human"),
@@ -529,7 +531,7 @@ export async function showHotkeyEditor(opts: HotkeyEditorOptions): Promise<void>
         }
         const un = s.checkBox("HotkeyUnCheckBox");
         if (un) un.onChange = (on) => { editingUn = on; paint(); };
-        if (!canSaveCustomKeys()) status = "|cffa0a0a0Saved keys last until the game is closed: this browser cannot write to the folder.|r";
+        if (!canSaveCustomKeys()) status = `|cffa0a0a0${t("hotkey.sessionOnly")}|r`;
         paint();
       },
     });

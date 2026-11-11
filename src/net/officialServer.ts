@@ -40,11 +40,7 @@ export const OFFICIAL_SERVERS: readonly OfficialServer[] = [
 ];
 
 /** What an official server whose address is not one of ours (a `VITE_OFFICIAL_SERVER` build) is
- *  called. */
-const FALLBACK_NAME = "OpenWar3 Server";
-
-/** An official server's name by its address as `relayAuthority` prints it (`host` or
- *  `host:port`). */
+ *  called: its own address, the one thing the player can act on. */
 export function officialServerName(authority: string): string {
-  return OFFICIAL_SERVERS.find((s) => s.address === authority)?.name ?? FALLBACK_NAME;
+  return OFFICIAL_SERVERS.find((s) => s.address === authority)?.name ?? authority;
 }

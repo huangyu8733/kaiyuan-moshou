@@ -4,6 +4,7 @@ import type { FdfFrame } from "./fdf/parser";
 import type { FdfLibrary } from "./fdf/library";
 import { MAP_SITES_DIALOG_OVERRIDE, OW3_STRINGS } from "../overrides";
 import { setGameTip } from "./gameTip";
+import { t } from "../i18n";
 import { mountWorking } from "./workingIndicator";
 import {
   MAP_SITES, askToKeep, canSearchInGame, downloadEpicWar, epicWarThumb, importMapFiles,
@@ -49,7 +50,7 @@ const BODY_X = 0.04;
 const BODY_TOP = 0.056;
 const BODY_BOTTOM = 0.066;
 
-const TITLE = "Download Maps";
+const TITLE = (): string => t("mapsites.title");
 
 /** The entry's glyph: a map SCROLL with a down-arrow on it — ours, picked by the developer out of
  *  six drawn candidates (tray, cloud, folded map, map + arrow, globe + arrow, scroll), as the one
@@ -77,7 +78,7 @@ export class MapSitesEntry {
     el.addEventListener("pointerdown", (e) => e.stopPropagation());
     el.addEventListener("click", () => this.open());
     el.insertAdjacentHTML("beforeend", SITES_GLYPH);
-    setGameTip(el, TITLE);
+    setGameTip(el, TITLE());
     this.el = el;
     // A site view hands its maps back whenever they finish — the dialog may be closed by then.
     this.offDownload = onSiteDownload((m) => this.host.arrive(m));
@@ -167,8 +168,8 @@ export async function showMapSitesDialog(opts: {
       buildRoot,
       centerRoot: true,
       textOverrides: {
-        MapSitesDialogTitle: TITLE,
-        MapSitesDoneButtonText: "Done",
+        MapSitesDialogTitle: TITLE(),
+        MapSitesDoneButtonText: t("mapsites.done"),
       },
       handlers: { MapSitesDoneButton: close },
       onBuild: (s) => {
@@ -212,9 +213,9 @@ async function runImport(files: File[], arrive: (m: ArrivedMap) => void, say: (m
   for (const m of kept) arrive(m);
   const unsaved = kept.find((m) => m.saveError);
   say([
-    kept.length ? `Added ${kept.map((m) => m.file.name).join(", ")}.` : "",
-    refused.length ? `Not a map file: ${refused.join(", ")}.` : "",
-    unsaved ? `Kept for this session only: ${unsaved.saveError}` : "",
+    kept.length ? t("mapsites.addedMany", { names: kept.map((m) => m.file.name).join(", ") }) : "",
+    refused.length ? t("mapsites.refused", { names: refused.join(", ") }) : "",
+    unsaved?.saveError ? t("mapsites.keptSessionOnly", { why: unsaved.saveError }) : "",
   ].filter(Boolean).join(" "));
 }
 
@@ -227,8 +228,8 @@ function importButton(arrive: (m: ArrivedMap) => void, say: (msg: string) => voi
     input.value = "";
     if (files.length) void runImport(files, arrive, say);
   });
-  const b = textButton("Import map file…", () => input.click(), "ow3-sites-link");
-  setGameTip(b, "Add a .w3x or .w3m you already have to your maps");
+  const b = textButton(t("mapsites.import"), () => input.click(), "ow3-sites-link");
+  setGameTip(b, t("mapsites.importTip"));
   const wrap = document.createElement("span");
   wrap.append(b, input);
   return wrap;
@@ -278,13 +279,13 @@ class TabbedBody {
     this.foot.append(importButton(arrive, (m) => this.status(m)), this.line);
     this.root.append(this.tabs, this.page, this.foot);
     this.offProgress = onSiteProgress((p) => {
-      if (p.failed) this.status(`${p.name} did not download (${p.failed}).`);
-      else if (p.total) this.status(`Downloading ${p.name} — ${Math.floor((100 * (p.received ?? 0)) / p.total)}%`);
-      else this.status(`Downloading ${p.name}…`);
+      if (p.failed) this.status(t("mapsites.downloadFailed", { name: p.name, why: p.failed }));
+      else if (p.total) this.status(t("mapsites.downloadProgress", { name: p.name, percent: Math.floor((100 * (p.received ?? 0)) / p.total) }));
+      else this.status(t("mapsites.downloading", { name: p.name }));
     });
     // The map itself goes to the list through the entry (`MapSitesEntry`); this only SAYS so.
     this.offArrived = onSiteDownload((m) => {
-      this.status(m.saveError ? `Added ${m.file.name} for this session only: ${m.saveError}` : `Added ${m.file.name} to Maps\\Download.`);
+      this.status(m.saveError ? t("mapsites.addedSession", { name: m.file.name, why: m.saveError }) : t("mapsites.addedTo", { name: m.file.name }));
     });
     this.paint();
   }
@@ -321,7 +322,7 @@ class TabbedBody {
       : view && site.id !== "epicwar"
         ? new SiteViewPage(site, view, say, this.close)
         : sitePage(site);
-    this.status(site.id !== "epicwar" && view ? "Maps you download here are added to your list automatically." : "");
+    this.status(site.id !== "epicwar" && view ? t("mapsites.autoAdded") : "");
     this.page.replaceChildren(this.current.root);
   }
 }
@@ -332,8 +333,8 @@ function sitePage(site: MapSite): TabPage {
   root.append(
     div("ow3-sites-sitename", site.name),
     div("ow3-sites-blurb", site.blurb),
-    textButton(`Open ${site.name}`, () => openMapSite(site)),
-    div("ow3-sites-note", "Download a map there, then Import it here — or drop the file on this window."),
+    textButton(t("mapsites.openSite", { site: site.name }), () => openMapSite(site)),
+    div("ow3-sites-note", t("mapsites.note")),
     div("ow3-sites-host", new URL(site.home).hostname),
   );
   return { root, shown: () => {}, dispose: () => {} };
@@ -373,12 +374,12 @@ class SiteViewPage implements TabPage {
       setGameTip(b, tip);
       return b;
     };
-    this.back = icon("‹", "Back", "back");
-    this.forward = icon("›", "Forward", "forward");
-    const out = textButton("Open in browser ↗", () => view.nav("external"), "ow3-sites-link");
-    setGameTip(out, "Open this page in your own web browser");
-    bar.append(this.back, this.forward, icon("⟳", "Reload", "reload"), icon("⌂", `${site.name} home`, "home"), this.where, out);
-    this.viewport.append(div("ow3-sites-viewwait", `Loading ${site.name}…`));
+    this.back = icon("‹", t("mapsites.back"), "back");
+    this.forward = icon("›", t("mapsites.forward"), "forward");
+    const out = textButton(t("mapsites.openInBrowser"), () => view.nav("external"), "ow3-sites-link");
+    setGameTip(out, t("mapsites.openInBrowserTip"));
+    bar.append(this.back, this.forward, icon("⟳", t("mapsites.reload"), "reload"), icon("⌂", t("mapsites.home", { site: site.name }), "home"), this.where, out);
+    this.viewport.append(div("ow3-sites-viewwait", t("mapsites.loading", { site: site.name })));
     this.root.append(bar, this.viewport);
     this.where.textContent = new URL(site.home).hostname;
     this.back.disabled = this.forward.disabled = true;
@@ -432,7 +433,7 @@ class SiteViewPage implements TabPage {
       // otherwise wear the operating system's (CLAUDE.md — never an OS cursor).
       const cursor = getComputedStyle(document.body).cursor;
       this.view.show(this.site.id, this.site.home, rect, cursor).catch((err: Error) => {
-        this.say(`Could not open ${this.site.name}: ${err.message}`);
+        this.say(t("mapsites.couldNotOpen", { site: this.site.name, error: err.message }));
       });
     } else {
       this.view.bounds(rect);
@@ -469,7 +470,7 @@ class EpicWarSearch implements TabPage {
     const box = div("ow3-sites-field");
     box.append(Object.assign(document.createElement("span"), { className: "ow3-find-glass" }));
     this.input.className = "ow3-sites-input";
-    this.input.placeholder = "Search EpicWar";
+    this.input.placeholder = t("mapsites.searchPlaceholder");
     this.input.spellcheck = false;
     this.input.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !this.input.value) return; // the dialog's
@@ -483,7 +484,7 @@ class EpicWarSearch implements TabPage {
     });
     box.append(this.input);
     this.root.append(box, this.list);
-    this.list.append(div("ow3-sites-empty", "Type a map's name to search EpicWar's archive."));
+    this.list.append(div("ow3-sites-empty", t("mapsites.searchHint")));
   }
 
   shown(): void { requestAnimationFrame(() => this.input.focus()); }
@@ -506,14 +507,14 @@ class EpicWarSearch implements TabPage {
       .then((maps) => { if (this.alive && !abort.signal.aborted) this.paint(maps, q); })
       .catch((err: Error) => {
         if (!this.alive || abort.signal.aborted) return;
-        this.list.replaceChildren(div("ow3-sites-empty", `Could not reach EpicWar: ${err.message}`));
+        this.list.replaceChildren(div("ow3-sites-empty", t("mapsites.couldNotReach", { error: err.message })));
       });
   }
 
   private paint(maps: EpicWarMap[], q: string): void {
     this.list.replaceChildren();
     if (!maps.length) {
-      this.list.append(div("ow3-sites-empty", `Nothing on EpicWar matches "${q}".`));
+      this.list.append(div("ow3-sites-empty", t("mapsites.noMatch", { query: q })));
       return;
     }
     for (const m of maps) this.list.append(this.row(m));
@@ -526,12 +527,12 @@ class EpicWarSearch implements TabPage {
     img.alt = "";
     void epicWarThumb(m).then((url) => { if (url) img.src = url; });
     const text = div("ow3-sites-text");
-    const meta = [m.author && `by ${m.author}`, m.players ? `${m.players} players` : "", m.size, m.category]
+    const meta = [m.author && t("mapsites.byAuthor", { author: m.author }), m.players ? t("mapsites.players", { count: m.players }) : "", m.size, m.category]
       .filter(Boolean).join("  ·  ");
     text.append(div("ow3-sites-name", m.title), div("ow3-sites-meta", meta));
-    const btn = textButton(m.playable ? "Download" : "Not a map", () => void this.download(m, btn));
+    const btn = textButton(m.playable ? t("mapsites.download") : t("mapsites.notAMap"), () => void this.download(m, btn));
     btn.disabled = !m.playable;
-    if (!m.playable) setGameTip(btn, `${m.fileName} is not a .w3x or .w3m map`);
+    if (!m.playable) setGameTip(btn, t("mapsites.notAMapTip", { file: m.fileName }));
     row.append(img, text, btn);
     return row;
   }
@@ -539,18 +540,18 @@ class EpicWarSearch implements TabPage {
   private async download(m: EpicWarMap, btn: HTMLButtonElement): Promise<void> {
     const keep = askToKeep(); // inside the click: the browser's folder grant needs the gesture
     btn.disabled = true;
-    btn.textContent = "Downloading…";
+    btn.textContent = t("mapsites.downloadingShort");
     try {
       await keep;
       const got = await downloadEpicWar(m);
       this.arrive(got);
-      btn.textContent = "Added ✓";
+      btn.textContent = t("mapsites.added");
       btn.classList.add("done");
-      this.say(got.saveError ? `Added ${got.file.name} for this session only: ${got.saveError}` : `Added ${got.file.name} to Maps\\Download.`);
+      this.say(got.saveError ? t("mapsites.addedSession", { name: got.file.name, why: got.saveError }) : t("mapsites.addedTo", { name: got.file.name }));
     } catch (err) {
       btn.disabled = false;
-      btn.textContent = "Retry";
-      this.say(`Could not download ${m.fileName}: ${(err as Error).message}`);
+      btn.textContent = t("mapsites.retry");
+      this.say(t("mapsites.couldNotDownload", { file: m.fileName, error: (err as Error).message }));
     }
   }
 }

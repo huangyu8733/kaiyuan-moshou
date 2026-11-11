@@ -38,6 +38,13 @@ const SOURCE = join(root, "art", "openwar3-logo.png");
  *  margin is 6 % of the icon, and losing the outline into the panel edge costs more than it. */
 const FILL = 0.96;
 
+/** How much of each edge is cut off the source before anything is scaled, as a fraction of the
+ *  source's own width. The emblem is drawn inside a stone frame, and that frame is dead weight
+ *  in an icon: it shrinks the emblem itself by the same amount on every edge, which is exactly
+ *  what makes a 16 px favicon read as a dark square. Trimmed here, once, so every platform gets
+ *  the same crop rather than each one's own. */
+const CROP = 0.055;
+
 // ---------------------------------------------------------------------------- PNG in
 
 /** Decode an 8-bit RGBA, non-interlaced PNG — which is what `art/` holds, and all we need. */
@@ -288,7 +295,15 @@ const write = (path, bytes) => {
 };
 
 const source = decodePng(readFileSync(SOURCE));
-const box = tightBox(source);
+const box = band(tightBox(source), CROP);
+
+/** The same rectangle, inset by `fraction` of ITS OWN size on every edge — the frame crop above.
+ *  Per axis, so a wide wordmark and a square emblem are both trimmed by the same proportion. */
+function band(rect, fraction) {
+  const dx = Math.round(rect.width * fraction);
+  const dy = Math.round(rect.height * fraction);
+  return { x: rect.x + dx, y: rect.y + dy, width: rect.width - dx * 2, height: rect.height - dy * 2 };
+}
 
 /** Every size any output asks for, rendered once. */
 const SIZES = [16, 24, 32, 48, 64, 128, 180, 192, 256, 512, 1024];

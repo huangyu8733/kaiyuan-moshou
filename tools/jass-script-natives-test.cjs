@@ -126,6 +126,12 @@ endfunction
 function HolyBolt takes nothing returns boolean
     return OrderId("holybolt") != 0 and OrderId("holybolt") == OrderId("HolyBolt")
 endfunction
+function RealOrderIds takes nothing returns string
+    return I2S(OrderId("chainlightning")) + "," + I2S(OrderId("holybolt"))
+endfunction
+function RealOrderName takes nothing returns string
+    return OrderId2String(852119)
+endfunction
 function FootmanName takes nothing returns string
     return UnitId2StringBJ('hfoo')
 endfunction
@@ -204,6 +210,8 @@ console.log('\n--- OrderId answers for ORDERS only ---');
 learnOrderStrings(['holybolt', 'attack', 'smart']);
 check("a unit's name, an unknown word: 0, as in the game; a generic order keeps its real id", call('OrderIds').s, '0,851983,0');
 check('an ability order (in the vocabulary) gets its stable id', call('HolyBolt').b, true);
+check("engine orders keep their REAL ids (DotA's 852119 cast)", call('RealOrderIds').s, '852119,852092');
+check('OrderId2String(852119) is the order string', call('RealOrderName').s, 'chainlightning');
 check("an ENGINE order no data file names is still an order (DotA's acolyteharvest)", call('EngineOrder').b, true);
 check('…so a unit\'s name is a TRAIN order: String2OrderIdBJ falls back on UnitId', call('TrainOrder').n, rawcodeToInt('hfoo'));
 

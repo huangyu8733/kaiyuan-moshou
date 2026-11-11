@@ -8,6 +8,7 @@ import type { ListItem } from "./fdf/widgets";
 import { adopt, setProp } from "./mapBrowser";
 import { JOIN_ADDRESS_DIALOG_OVERRIDE, OW3_STRINGS } from "../overrides";
 import { LABEL_GOLD } from "./glueColors";
+import { t } from "../i18n";
 
 // "Join by address" — the machines this one is watching for games (issue: LAN discovery).
 //
@@ -117,8 +118,11 @@ export async function showJoinAddressDialog(opts: {
         // it says offline — which is also what an outdated copy of the game sees, refused at the
         // handshake by a server speaking a newer protocol.
         const official = source === "official";
-        const note = !connected ? `  |cff808080(${official ? "offline" : "waiting"})|r`
-          : source === "found" ? "  |cff808080(on your network)|r"
+        const primary = source === "primary";
+        const note = !connected
+          ? `  |cff808080(${primary ? t("lan.serverDisconnected") : official ? t("lan.serverOffline") : t("lan.serverWaiting")})|r`
+          : primary ? `  |cff808080(${t("lan.serverCurrent")})|r`
+          : source === "found" ? `  |cff808080(${t("lan.serverFound")})|r`
           : "";
         return {
           value: url,
@@ -131,9 +135,9 @@ export async function showJoinAddressDialog(opts: {
           // while you watch is worse than no button. Theirs go when they close their game. The
           // official servers have none either: they are on every copy's list by design
           // (src/net/officialServer.ts), and the lobby would refuse the removal anyway.
-          action: source === "found" || official ? undefined : {
+          action: source === "found" || official || primary ? undefined : {
             label: "✕",
-            title: `Remove ${relayAuthority(url)}`,
+            title: t("lan.removeServer", { address: relayAuthority(url) }),
             onClick: () => {
               opts.lobby.removeRelay(url);
               message = null;
@@ -148,7 +152,7 @@ export async function showJoinAddressDialog(opts: {
       "JoinAddressDialogInfo",
       message !== null
         ? `|cff${warn ? "ff8080" : LABEL_GOLD}${message}|r`
-        : "Games created on these servers will appear on your games list.",
+        : t("lan.joinServerInfo"),
     );
   };
 
@@ -185,10 +189,10 @@ export async function showJoinAddressDialog(opts: {
       buildRoot,
       centerRoot: true, // the FDF gives the box its own size and no anchors
       textOverrides: {
-        JoinAddressDialogTitle: "Join Server",
-        JoinAddressListLabel: "Servers:",
-        JoinAddressAddButtonText: "Add",
-        JoinAddressDoneButtonText: "Done",
+        JoinAddressDialogTitle: t("lan.joinServerTitle"),
+        JoinAddressListLabel: t("lan.serversLabel"),
+        JoinAddressAddButtonText: t("lan.add"),
+        JoinAddressDoneButtonText: t("lan.done"),
       },
       handlers: {
         JoinAddressAddButton: submit,

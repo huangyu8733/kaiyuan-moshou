@@ -5,6 +5,7 @@ import { WHISPER_MODEL } from "../voice/whisperModels";
 import type { DataSource } from "../vfs/types";
 import { loadOptions, saveOptions } from "../data/options";
 import { applyVoiceOptions } from "../voice/control";
+import { t } from "../i18n";
 
 // "Download voice control dependencies" — fetching Voice Control's speech model
 // (src/voice/model.ts) in the game's OWN chrome, in two steps:
@@ -23,13 +24,13 @@ const MB = (WHISPER_MODEL.bytes / 1_000_000).toFixed(0);
 /** The words. Ours — the game never fetched anything but itself — set in its markup: gold
  *  (`|cffffcc00`) for the key and the size, as the game golds a hotkey in a tooltip. */
 const TEXT = {
-  ask: `Voice Control needs its speech model (|cffffcc00${MB} MB|r), downloaded once and kept on this computer.|n|nDownload it now?`,
-  title: "Downloading Voice Control",
-  titleDone: "Voice Control is ready",
-  titleFailed: "Download failed",
-  fetching: `Speech model, ${MB} MB — kept on this computer.`,
-  done: "Hold |cffffcc00Period (.)|r and speak a command.",
-  failed: (why: string) => `The speech model could not be downloaded.|n${why}`,
+  ask: (): string => t("voiceDownload.ask", { mb: MB }),
+  title: (): string => t("voiceDownload.title"),
+  titleDone: (): string => t("voiceDownload.titleDone"),
+  titleFailed: (): string => t("voiceDownload.titleFailed"),
+  fetching: (): string => t("voiceDownload.fetching", { mb: MB }),
+  done: (): string => t("voiceDownload.done"),
+  failed: (why: string): string => t("voiceDownload.failed", { why }),
 };
 
 export interface VoiceDownloadOptions {
@@ -44,7 +45,7 @@ export async function showVoiceDownload(opts: VoiceDownloadOptions): Promise<boo
     showGlueDialog({
       container: opts.container,
       vfs: opts.vfs,
-      text: TEXT.ask,
+      text: TEXT.ask(),
       buttons: "yesno",
       dimmed: true,
       onConfirm: () => resolve(true),
@@ -63,8 +64,8 @@ async function download(opts: VoiceDownloadOptions): Promise<boolean> {
   const dialog = await showPatchDialog({
     container: opts.container,
     vfs: opts.vfs,
-    title: TEXT.title,
-    info: TEXT.fetching,
+    title: TEXT.title(),
+    info: TEXT.fetching(),
     className: "voice-download",
     onClose: () => {
       abort.abort();
@@ -79,10 +80,10 @@ async function download(opts: VoiceDownloadOptions): Promise<boolean> {
     stored.voiceControl = true;
     saveOptions(stored);
     applyVoiceOptions(stored);
-    dialog.finish(TEXT.titleDone, TEXT.done);
+    dialog.finish(TEXT.titleDone(), TEXT.done());
   } catch (err) {
     if (!abort.signal.aborted) {
-      dialog.finish(TEXT.titleFailed, TEXT.failed(err instanceof Error ? err.message : String(err)), false);
+      dialog.finish(TEXT.titleFailed(), TEXT.failed(err instanceof Error ? err.message : String(err)), false);
     }
   }
   return closed;

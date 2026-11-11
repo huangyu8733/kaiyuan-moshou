@@ -32,6 +32,7 @@ import {
 } from "./playerSlots";
 import { copyText, observerSeats, toConfig } from "./fdfLan";
 import { LABEL_GOLD } from "./glueColors";
+import { t as tr } from "../i18n";
 import { widescreen } from "./widescreen";
 
 // The LAN GAME LOBBY (issue #77), built from the game's own UI\FrameDef\Glue\GameChatroom.fdf.
@@ -238,7 +239,7 @@ export async function mountLanLobbyScreen(
     setup?.slots.find((s) => s.peer === peer)?.name
     ?? setup?.observers.find((o) => o.peer === peer)?.name
     ?? lobby.snapshot.peers.find((p) => p.id === peer)?.name
-    ?? "Player";
+    ?? tr("lan.playerDefault");
 
   /** Someone said something. `from` is the relay peer; the name is its ROW's. The name is set
    *  in the screen's own label gold rather than the player's colour: in the lobby a colour is
@@ -576,7 +577,7 @@ export async function mountLanLobbyScreen(
     // is not a thing to copy.
     const here = lobby.primary;
     if (here?.kind === "official") {
-      s.setText("JoinAddressLobbyLabel", "Hosted on:");
+      s.setText("JoinAddressLobbyLabel", tr("lan.hostedOn"));
       s.setText("JoinAddressLobbyValue", officialServerName(relayAuthority(here.url)));
       const el = s.frame("JoinAddressLobbyValue");
       if (el) { el.style.cursor = ""; el.onclick = null; }
@@ -598,8 +599,8 @@ export async function mountLanLobbyScreen(
     // room to spare. A browser address bar accepts `host:port` too, for the player who would
     // rather open the game that way.
     const url = first;
-    s.setText("JoinAddressLobbyLabel", "Others join at (click to copy):");
-    s.setText("JoinAddressLobbyValue", copiedUntil > Date.now() ? `|cff${LABEL_GOLD}Copied.|r` : url);
+    s.setText("JoinAddressLobbyLabel", tr("lan.othersJoin"));
+    s.setText("JoinAddressLobbyValue", copiedUntil > Date.now() ? `|cff${LABEL_GOLD}${tr("lan.copied")}|r` : url);
     const el = s.frame("JoinAddressLobbyValue");
     if (!el) return;
     el.style.cursor = "pointer";
@@ -669,7 +670,7 @@ export async function mountLanLobbyScreen(
         // an empty row offers is the host's Computer+ switch (issue #124), as on the Custom
         // Game screen — the switch was set on the create screen and rides in `advanced`.
         name.setOptions(
-          slot.kind === "player" ? [{ value: "player", label: slot.name ?? "Player" }]
+          slot.kind === "player" ? [{ value: "player", label: slot.name ?? tr("lan.playerDefault") }]
           : slot.locked ? [{ value: "computer", label: labelOf("computer") }]
           : slotOptionsFor(computerPlus).map((o) => ({ value: o.value, label: o.label })),
         );

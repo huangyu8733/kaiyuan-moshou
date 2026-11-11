@@ -18,7 +18,7 @@
 
 import { intToRawcode } from "../lexer";
 import type { JassPlayer, JassUnit, NativeCtx, RectObj, RegionObj, Runtime } from "../runtime";
-import { asInt, asNum, jBool, jHandle, type JassValue } from "../values";
+import { asInt, asNum, jBool, jHandle, JNULL, truthy, type JassValue } from "../values";
 
 type NativeFn = (ctx: NativeCtx, args: JassValue[]) => JassValue;
 const def = (rt: Runtime, name: string, fn: NativeFn): void => void rt.natives.set(name, fn);
@@ -160,6 +160,12 @@ export function registerPredicateNatives(rt: Runtime): void {
 
   // --- terrain ---
   //
+  // The pathing type reaches these two as `PATHING_TYPE_*` from common.j, which is a plain
+  // INTEGER constant (1 walkability, 2 flyability, 3 buildability) — but a GUI map may hand over
+  // `ConvertPathingType`'s handle instead. Read both: a raw int is its own index, a handle is
+  // looked up in the enum table.
+  const pathingTypeOf = (c: NativeCtx, v: JassValue): number => (v?.k === "int" ? v.n : c.rt.enumIndex(v));
+  //
   // **`IsTerrainPathable` returns TRUE when the terrain is NOT pathable.** Its name says the
   // opposite and this is not community lore — the install states it. `UI\TriggerStrings.txt`
   // names the BJ that wraps it "Terrain Pathing Is Off" and spells the rule out in its hint:
@@ -170,7 +176,7 @@ export function registerPredicateNatives(rt: Runtime): void {
   // Read it the way its name reads and every "can I put something here" check in a custom map
   // answers backwards, which is worse than answering nothing.
   def(rt, "IsTerrainPathable", (c, a) => {
-    const type = c.rt.enumIndex(a[2]);
+    const type = pathingTypeOf(c, a[2]);
     if (type !== PATHING_WALKABILITY && type !== PATHING_FLYABILITY && type !== PATHING_BUILDABILITY) {
       // Amphibious / blight / peon-harvest / floatability / ANY have no bit of their own in our
       // grid. Say so once; do not answer "pathable" for a question we did not ask the ground.
@@ -178,6 +184,17 @@ export function registerPredicateNatives(rt: Runtime): void {
       return jBool(false);
     }
     return jBool(c.rt.hooks?.isTerrainPathable?.(asNum(a[0]), asNum(a[1]), type) ?? false);
+  });
+  // SetTerrainPathable(x, y, pathingType, pathable) — the WRITE side of the check above, and it
+  // carries the same polarity: `pathable = false` is what closes the cell. Only the two types our
+  // grid has a terrain-level bit for are honoured (walkability / flyability); buildability is a
+  // footprint question and the corpus never overrides it.
+  def(rt, "SetTerrainPathable", (c, a) => {
+    const type = pathingTypeOf(c, a[2]);
+    if (type === PATHING_WALKABILITY || type === PATHING_FLYABILITY) {
+      c.rt.hooks?.setTerrainPathable?.(asNum(a[0]), asNum(a[1]), type, truthy(a[3]));
+    }
+    return JNULL;
   });
 
   // --- the world rect ---

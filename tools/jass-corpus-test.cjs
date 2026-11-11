@@ -724,6 +724,9 @@ function InitOrders takes nothing returns nothing
     // what identifies the spell (the engine's numeric ids for ability orders are in no
     // data file), so it must reach the bridge intact and round-trip through OrderId.
     call IssueTargetOrder( udg_u, "holybolt", udg_tgt )
+    // …and the NUMERIC spelling third-party maps use (DotA's dummy casters): 852119 is
+    // the engine's "chainlightning", which the bridge must recover from the id alone.
+    call IssueTargetOrderById( udg_u, 852119, udg_tgt )
     set udg_oid  = OrderId( "move" )
     set udg_ostr = OrderId2String( OrderId( "holybolt" ) )
     set udg_cur  = GetUnitCurrentOrder( udg_u )
@@ -748,6 +751,10 @@ endfunction`;
   if (spell && spell.kind === 'target' && spell.targetId === 201 && ostr && ostr.s === 'holybolt') {
     ok(`IssueTargetOrder("holybolt", tgt) → the bridge gets the order STRING (an ability order); OrderId2String round-trips it`);
   } else fail(`ability order: ${JSON.stringify(spell)} / OrderId2String → ${ostr && ostr.s}`);
+  const byIdOrder = issued.find((o) => o.order === 'chainlightning');
+  if (byIdOrder && byIdOrder.orderId === 852119 && byIdOrder.kind === 'target' && byIdOrder.targetId === 201) {
+    ok(`IssueTargetOrderById(u, 852119, t) → the bridge recovers the order STRING ("chainlightning") from the engine id`);
+  } else fail(`by-id order: ${JSON.stringify(byIdOrder)}`);
 
   // Part B: the order EVENTS dispatch with the right responses (Interpreter.pumpOrderEvents).
   const SRC_B = `

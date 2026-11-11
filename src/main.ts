@@ -30,9 +30,10 @@ import { OFFICIAL_SERVERS } from "./net/officialServer";
 import { observerSlots } from "./net/lobbySetup";
 import type { AdvancedOptions } from "./net/advancedOptions";
 import { WebSocketTransport } from "./net/transport";
-import { onServersFound, onShellClosing } from "./assets/nativeInstall";
+import { isDesktopApp, onServersFound, onShellClosing } from "./assets/nativeInstall";
 import { watchForUpdates } from "./ui/updatePrompt";
 import { startGamepad } from "./ui/gamepad";
+import { installMouseCapture } from "./ui/mouseCapture";
 import { mountOptions } from "./ui/fdfOptions";
 import { applyAudioOptions, loadOptions } from "./data/options";
 import { profilePlayerName } from "./data/profiles";
@@ -75,7 +76,7 @@ import { applyGameFont } from "./ui/gameFont";
 import { setGameTipSkin } from "./ui/gameTip";
 import { tooltipSkinVars } from "./ui/hud";
 import { blpToCanvas } from "./render/blputil";
-import { initI18n } from "./i18n";
+import { initI18n, t } from "./i18n";
 
 // The engine's own UI language (?lang= → remembered → browser), stamped on <html> before the
 // first screen exists — the load gate and the menus translate through it (src/i18n/).
@@ -238,6 +239,14 @@ async function enterMap(bytes: Uint8Array, name: string): Promise<string> {
 // out and the panel slides away → beat → the next panel drops in and its contents fade up),
 // all of it timed off the chrome's own Birth/Death clips.
 
+/** Quit. The desktop app closes its window; a browser will not let a page close a tab it did not
+ *  open, so the press would do nothing at all there. It instead reloads onto the launcher, which
+ *  is the site's front page (`/`, no query) and also where a player changes game folder. */
+function quitToStart(): void {
+  if (isDesktopApp()) { window.close(); return; }
+  location.replace(`${location.origin}${location.pathname}`);
+}
+
 function mainMenuScreen(vfs: DataSource): { chrome: "MainMenu"; mount: () => Promise<FdfScreen> } {
   return {
     chrome: "MainMenu",
@@ -248,7 +257,7 @@ function mainMenuScreen(vfs: DataSource): { chrome: "MainMenu"; mount: () => Pro
         onLan: () => void glue.goTo(lanScreen(vfs)),
         onOptions: () => void glue.goTo(optionsScreen(vfs)),
         onCredits: () => void startCredits(vfs),
-        onQuit: () => window.close(),
+        onQuit: () => quitToStart(),
       });
       void offerReconnect(vfs);
       return screen;
@@ -297,12 +306,16 @@ async function offerReconnect(vfs: DataSource): Promise<void> {
     // is gone, and so is the question.
     const deadline = performance.now() + leftMs;
     const secondsLeft = (): number => Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
-    const timeLine = (n: number): string => `Time to reconnect ${n}s...`;
+    const timeLine = (n: number): string => t("error.reconnectTime", { n });
+    const timeParts = t("error.reconnectTime", { n: "\u0000" }).split("\u0000");
     let ticker: ReturnType<typeof setInterval> | null = null;
     const yes = await new Promise<boolean | null>((resolve) => {
       void showGlueDialog({
         container: ui, vfs, buttons: "yesno", dimmed: true,
-        text: `Disconnected from |cffffcc00${start.mapName ?? "a LAN game"}|r|n|n${timeLine(secondsLeft())}|n|nReconnect?`,
+        text: t("error.reconnectBody", {
+          map: start.mapName ?? t("error.aLanGame"),
+          time: timeLine(secondsLeft()),
+        }),
         onConfirm: () => resolve(true),
         onCancel: () => resolve(false),
       }).then((dialog) => {
@@ -313,7 +326,13 @@ async function offerReconnect(vfs: DataSource): Promise<void> {
           if (text) {
             const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
             for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-              if (node.textContent?.includes("Time to reconnect")) node.textContent = node.textContent.replace(/\d+s\.\.\./, `${n}s...`);
+              const raw = node.textContent ?? "";
+              const at = raw.indexOf(timeParts[0]);
+              if (at < 0) continue;
+              const after = raw.slice(at + timeParts[0].length);
+              const end = after.indexOf(timeParts[1]);
+              if (end < 0) continue;
+              node.textContent = raw.slice(0, at) + timeLine(n) + after.slice(end + timeParts[1].length);
             }
           }
           if (n <= 0) {
@@ -540,7 +559,7 @@ function lanLobbyScreen(
  *  install, so a LAN start carries the path and each side resolves it here. */
 function mapFileFor(path: string): File {
   const file = installMaps.get(path);
-  if (!file) throw new Error(`No such map in this install: ${path}`);
+  if (!file) throw new Error(t("error.noSuchMap", { path }));
   return file;
 }
 
@@ -1370,10 +1389,7 @@ async function showMainMenu(vfs: DataSource): Promise<void> {
   } catch (err) {
     console.warn("[OpenWar3] FDF main menu unavailable, using flat menu:", err);
     mountMainMenu(ui, resolver, {
-      onSinglePlayer: () => window.alert(
-        "This install is missing the UI\\FrameDef\\Glue files the menus are built from, " +
-        "so the game can't be set up. Re-import a complete Warcraft III (TFT 1.30.4) folder.",
-      ),
+      onSinglePlayer: () => window.alert(t("error.glueFilesMissing")),
     });
   }
 }
@@ -1426,7 +1442,7 @@ function showMenu(load: GateLoad): void {
   });
 }
 
-/** Hand off from the load gate to the main menu once the archives are mounted. */
+/** Hand off from the launcher to the main menu once the archives are mounted. */
 function onFilesLoaded(load: GateLoad): void {
   mountInstall(load);
   showMenu(load);
@@ -1437,9 +1453,47 @@ function onFilesLoaded(load: GateLoad): void {
 // individual canvases already swallowed it; this closes the rest of the page.
 window.addEventListener("contextmenu", (e) => e.preventDefault());
 
+// The rest of the browser's document gestures, for the same reason: a press-and-drag across the
+// screen is a selection box in the world, not a highlight of the words over it; a selected word
+// dragged towards the tab strip must not become a search or a navigation; a link or an icon
+// dropped on the page must not ghost its way there. Inputs keep their own selection, and the
+// caret's own gestures, untouched.
+const isTextField = (target: EventTarget | null): boolean => {
+  const el = target instanceof Element ? target : null;
+  const field = el?.closest("input, textarea, [contenteditable='true']");
+  return !!field;
+};
+window.addEventListener("selectstart", (e) => { if (!isTextField(e.target)) e.preventDefault(); });
+window.addEventListener("dragstart", (e) => { if (!isTextField(e.target)) e.preventDefault(); });
+
+// Ctrl+wheel zooms the PAGE, and over a game that is only ever an accident (the wheel itself
+// belongs to the camera and the HUD's lists).
+window.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+
+// The browser's own autofill and spell-check dropdowns over the game's text fields: the game
+// draws its own console, and a password manager's card or a red squiggle under a player's name
+// is not part of it. Each field still works exactly as before; only the page's suggestions go.
+window.addEventListener("focusin", (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+  el.setAttribute("autocomplete", "off");
+  el.setAttribute("autocorrect", "off");
+  el.setAttribute("autocapitalize", "off");
+  el.setAttribute("spellcheck", "false");
+  el.setAttribute("data-gramm", "false");
+  el.setAttribute("data-gramm_editor", "false");
+  el.setAttribute("data-enable-grammarly", "false");
+});
+
 // A gamepad (issue #162) may be paired from any screen — the menus as much as a match — so its
 // poll runs for the life of the page. See ui/gamepad.ts.
 startGamepad();
+
+// The mouse is confined to the page during a match with the Pointer Lock API — the OS pointer
+// otherwise walks out of a windowed page over the title bar, or onto the menu bar of a second
+// display in fullscreen, and edge scroll stops. Wired at start-up so its listeners come before
+// the match's own; it takes the pointer on the first click in the game. See ui/mouseCapture.ts.
+installMouseCapture();
 
 // Boot. Normally the load gate: a human picks their Warcraft III folder, because that gesture
 // is also what opens the browser's autoplay gate. Under `?dev` on a DEV SERVER ONLY, a scripted
@@ -1464,7 +1518,10 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has("dev")) {
       gate = mountLoadGate(ui, onFilesLoaded); // fall back to the human path
     });
 } else {
-  gate = mountLoadGate(ui, onFilesLoaded);
+  // The launcher IS the front page: a browser lands here, and the game starts when the player
+  // presses Play. A remembered install is opened by that press rather than for them, so "/" is
+  // always the same screen — the platform's — and never a redirect into the middle of a game.
+  gate = mountLoadGate(ui, onFilesLoaded, { auto: false });
 }
 
 // Console hooks for the phase exit criteria (see README "Testing manually").

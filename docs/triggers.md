@@ -524,11 +524,14 @@ The event bookend to the effects: a trigger tells a unit **what to do** (`IssueX
 issued an order (`EVENT_..._ISSUED_ORDER`). This is the TD/spawn unlock — trigger-created units can now march and fight.
 Built:
 
-- **`src/jass/orders.ts`** — the order string↔id vocabulary (`ORDER_IDS`): the generic movement/attack orders keyed to
-  the real engine constants (the 0x000D0000 block — `move` 851986, `attack` 851983, `smart` 851971, `stop` 851972,
-  `patrol` 851990, `holdposition` 851993), so a GUI comparison (`GetIssuedOrderId() == OrderId("attack")`) *and* a
-  hand-coded literal both match. Ability-based orders (a spell's "Order String") aren't in the table — `OrderId` returns
-  0 for anything unknown, exactly like the engine.
+- **`src/jass/orders.ts`** — the order string↔id vocabulary. The generic movement/attack orders keep the real engine
+  constants (the 0x000D0000 block — `move` 851986, `attack` 851983, `smart` 851971, `stop` 851972, `patrol` 851990,
+  `holdposition` 851993), so a GUI comparison (`GetIssuedOrderId() == OrderId("attack")`) *and* a hand-coded literal both
+  match. Every other order the engine names is in `ENGINE_ORDER_IDS` with its real id (`chainlightning` 852119,
+  `channel` 852600, `thunderbolt` 852095, …), which is what third-party maps use: DotA's dummy casters call
+  `IssueTargetOrderById(dummy, 852119, target)` and compare `GetIssuedOrderId() == 852255`. `OrderId` answers 0 only for
+  a string that is no order at all (a unit's name); a map-private order string the table does not name is minted a
+  stable id above 917504.
 - **`src/jass/natives/world.ts`** — `Issue{Immediate,Point,Target}Order` (+ `ById` / `PointLoc` variants), routed through
   the bridge; `OrderId`/`String2OrderId`/`OrderId2String`/`GetUnitCurrentOrder`.
 - **`src/game/rts.ts` `issueUnitOrder`** — maps a generic order id + target kind to the sim's existing `issue*` commands
@@ -695,9 +698,10 @@ spell → order it cast → react when it goes off*. Built:
   **not** in AbilityData.slk), so `AbilityDef` now carries it and the bridge passes the order
   **string** alongside the id: `RtsController.castOrder` matches it against the unit's own
   abilities and calls `SimWorld.issueCast` (an autocast toggle flips autocast instead). The engine's
-  numeric ids for ability orders exist in no data file, so `OrderId` **mints** a stable id per
-  order string (0x000E0000 block) — self-consistent, which is all GUI code needs
-  (`GetIssuedOrderId() == OrderId("holybolt")`), and the cast itself never depends on the number.
+  numeric ids for ability orders are now in `orders.ts`'s `ENGINE_ORDER_IDS` table (`holybolt` →
+  852092, `chainlightning` → 852119, …), so the numeric and string spellings agree; only a string
+  the table does not name is **minted** a stable id (0x000E0000 block), which is all GUI code needs
+  (`GetIssuedOrderId() == OrderId("<that string>")`), and the cast itself never depends on the number.
 - **The events** — the sim records each one only when the script listens (`captureSpells` /
   `captureConstruct` / `captureTrain` / `captureHeroEvents`, derived in `syncEventCaptures`), and
   `pumpMapScript` drains them into the matching `Interpreter.pump*`:

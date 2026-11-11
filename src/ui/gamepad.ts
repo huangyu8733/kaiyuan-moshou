@@ -4,6 +4,8 @@ import {
   closeKeyboard, keyboardBackspace, keyboardEnter, keyboardHasPad, keyboardMove, keyboardOpen, keyboardPadMode,
   keyboardPress, keyboardSpace, openKeyboard, syncKeyboard, textField,
 } from "./padKeyboard";
+import { virtualCursor } from "./virtualCursor";
+import { t } from "../i18n";
 
 // Gamepad support (issue #162).
 //
@@ -63,9 +65,6 @@ const DPAD_REPEAT_MS = 140;
 const DETECT_MS = 10_000;
 /** How long a passing notification stays up. */
 const TOAST_MS = 4000;
-/** How often the virtual cursor re-reads the `cursor:` under it. The value is a long data URL,
- *  so it is not asked every frame. */
-const CURSOR_STYLE_MS = 100;
 
 /**
  * What a running match does for the pad — the actions with no key to stand in for them. Set by
@@ -133,35 +132,11 @@ let started = false;
 let lastTick = 0;
 
 // --- the virtual cursor -----------------------------------------------------------------
-
-let cursorEl: HTMLDivElement | null = null;
-/**
- * A transparent layer over the whole page while the pad has the pointer, wearing `cursor: none`
- * — which is how the OS pointer is hidden, since a page cannot move it out of the way.
- *
- * It is a LAYER rather than a `cursor: none` rule on everything because the drawn cursor is read
- * OFF the page's own `cursor:` values (`paintCursor`): a global rule would make every element
- * answer "none" and the pad's cursor would vanish with the OS one. The layer is hit-tested
- * PAST (`hit`), so the pad's events still reach what is under it, and nothing else in the page
- * ever learns it is there — the real mouse's first move takes it away (`hideCursor`).
- */
-let veilEl: HTMLDivElement | null = null;
-let cursorImg: HTMLImageElement | null = null;
-/** Is the pad driving the pointer (the virtual cursor is up)? */
-let cursorOn = false;
-let cx = 0;
-let cy = 0;
-/** Where the real mouse last was, so the virtual cursor starts where the player was looking. */
-let mouseX = -1;
-let mouseY = -1;
-/** The element the virtual cursor is over, and the chain `.pad-hover` is on. */
-let hoverEl: Element | null = null;
-/** The element a held button went down on — the implicit capture a real mouse press has. */
-let captureEl: Element | null = null;
-/** Which mouse buttons the pad is holding, as a `MouseEvent.buttons` mask. */
-let heldMask = 0;
-let cursorStyleAt = 0;
-let cursorValue = "";
+//
+// The drawn pointer itself lives in ui/virtualCursor.ts, because the pad is not the only thing
+// that needs one: ui/mouseCapture.ts drives the same cursor while the Pointer Lock API has the
+// mouse. What stays here is the pad's own side of it — where the stick takes it, what the
+// buttons hold down, and the D-pad's gold box that stands in for it on a menu.
 
 /** The two stick presses held now, and whether they have been pressed TOGETHER since they were
  *  both last up. L3 and R3 each fire on their RELEASE rather than their press, and a release
@@ -188,14 +163,13 @@ export function startGamepad(): void {
     refreshPrompt();
   });
   // The REAL mouse: remember where it is, and take the pointer back from the pad the moment it
-  // moves. Only trusted events — the pad's own synthetic ones pass through here too.
+  // moves. Only trusted events — the pad's own synthetic ones pass through here too. (While the
+  // mouse capture holds the pointer lock, `virtualCursor.locked` keeps those moves from taking
+  // it back: they are the lock's own movement report, not a mouse that has come home.)
   window.addEventListener(
     "pointermove",
     (e) => {
-      if (!e.isTrusted) return;
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-      if (cursorOn && (e.movementX || e.movementY)) hideCursor();
+      if (e.isTrusted) virtualCursor.noteReal(e);
     },
     { capture: true },
   );
@@ -203,25 +177,7 @@ export function startGamepad(): void {
   // pointer (it covers the page), so this one press or notch is spent taking the pointer back —
   // a player picking the mouse up moves it first anyway.
   for (const type of ["pointerdown", "wheel"] as const) {
-    window.addEventListener(type, (e) => { if (e.isTrusted && cursorOn) hideCursor(); }, { capture: true });
-  }
-  // The veil going up under a STILL mouse is a layout change under the pointer, and the browser
-  // answers it with real boundary events: the element the OS pointer was over is told it has been
-  // left, for the veil. The pad's cursor starts exactly where that mouse was, so that element is
-  // usually the one the pad has just ENTERED — and a command button's tooltip, raised by the
-  // pad's own pointerenter, was taken straight back down by the real pointerleave. While the
-  // pad has the pointer those events describe nothing the player did, so they are stopped at the
-  // window, before any handler sees them. (Capture runs for the non-bubbling enter/leave too.)
-  // The ones the veil's REMOVAL sends are left alone: by then the mouse is moving and they are
-  // true.
-  for (const type of ["pointerover", "pointerout", "pointerenter", "pointerleave", "mouseover", "mouseout", "mouseenter", "mouseleave"] as const) {
-    window.addEventListener(
-      type,
-      (e) => {
-        if (e.isTrusted && cursorOn && (e.target === veilEl || e.relatedTarget === veilEl)) e.stopImmediatePropagation();
-      },
-      { capture: true },
-    );
+    window.addEventListener(type, (e) => { if (e.isTrusted) virtualCursor.releaseToReal(); }, { capture: true });
   }
   requestAnimationFrame(tick);
   refreshPrompt(); // a pad the page has already been shown
@@ -243,8 +199,7 @@ export function gamepadPan(): readonly [number, number] {
  * tooltip raised by the virtual cursor is taken down the next frame for not being `:hover`.
  */
 export function isHovered(el: Element): boolean {
-  if (el.matches(":hover")) return true;
-  return cursorOn && !!hoverEl && el.contains(hoverEl);
+  return virtualCursor.hovered(el);
 }
 
 function tick(now: number): void {
@@ -259,7 +214,7 @@ function tick(now: number): void {
   }
   if (detectUntil && now >= detectUntil) {
     detectUntil = 0;
-    if (paired === null) toast("No gamepad found.");
+    if (paired === null) toast(t("gamepad.none"));
     paintDetect();
   }
   if (detectUntil) paintDetect();
@@ -305,7 +260,7 @@ function pair(pad: Gamepad): void {
   detectUntil = 0;
   paintDetect();
   refreshPrompt();
-  toast("Gamepad paired.");
+  toast(t("gamepad.paired"));
 }
 
 function unpair(announce: boolean): void {
@@ -326,7 +281,7 @@ function unpair(announce: boolean): void {
   menuEl = null;
   menuMode = false;
   hideCursor();
-  if (announce) toast("Gamepad disconnected.");
+  if (announce) toast(t("gamepad.disconnected"));
   paintDetect(); // "Unpair Gamepad" goes back to "Detect Gamepad"
   refreshPrompt();
 }
@@ -337,7 +292,7 @@ function drive(pad: Gamepad, down: boolean[], prev: boolean[], dt: number, now: 
 
   // The left stick is the mouse — and taking the mouse back is what ends the D-pad's hold on X.
   if (lx || ly) {
-    if (!cursorOn) showCursor();
+    if (!virtualCursor.isShown) showCursor();
     // The stick is the cursor, and taking it puts the D-pad's selection away (issue #162):
     // the cursor comes back where the selection was, so the eye does not have to find it.
     if (focusOn) leaveFocus();
@@ -345,9 +300,9 @@ function drive(pad: Gamepad, down: boolean[], prev: boolean[], dt: number, now: 
     menuMode = false;
     keyboardPadMode(false);
     const speed = CURSOR_SPEED * window.innerHeight;
-    moveCursor(cx + lx * speed * dt, cy + ly * speed * dt);
-  } else if (cursorOn && !focusOn && now - cursorStyleAt > CURSOR_STYLE_MS) {
-    paintCursor(); // the world moves under a still cursor, and so does what it should look like
+    virtualCursor.move(virtualCursor.x + lx * speed * dt, virtualCursor.y + ly * speed * dt);
+  } else if (virtualCursor.isShown && !focusOn) {
+    virtualCursor.repaint(); // the world moves under a still cursor, and so does what it should look like
   }
 
   for (let i = 0; i < down.length; i++) {
@@ -388,7 +343,7 @@ function press(button: number, now: number): void {
       }
       // X on a text field is a click into it (the focus, the caret) — and the keyboard, since
       // a pad has no other way to put a letter in it.
-      const field = textField(focusOn ? focusEl : hit(cx, cy));
+      const field = textField(focusOn ? focusEl : virtualCursor.hitAt(virtualCursor.x, virtualCursor.y));
       // A BUTTON under the box: put the box away now, not once its screen has finished leaving.
       const pressedButton = focusOn && !!focusEl?.matches(".fdf-button, .ow3-glue-btn");
       if (pressedButton && focusBox) {
@@ -585,7 +540,7 @@ function focusable(el: HTMLElement): boolean {
   const probe = el.classList.contains("fdf-list-row") ? el.closest<HTMLElement>(".fdf-list") ?? el : el;
   const [x, y] = centre(probe.getBoundingClientRect());
   if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) return false;
-  const top = hit(x, y);
+  const top = virtualCursor.hitAt(x, y);
   return !!top && probe.contains(top);
 }
 
@@ -658,9 +613,9 @@ function focusStep(dx: number, dy: number): void {
 
 function enterFocus(el: HTMLElement | null): void {
   if (!el) return;
-  if (!cursorOn) showCursor(); // the veil: the OS pointer stays hidden while the box is the pointer
+  if (!virtualCursor.isShown) showCursor(); // the veil: the OS pointer stays hidden while the box is the pointer
   focusOn = true;
-  if (cursorEl) cursorEl.hidden = true;
+  virtualCursor.setArtVisible(false);
   if (!focusBox) {
     focusBox = document.createElement("div");
     focusBox.className = "gamepad-focus";
@@ -676,8 +631,8 @@ function setFocus(el: HTMLElement): void {
   placeFocus();
   // The pad's pointer now IS the box: its events land on the control's centre, and the control
   // hears the pointer arrive exactly as it would a mouse (glow, tooltip, hover sound).
-  [cx, cy] = focusAt;
-  setHover(hit(cx, cy));
+  virtualCursor.place(focusAt[0], focusAt[1]);
+  virtualCursor.hoverAt(focusAt[0], focusAt[1]);
 }
 
 function placeFocus(): void {
@@ -696,8 +651,8 @@ function leaveFocus(): void {
   focusOn = false;
   focusPressed = false;
   if (focusBox) focusBox.hidden = true;
-  if (cursorEl) cursorEl.hidden = false;
-  cursorStyleAt = 0;
+  virtualCursor.setArtVisible(true);
+  virtualCursor.repaint();
 }
 
 /** Keep the box on its control as the page moves, and on a successor when the control goes (the
@@ -713,7 +668,7 @@ function syncFocus(now: number): void {
   }
   if (!menuNavigation()) {
     leaveFocus();
-    paintCursor();
+    virtualCursor.repaint();
     return;
   }
   if (focusPressed) {
@@ -849,192 +804,25 @@ function holdKey(button: number, key: string, code: string): void {
 
 /** Where the virtual cursor is — or, before it has ever moved, where the mouse was. */
 function cursorPoint(): [number, number] {
-  if (cursorOn) return [cx, cy];
-  return mouseX >= 0 ? [mouseX, mouseY] : [window.innerWidth / 2, window.innerHeight / 2];
+  return virtualCursor.point();
 }
 
 function showCursor(): void {
-  [cx, cy] = cursorPoint();
-  cursorOn = true;
-  if (!cursorEl) {
-    cursorEl = document.createElement("div");
-    cursorEl.className = "gamepad-cursor";
-    cursorImg = document.createElement("img");
-    cursorImg.alt = "";
-    cursorEl.appendChild(cursorImg);
-    veilEl = document.createElement("div");
-    veilEl.id = "gamepad-veil";
-    document.body.append(veilEl, cursorEl);
-  }
-  cursorEl.hidden = false;
-  if (veilEl) veilEl.hidden = false;
-  moveCursor(cx, cy);
+  virtualCursor.show();
 }
 
 function hideCursor(): void {
-  if (!cursorOn) return;
-  cursorOn = false;
+  if (!virtualCursor.isShown) return;
+  virtualCursor.hide();
   focusOn = false;
   focusPressed = false;
   if (focusBox) focusBox.hidden = true;
-  if (cursorEl) cursorEl.hidden = true;
-  if (veilEl) veilEl.hidden = true;
-  setHover(null);
-}
-
-/** The element at a point as the page would see it with no veil over it. */
-function hit(x: number, y: number): Element | null {
-  for (const el of document.elementsFromPoint(x, y)) {
-    if (el !== veilEl && el !== cursorEl && !cursorEl?.contains(el)) return el;
-  }
-  return null;
-}
-
-function moveCursor(x: number, y: number): void {
-  cx = Math.min(Math.max(x, 0), window.innerWidth - 1);
-  cy = Math.min(Math.max(y, 0), window.innerHeight - 1);
-  const under = hit(cx, cy);
-  setHover(under);
-  const target = captureEl ?? under;
-  if (target) {
-    target.dispatchEvent(pointerEvent("pointermove", -1));
-    target.dispatchEvent(mouseEvent("mousemove", 0));
-  }
-  paintCursor();
-}
-
-/** Draw the cursor the element under it asks for. `cursor: none` hides it — which is how the
- *  edge-scroll chevron and the carried item REPLACE the pointer for the mouse, too. */
-function paintCursor(): void {
-  if (!cursorEl || !cursorImg) return;
-  cursorEl.style.transform = `translate(${Math.round(cx)}px, ${Math.round(cy)}px)`;
-  const now = performance.now();
-  if (now - cursorStyleAt < CURSOR_STYLE_MS) return;
-  // The page can take the element out from under a STILL cursor — X on an Options category
-  // rebuilds that panel's whole tree — and a detached element's `cursor` reads "" (drawn as the
-  // plain fallback arrow, over a panel that asks for the gauntlet). A real mouse is re-targeted by
-  // the browser after such a change; the pad's is re-targeted here, boundary events and all.
-  if (hoverEl && !hoverEl.isConnected) setHover(hit(cx, cy));
-  cursorStyleAt = now;
-  const value = hoverEl ? getComputedStyle(hoverEl).cursor : getComputedStyle(document.body).cursor;
-  if (value === cursorValue) return;
-  cursorValue = value;
-  // The FIRST image of the list is the one the mouse would wear away from an edge; the ≤32 px
-  // twins behind it exist only for the OS's sake (ui/cursor.ts cursorValue).
-  const m = /url\("?([^")]+)"?\)\s*(-?\d+)?\s*(-?\d+)?/.exec(value);
-  if (value === "none" || !m) {
-    cursorImg.hidden = value === "none";
-    if (!m) {
-      cursorImg.removeAttribute("src");
-      cursorEl.classList.toggle("plain", value !== "none");
-    }
-    return;
-  }
-  cursorEl.classList.remove("plain");
-  cursorImg.hidden = false;
-  cursorImg.src = m[1];
-  cursorImg.style.left = `${-(Number(m[2]) || 0)}px`;
-  cursorImg.style.top = `${-(Number(m[3]) || 0)}px`;
-}
-
-/** Move the hover to `next`, firing the boundary events a real pointer would have, and keep
- *  `.pad-hover` on its ancestor chain — the stylesheet's stand-in for `:hover`. */
-function setHover(next: Element | null): void {
-  const prev = hoverEl;
-  if (prev === next) return;
-  hoverEl = next;
-  const chain = (el: Element | null): Element[] => {
-    const out: Element[] = [];
-    for (let e = el; e; e = e.parentElement) out.push(e);
-    return out;
-  };
-  const oldChain = chain(prev);
-  const newChain = chain(next);
-  if (prev) {
-    prev.dispatchEvent(pointerEvent("pointerout", -1, next));
-    prev.dispatchEvent(mouseEvent("mouseout", 0, next));
-    for (const el of oldChain) {
-      if (newChain.includes(el)) break;
-      el.classList.remove("pad-hover");
-      el.dispatchEvent(pointerEvent("pointerleave", -1, next, false));
-      el.dispatchEvent(mouseEvent("mouseleave", 0, next, false));
-    }
-  }
-  if (next) {
-    next.dispatchEvent(pointerEvent("pointerover", -1, prev));
-    next.dispatchEvent(mouseEvent("mouseover", 0, prev));
-    for (const el of [...newChain].reverse()) {
-      if (oldChain.includes(el)) continue;
-      el.classList.add("pad-hover");
-      el.dispatchEvent(pointerEvent("pointerenter", -1, prev, false));
-      el.dispatchEvent(mouseEvent("mouseenter", 0, prev, false));
-    }
-  }
-  cursorStyleAt = 0; // a new element may want a new cursor
 }
 
 /** Hold mouse button `b` (0 left, 2 right) down at the cursor until the pad button comes up. */
 function holdMouse(padButton: number, b: 0 | 2): void {
-  if (!cursorOn) showCursor();
-  const bit = b === 0 ? 1 : 2;
-  const under = hit(cx, cy);
-  if (!under) return;
-  setHover(under);
-  heldMask |= bit;
-  if (b === 0) captureEl = under;
-  const downOk = under.dispatchEvent(pointerEvent("pointerdown", b));
-  const mouseOk = under.dispatchEvent(mouseEvent("mousedown", b));
-  // A real press focuses what it lands on (an edit box, the chat line); a synthetic one does
-  // not, unless we do it. Skipped when a handler said no, as the browser would.
-  if (downOk && mouseOk && b === 0) {
-    const focusable = under.closest<HTMLElement>("input, textarea, select, [tabindex], [contenteditable='true']");
-    if (focusable) focusable.focus();
-    else if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) document.activeElement.blur();
-  }
-  holds.set(padButton, () => {
-    heldMask &= ~bit;
-    const upAt = (b === 0 ? captureEl : null) ?? hit(cx, cy) ?? under;
-    if (b === 0) captureEl = null;
-    upAt.dispatchEvent(pointerEvent("pointerup", b));
-    upAt.dispatchEvent(mouseEvent("mouseup", b));
-    // The click lands on the nearest element both ends of it share, as it does for a mouse.
-    const end = hit(cx, cy);
-    let common: Element | null = end;
-    while (common && !common.contains(under)) common = common.parentElement;
-    if (!common) return;
-    common.dispatchEvent(mouseEvent(b === 0 ? "click" : "contextmenu", b, null, true, b === 2));
-  });
-}
-
-function pointerEvent(type: string, button: number, related: Element | null = null, bubbles = true): PointerEvent {
-  return new PointerEvent(type, {
-    ...pointerInit(button, related, bubbles),
-    // The mouse's own id: Chromium treats pointer 1 as always active, so a handler's
-    // `setPointerCapture(e.pointerId)` accepts it instead of throwing on an unknown pointer.
-    pointerId: 1,
-    pointerType: "mouse",
-    isPrimary: true,
-  });
-}
-
-function mouseEvent(type: string, button: number, related: Element | null = null, bubbles = true, cancelable = true): MouseEvent {
-  return new MouseEvent(type, { ...pointerInit(button, related, bubbles), cancelable });
-}
-
-function pointerInit(button: number, related: Element | null, bubbles: boolean): MouseEventInit {
-  return {
-    bubbles,
-    cancelable: true,
-    composed: true,
-    clientX: cx,
-    clientY: cy,
-    screenX: cx,
-    screenY: cy,
-    button: Math.max(button, 0),
-    buttons: heldMask,
-    relatedTarget: related,
-    view: window,
-  };
+  const release = virtualCursor.press(b);
+  if (release) holds.set(padButton, release);
 }
 
 // --- notifications ----------------------------------------------------------------------
@@ -1081,7 +869,7 @@ function refreshPrompt(): void {
   if (want && !promptEl) {
     promptEl = document.createElement("div");
     promptEl.className = "gamepad-toast prompt";
-    promptEl.textContent = "Gamepad detected — press START to pair.";
+    promptEl.textContent = t("gamepad.detected");
     stack().appendChild(promptEl);
   } else if (!want && promptEl) {
     promptEl.remove();
@@ -1143,7 +931,7 @@ export function gamepadButtonPressed(): void {
   }
   if (detectUntil) return;
   detectUntil = performance.now() + DETECT_MS;
-  toast("Press any button on your gamepad…");
+  toast(t("gamepad.pressAny"));
   paintDetect();
 }
 
@@ -1157,7 +945,7 @@ function unpairGamepad(): void {
   if (paired === null) return;
   quiet.add(paired);
   unpair(false);
-  toast("Gamepad unpaired.");
+  toast(t("gamepad.unpaired"));
 }
 
 /** Dress the button for the state it is in: "Unpair Gamepad" while a pad is paired, "Detect

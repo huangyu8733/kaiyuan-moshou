@@ -52,6 +52,9 @@ export interface OrderEvent {
   x: number;
   y: number;
   target: UnitSnapshot | null;
+  /** The ITEM the order named, if it named one — what GetOrderTargetItem answers. The sim id,
+   *  not a handle: the pump interns it through `Runtime.itemForSim`. */
+  item?: number;
 }
 /** One spell event (7.17): the caster, the ability rawcode, which phase of the cast,
  *  and what it was aimed at. Mirrors SimWorld's SpellEvent (the sim raises it). */
@@ -62,6 +65,9 @@ export interface SpellEvent {
   target: UnitSnapshot | null;
   x: number;
   y: number;
+  /** The ITEM this cast was aimed at (`GetSpellTargetItem`) — Bottle refills, item-targeted
+   *  actives. Absent when the cast named a unit or a point, which is the usual case. */
+  item?: number;
 }
 /** A construction milestone (7.17): the structure + which phase. */
 export interface ConstructEvent {
@@ -1427,6 +1433,7 @@ export class Interpreter {
     for (const e of events) {
       const unit = this.rt.unitForSim(e.unit);
       const target = e.target ? this.rt.unitForSim(e.target) : JNULL;
+      const itemSnap = e.item !== undefined ? this.rt.hooks?.itemInfo?.(e.item) : null;
       const responses = new Map<string, JassValue>([
         ["TriggerUnit", unit],
         ["OrderedUnit", unit],
@@ -1434,6 +1441,7 @@ export class Interpreter {
         ["OrderPointX", jReal(e.x)],
         ["OrderPointY", jReal(e.y)],
         ["OrderTargetUnit", target],
+        ["OrderTargetItem", itemSnap ? this.rt.itemForSim(itemSnap) : JNULL],
       ]);
       const playerEvt = e.kind === "immediate" ? EVENT_PLAYER_UNIT_ISSUED_ORDER : e.kind === "point" ? EVENT_PLAYER_UNIT_ISSUED_POINT_ORDER : EVENT_PLAYER_UNIT_ISSUED_TARGET_ORDER;
       const unitEvt = e.kind === "immediate" ? EVENT_UNIT_ISSUED_ORDER : e.kind === "point" ? EVENT_UNIT_ISSUED_POINT_ORDER : EVENT_UNIT_ISSUED_TARGET_ORDER;
@@ -1452,11 +1460,13 @@ export class Interpreter {
     for (const e of events) {
       const caster = this.rt.unitForSim(e.caster);
       const target = e.target ? this.rt.unitForSim(e.target) : JNULL;
+      const itemSnap = e.item !== undefined ? this.rt.hooks?.itemInfo?.(e.item) : null;
       const responses = new Map<string, JassValue>([
         ["TriggerUnit", caster],
         ["SpellAbilityUnit", caster],
         ["SpellAbilityId", jInt(rawcodeToInt(e.abilityId))],
         ["SpellTargetUnit", target],
+        ["SpellTargetItem", itemSnap ? this.rt.itemForSim(itemSnap) : JNULL],
         ["SpellTargetX", jReal(e.x)],
         ["SpellTargetY", jReal(e.y)],
       ]);

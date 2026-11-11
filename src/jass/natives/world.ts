@@ -472,6 +472,53 @@ export function registerWorldNatives(rt: Runtime): void {
     if (u && u.simId >= 0 && tag) c.rt.hooks?.addUnitAnimationProperties?.(u.simId, tag, a[2]?.k === "bool" && a[2].b);
     return JNULL;
   });
+  // SetUnitAnimationByIndex — the clip named by its ORDINAL in the model, not by a name. Custom
+  // models (DotA's hero variants, its hats and toss animations) expose clips through this and
+  // never through `SetUnitAnimation`, because the names the author left in the .mdx are not the
+  // words a script would guess. The renderer owns the model, so it resolves the index.
+  def(rt, "SetUnitAnimationByIndex", (c, a) => {
+    const u = unit(c, a[0]);
+    if (u && u.simId >= 0) c.rt.hooks?.setUnitAnimationByIndex?.(u.simId, asInt(a[1]));
+    return JNULL;
+  });
+  // UnitSetUsesAltIcon — the "alternate" command-card icon a map swaps in (DotA uses it for a
+  // stealthed hero, so its portrait/icon reads as hidden). No model or sim state is involved:
+  // the flag is the script's own decoration, kept on the handle so a later read agrees with it.
+  const altIcons = new WeakMap<object, boolean>();
+  def(rt, "UnitSetUsesAltIcon", (c, a) => {
+    const u = unit(c, a[0]);
+    if (u) altIcons.set(u, a[1]?.k === "bool" && a[1].b);
+    return JNULL;
+  });
+  // SetAltMinimapIcon — the minimap icon image a map installs for its own units. Our minimap
+  // draws player colours and does not carry per-map icon art, so the call is acknowledged and
+  // dropped: it is a hint to the VIEW, not a fact about the world.
+  def(rt, "SetAltMinimapIcon", (_c, a) => {
+    void (a[0]?.k === "string" ? a[0].s : "");
+    return JNULL;
+  });
+  // UnitIsSleeping / UnitWakeUp — a creep asleep for the night (SimUnit.asleep): it can neither
+  // act nor acquire, and damage or proximity wakes it. `UnitWakeUp` is the script's own way to
+  // wake one without hitting it (common.j: "will not be woken by damage already taken").
+  def(rt, "UnitIsSleeping", (c, a) => {
+    const u = unit(c, a[0]);
+    return jBool(!!u && u.simId >= 0 && (c.rt.hooks?.isUnitSleeping?.(u.simId) ?? false));
+  });
+  def(rt, "UnitWakeUp", (c, a) => {
+    const u = unit(c, a[0]);
+    if (u && u.simId >= 0) c.rt.hooks?.wakeUnit?.(u.simId);
+    return JNULL;
+  });
+  // IssueNeutralImmediateOrderById(forWhichPlayer, whichUnit, unitId) — "go use the neutral unit
+  // of THAT TYPE": the shop cases are written this way ('h085' is a DotA shop type), because a
+  // neutral shop is nobody's and a plain order would be refused. Handled by the authority,
+  // which knows which shop serves whom.
+  def(rt, "IssueNeutralImmediateOrderById", (c, a) => {
+    const u = unit(c, a[1]);
+    if (!u || u.simId < 0) return jBool(false);
+    const player = c.rt.data<JassPlayer>(a[0])?.index ?? asInt(a[0]);
+    return jBool(c.rt.hooks?.issueNeutralImmediateOrder?.(player, u.simId, intToRawcode(asInt(a[2]))) ?? false);
+  });
 
   // SelectUnit(u, flag) / ClearSelection — the script drives the player's SELECTION (7.24).
   // A cinematic clears it on the way in (nothing should stay ringed and command-carded while
@@ -482,6 +529,47 @@ export function registerWorldNatives(rt: Runtime): void {
     return JNULL;
   });
   def(rt, "ClearSelection", (c) => (c.rt.hooks?.clearSelection?.(), JNULL));
+  // …and the PER-PLAYER forms of the same seam. Only one seat has a screen here, so a call
+  // acts when the seat it names is the one this machine is playing for, and is acknowledged
+  // and dropped otherwise — exactly the rule `SelectUnit`'s local form already follows.
+  //
+  // They are not decoration: DotA 6.80 hands each seat its Circle of Power with
+  // `ClearSelectionForPlayer` + `SelectUnitAddForPlayer` the moment it is created (war3map.j
+  // 122680), and re-selects the hero it just bought the same way (15732). Without them the
+  // match opened with nothing selected — the real client opens with the hero-picker card
+  // already up — and a freshly bought hero stayed unselected, which reads as "the hero can't
+  // be selected at all".
+  const forViewer = (c: NativeCtx, playerV: JassValue): boolean => {
+    const p = c.rt.data<JassPlayer>(playerV);
+    return (p?.index ?? asInt(playerV)) === c.rt.localViewer;
+  };
+  def(rt, "ClearSelectionForPlayer", (c, a) => {
+    if (forViewer(c, a[0])) c.rt.hooks?.clearSelection?.();
+    return JNULL;
+  });
+  def(rt, "SelectUnitAddForPlayer", (c, a) => {
+    const u = unit(c, a[0]);
+    if (u && u.simId >= 0 && forViewer(c, a[1])) c.rt.hooks?.selectUnit?.(u.simId, true);
+    return JNULL;
+  });
+  def(rt, "SelectUnitRemoveForPlayer", (c, a) => {
+    const u = unit(c, a[0]);
+    if (u && u.simId >= 0 && forViewer(c, a[1])) c.rt.hooks?.selectUnit?.(u.simId, false);
+    return JNULL;
+  });
+  // The local-seat forms without the `flag` `SelectUnit` takes: these ADD or REMOVE, they never
+  // clear. (common.j's `SelectUnitForPlayerSingle` is blizzard.j's `if GetLocalPlayer() ==
+  // whichPlayer then ClearSelection(); SelectUnit(u, true)` — see mapViewer's localViewHooks.)
+  def(rt, "SelectUnitAdd", (c, a) => {
+    const u = unit(c, a[0]);
+    if (u && u.simId >= 0) c.rt.hooks?.selectUnit?.(u.simId, true);
+    return JNULL;
+  });
+  def(rt, "SelectUnitRemove", (c, a) => {
+    const u = unit(c, a[0]);
+    if (u && u.simId >= 0) c.rt.hooks?.selectUnit?.(u.simId, false);
+    return JNULL;
+  });
 
   // The unit's "custom value" — pure script state (the engine never reads it), the
   // spine of every JASS unit-indexing library. It lives on the handle.

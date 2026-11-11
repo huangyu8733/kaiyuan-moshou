@@ -32,6 +32,20 @@ import { tilesetOverlay } from "../vfs/tileset";
  *  once war3map.w3i is parsed. */
 export type Solver = (src: unknown, params?: { tileset?: string }) => unknown;
 
+/**
+ * The 1.30/1.31 store files every spawn model in a folder of its OWN —
+ * `Objects\Spawnmodels\Other\NPCBlood\NPCbloodVillagerWoman\NPCbloodVillagerWoman.mdx` — while
+ * `Splats\SpawnData.slk` still names the 1.26 FLAT path for the same art
+ * (`…\NPCBlood\NpcBloodVillagerWoman.mdl`). The flat path is therefore a moved model, not a
+ * missing one, and these are the two places it can be instead.
+ */
+function movedSpawnModel(path: string): string[] {
+  const m = /^objects\\spawnmodels\\(.*\\)([^\\]+?)(?:\.mdl|\.mdx)$/i.exec(path);
+  if (!m) return [];
+  const dir = `${m[1]}${m[2]}\\${m[2]}`;
+  return [`${dir}.mdx`, `${dir}.mdl`];
+}
+
 /** The running map's archive, as the solver sees it. `epoch` moves on every mount, so a second
  *  map's `war3mapImported\x.mdx` is never handed the first map's bytes. */
 export interface MapFileLayer {
@@ -68,6 +82,18 @@ export function createAssetSolver(vfs: DataSource, mapFiles: MapFileLayer, baseU
     const { key, source, path } = overlay(logical, params?.tileset);
     const cached = baseUrls.get(key);
     if (cached) return cached; // preloaded base SLKs
-    return mint(key, () => source.rawBytes(path)) ?? src; // string ⇒ the viewer caches+dedupes by this url
+    const url = mint(key, () => source.rawBytes(path));
+    if (url) return url; // string ⇒ the viewer caches+dedupes by this url
+    // A flat spawn-model path is 1.26 naming for art 1.30 moved into a folder of its own.
+    for (const alt of movedSpawnModel(path)) {
+      const moved = mint(alt.toLowerCase(), () => source.rawBytes(alt));
+      if (moved) return moved;
+    }
+    // …and a few of those models were dropped outright (there is no
+    // NightElfBloodHeroMoonPriestess anywhere in the 1.30 or 1.31 store). Handing the path back
+    // makes the viewer fetch it as a URL, get the page itself, and log "Source has no matching
+    // handler" on EVERY death; answering with nothing skips the effect in silence.
+    if (movedSpawnModel(path).length) return undefined;
+    return src;
   };
 }

@@ -1,6 +1,7 @@
 import { mountFdfScreen, type FdfScreen } from "./fdf/render";
 import { ProgressBarScene, PROGRESS_BAR_H, PROGRESS_BAR_W } from "../render/progressBarScene";
 import type { DataSource } from "../vfs/types";
+import { t } from "../i18n";
 
 // The dialog Warcraft III showed while something downloaded: `BattleNetPatchDialog`
 // (`UI\FrameDef\Glue\MainMenu.fdf`), the box the game put up while Battle.net handed it a patch —
@@ -197,7 +198,7 @@ export async function showPatchDialog(opts: PatchDialogOptions): Promise<PatchDi
       }
       s.setText("PatchTitleText", titleText);
       s.setText("PatchInfoText", infoText);
-      s.setText("PatchButtonText", "OK");
+      s.setText("PatchButtonText", t("patch.ok"));
       if (!withBar) fitInfo();
     },
     close: teardown,

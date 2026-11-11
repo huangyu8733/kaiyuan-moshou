@@ -31,6 +31,12 @@ import { engineFoodCeiling, gameNum, heroReviveCost, type ReviveMode } from "../
  *  on the spot. */
 const SHOP_HIRE_TIME = 0;
 
+/** The lowest order id the engine uses for a real (non-UI) ability order. Everything below —
+ *  cancel 851976, skillmenu 852000, the item-slot orders 852002…852013 — is UI plumbing that
+ *  must never be mistaken for a cast when its id is one we have no name for. See
+ *  `castUnnamedOrder`. */
+const UNNAMED_ABILITY_ORDER_MIN = 852043;
+
 export class Authority {
   /**
    * `PLAYER_STATE_RESOURCE_HERO_TOKENS` — how many heroes this player may still take for free.
@@ -253,6 +259,19 @@ export class Authority {
     if (cast !== null) {
       if (cast) this.sim.noteOrder(unitId, orderId, kind, x, y, targetId);
       return cast;
+    }
+    // An order id the engine names nothing for. The ITEM-ability orders are the only ones like
+    // that ("Wand of Illusion" is 852274; AIil carries no Order string in any data file), and
+    // third-party maps reach them by number precisely because there is no string to use — DotA's
+    // dummy casters do `IssueTargetOrderById(dummy, 852274, target)`. A dummy handed one such
+    // ability for the job answers it. Ids below this floor are engine UI orders (cancel,
+    // skillmenu, item slots) and must never be read as a cast.
+    if (!s && orderId >= UNNAMED_ABILITY_ORDER_MIN) {
+      const unnamed = this.castUnnamedOrder(unitId, targetId, x, y);
+      if (unnamed !== null) {
+        if (unnamed) this.sim.noteOrder(unitId, orderId, kind, x, y, targetId);
+        return unnamed;
+      }
     }
     let ok = false;
     if (kind === "point") {
@@ -615,6 +634,41 @@ export class Authority {
       }
     }
     return null; // no such ability on this unit — not an ability order we can serve
+  }
+
+  /** An engine order id with no name at all — the ITEM-ability orders (AIil "Wand of Illusion"
+   *  is 852274). Such an ability's row carries no Order string, so `castOrder` has nothing to
+   *  match; the unit was given exactly this ability for the job, so it answers the order. Only
+   *  abilities without an order string qualify, and `issueCast` still refuses a passive, a
+   *  cooldown, or a target it cannot take — a miss here simply falls through to the generic
+   *  handling, as before. Null when the unit has no such ability. */
+  private castUnnamedOrder(unitId: number, targetId: number, x: number, y: number): boolean | null {
+    const u = this.sim.units.get(unitId);
+    if (!u) return null;
+    for (const ab of u.abilities) {
+      if (isHarvestCode(ab.code)) continue;
+      const def = this.abilities.get(ab.id);
+      if (!def || def.order) continue; // it names its order — that is `castOrder`'s job
+      if (this.sim.issueCast(unitId, ab.id, targetId, x, y)) return true;
+    }
+    return null;
+  }
+
+  /** common.j IssueNeutralImmediateOrderById — "order THIS unit to use the neutral unit of
+   *  that TYPE". DotA writes its shop errands this way (`'h085'` is a shop type), because a
+   *  neutral shop belongs to nobody and the ordinary order path refuses a foreign building.
+   *  What the order actually does is send the buyer to the shop — the shop's own card does the
+   *  selling — which is exactly what a player's click produces. False when no shop of that type
+   *  serves `player`. */
+  issueNeutralImmediateOrder(player: number, unitId: number, typeId: string): boolean {
+    const buyer = this.sim.units.get(unitId);
+    if (!buyer || buyer.hp <= 0 || buyer.owner !== player) return false;
+    for (const shop of this.sim.units.values()) {
+      if (shop.typeId !== typeId || shop.hp <= 0) continue;
+      if (!this.sim.canUseShop(shop.id, player)) continue;
+      return this.issueUnitOrder(unitId, 0, "move", "point", shop.x, shop.y, -1);
+    }
+    return false;
   }
 
   /** GetUnitCurrentOrder — the unit's active sim order as a generic order id (0 = none). */

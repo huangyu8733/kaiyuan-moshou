@@ -2706,7 +2706,14 @@ export class RtsController {
     if (!f) return false;
     const def = this.registry.get(f.typeId);
     if (!def) return false;
-    if (this.foodRefusal(f.owner, def.foodUsed) !== "") return false;
+    // FOOD only gates a revival where there IS a supply system to run out of. 神界危机 hands the
+    // player a pre-placed statue with SetUnitOwner and never sets a food cap anywhere in its
+    // war3map.j (`PLAYER_STATE_RESOURCE_FOOD_CAP` appears zero times), so every player sits at
+    // 0/0 while the heroes cost 5 — the check refused EVERY revival its own "15 seconds and
+    // back" trigger asked for, and the hero simply never returned. The hiveworkshop rule quoted
+    // above is about a hero whose supply is actually being paid.
+    const food = this.authority.foodFor(f.owner);
+    if (food.made > 0 && this.foodRefusal(f.owner, def.foodUsed) !== "") return false;
     if (f.revivingAt) {
       const b = this.sim.units.get(f.revivingAt);
       const queue = b?.building?.queue ?? [];
@@ -4046,6 +4053,12 @@ export class RtsController {
     const building: BuildingState | null = isBuilding
       ? { constructionLeft: 0, buildTimeTotal: 1, builderIds: [], goldCost: 0, lumberCost: 0, queue: [], rallyX: loc[0], rallyY: loc[1], rallyKind: "none", rallyTargetId: 0, producesUnits: false }
       : null;
+    // A pre-placed Neutral Passive unit can be a HERO, and 神界危机's hero picker is exactly
+    // that: its statues stand on slot 15 and the trigger only passes when
+    // `IsUnitType(GetTriggerUnit(), UNIT_TYPE_HERO)` holds. The sim answers that off the hero
+    // init, so seeding one without it made every statue a plain neutral and no click could
+    // ever pick a hero. (The creep path above already passes `def?.isHero`.)
+    const hero = def ? this.heroInitFor(def) : undefined;
     const u = this.sim.add(
       {
         id: simId,
@@ -4070,13 +4083,18 @@ export class RtsController {
         sightNight: def?.sightNight || def?.sightDay || 800,
         hp: def?.hitPoints || 100,
         maxHp: def?.hitPoints || 100,
-        mana: 0,
-        maxMana: 0,
+        // A neutral-passive HERO is still a hero: 神界危机 hands these statues TO THE PLAYER,
+        // and a hero seeded with no weapon can never fight and one with no pool can never
+        // cast — the picked hero stood there and watched his enemies. Everything that is not
+        // a hero keeps the "furniture never fights" rule (a shop's attack data is not a
+        // promise it can be ordered to use it).
+        mana: hero && def ? def.manaStart || def.mana : 0,
+        maxMana: hero && def ? def.mana : 0,
         armor: def?.armor ?? 0,
         armorType: def?.armorType ?? ArmorType.Unknown,
-        weapons: [],
-        castPoint: 0, // neutral-passive structures never cast
-        castBackswing: 0,
+        weapons: hero && def ? weaponsFromDef(def) : [],
+        castPoint: hero && def ? def.castPoint : 0,
+        castBackswing: hero && def ? def.castBackswing : 0,
         worker: null,
         depotGold: false,
         depotLumber: false,
@@ -4086,6 +4104,7 @@ export class RtsController {
         // Neutral shops/labs/merchants/taverns carry "Invulnerable (Neutral)" (Avul) in
         // their abilList — permanently immune + untargetable (issue #26).
         baseInvulnerable: !!def?.abilities.includes("Avul"),
+        hero,
         // …and the rest of that abilList is what a fountain IS. `Avul` was the only entry
         // ever read here, so a Fountain of Health arrived with an empty ability list and
         // stood there as scenery: its `ACnr` (and the Fountain of Mana's `ANre`) are plain
@@ -4115,8 +4134,8 @@ export class RtsController {
       name: def?.name ?? unit.row?.string("unitid") ?? "Neutral",
       foodUsed: 0,
       foodMade: 0,
-      isHero: false,
-      level: 0,
+      isHero: hero !== undefined,
+      level: hero?.level ?? 0,
       modelPath: def?.model ?? "",
       baseScale: def?.modelScale || 1,
       curScale: def?.modelScale || 1,
@@ -4249,6 +4268,28 @@ export class RtsController {
     return simId;
   }
 
+  /** The hero init a TYPE is born with — attributes, per-level growth and a name drawn from
+   *  its `Propernames` list. Undefined for a non-hero. One helper because the sim's `isHero`
+   *  (what `IsUnitType(u, UNIT_TYPE_HERO)` answers — see jassHooks) comes off this object and
+   *  nothing else, so every seeding path that can meet a hero must pass it. */
+  private heroInitFor(def: UnitDef): HeroInit | undefined {
+    if (!def.isHero) return undefined;
+    // The draw comes off the SIM's seeded stream, not Math.random: properName is written
+    // into sim state and shown to every player, so two machines watching the same match
+    // must name the hero the same thing.
+    return {
+      properName: def.properNames.length ? def.properNames[Math.floor(this.sim.random() * def.properNames.length)] : "",
+      level: Math.max(1, def.level),
+      str: def.strength,
+      agi: def.agility,
+      int: def.intelligence,
+      strPerLevel: def.strPerLevel,
+      agiPerLevel: def.agiPerLevel,
+      intPerLevel: def.intPerLevel,
+      primaryAttr: def.primaryAttr,
+    };
+  }
+
   /** Create the SIM unit alone — no model. The JASS `CreateUnit` path: the script needs a
    *  live unit *now* (it may immediately add abilities, set its level, or order it about),
    *  but the model streams in async. `attachInstance` gives it a body when it arrives; the
@@ -4292,12 +4333,7 @@ export class RtsController {
     // A hero is born with a given name drawn from its `Propernames` list (the
     // Demon Hunter's "Painkiller", the Paladin's "Uther"-alikes) — the info panel
     // shows it above the XP bar, with "Level N Demon Hunter" inside the bar.
-    const hero: HeroInit | undefined = def.isHero
-      // The draw comes off the SIM's seeded stream, not Math.random: properName is written
-      // into sim state and shown to every player, so two machines watching the same match
-      // must name the hero the same thing.
-      ? { properName: def.properNames.length ? def.properNames[Math.floor(this.sim.random() * def.properNames.length)] : "", level: Math.max(1, def.level), str: def.strength, agi: def.agility, int: def.intelligence, strPerLevel: def.strPerLevel, agiPerLevel: def.agiPerLevel, intPerLevel: def.intPerLevel, primaryAttr: def.primaryAttr }
-      : undefined;
+    const hero = this.heroInitFor(def);
     this.sim.add(
       {
         id: simId,
@@ -4782,6 +4818,18 @@ export class RtsController {
     const def = this.registry.get(e.typeId);
     e.anims = this.animSetFor(simId, seqs, animPropsFor(def, this.sim.units.get(simId)?.altModel ?? false));
     this.setUnitAnimation(simId, "");
+  }
+
+  /** JASS SetUnitAnimationByIndex — the same clip, named by its ORDINAL in the model. Custom
+   *  models expose their clips this way (DotA's hero variants and toss/hat animations), because
+   *  the names their author left in the .mdx are not words a script would guess. Out of range or
+   *  no body yet is a no-op: WC3 does not substitute a default clip for a bad index. */
+  setUnitAnimationByIndex(simId: number, index: number): void {
+    const e = this.byId.get(simId);
+    if (!e) return;
+    const name = e.unit.instance.model?.sequences[index]?.name;
+    if (name === undefined) return;
+    this.setUnitAnimation(simId, name);
   }
 
   setUnitAnimation(simId: number, animation: string): void {
@@ -9605,6 +9653,9 @@ export class RtsController {
         givesBounty: (p) => this.sim.givesBounty(p, teamOf(p)),
         currentOrderId: (id) => this.authority.currentOrderId(id),
         issueUnitOrder: (id, oid, o, k, x, y, t) => this.authority.issueUnitOrder(id, oid, o, k, x, y, t),
+        // A neutral shop is nobody's, so this errand cannot go through the order funnel; the
+        // authority maps the TYPE to the shop that serves the player (see its method).
+        issueNeutralImmediateOrder: (p, u, t) => this.authority.issueNeutralImmediateOrder(p, u, t),
         // The mine handle is a JASS fiction (MINE_ID_BASE), so it is resolved here, on the
         // side of the seam that holds both the world and the fiction's own decoder.
         entangleInstant: (id, mineHandle) => {

@@ -2691,7 +2691,9 @@ export class GameHud {
       // drags — a ping, an order and a right-click have all returned above, and each of those
       // is a one-shot gesture in the real game too.
       this.minimapDrag = e.pointerId;
-      view.setPointerCapture(e.pointerId);
+      // Synthetic under the mouse lock (ui/mouseCapture.ts): its pointer id is nobody's, so the
+      // browser throws instead of capturing — and the replay keeps the drag alive anyway.
+      try { view.setPointerCapture(e.pointerId); } catch { /* lock replay */ }
     });
     view.addEventListener("pointermove", (e) => {
       if (this.minimapDrag !== e.pointerId) return;
@@ -3098,7 +3100,14 @@ export class GameHud {
           }
           // Ctrl+click needs no branch of its own: it keeps the clicked icon's sub-group
           // (`selectGridType`), and a hero is a sub-group of one, which is this selection.
-          this.driver.selectHero(i, false);
+          //
+          // A DOUBLE tap also jumps the camera to him — the mouse half of F1/F2/F3, read off
+          // our own clock (`tapAgain`) rather than the DOM's `dblclick`. `onPress` cancels
+          // pointerdown so the button cannot take focus and a drifting click still lands, and a
+          // cancelled press leaves the browser's dblclick a coin toss: measured in the running
+          // map, a second click on the portrait selected the hero and never fired `dblclick`,
+          // so the view never went to him.
+          this.driver.selectHero(i, this.tapAgain(`hero${i}`));
           this.refreshSelectionNow();
         },
         (e) => {
@@ -3234,7 +3243,8 @@ export class GameHud {
           return;
         }
       }
-      this.portrait.setPointerCapture(e.pointerId);
+      // See the minimap's: the mouse lock replays a press with a pointer id no element can own.
+      try { this.portrait.setPointerCapture(e.pointerId); } catch { /* lock replay */ }
       this.driver.focusSelected(true);
     });
     this.portrait.addEventListener("pointerup", () => {
@@ -3295,7 +3305,7 @@ export class GameHud {
     // timer and the queue backdrop — so this button is ours rather than the original's.
     this.builderBtn = document.createElement("button");
     this.builderBtn.className = "hud-status-builder hud-iconbtn";
-    setGameTip(this.builderBtn, "Select the worker building this");
+    setGameTip(this.builderBtn, t("hud.selectBuilder"));
     this.builderBtn.hidden = true;
     onPress(this.builderBtn, () => {
       const id = this.driver.selection()?.builderId ?? 0;
@@ -4116,7 +4126,7 @@ export class GameHud {
         this.statusIcon.classList.toggle("clickable", cancellable);
         if (this.queueTipped !== cancellable) {
           this.queueTipped = cancellable;
-          setGameTip(this.statusIcon, cancellable ? "Cancel" : null);
+          setGameTip(this.statusIcon, cancellable ? t("hud.cancel") : null);
         }
         // The peon walled into the site (Orc only — nothing else builds from inside), as a
         // button that selects it. Its art is the icon's own, frame included, so there is no
@@ -4136,7 +4146,7 @@ export class GameHud {
             const tip = !!qUrl && cancellable;
             if (tip !== slot.classList.contains("clickable")) {
               slot.classList.toggle("clickable", tip);
-              setGameTip(slot, tip ? "Cancel" : null);
+              setGameTip(slot, tip ? t("hud.cancel") : null);
             }
             if (qUrl) {
               slot.style.backgroundImage = `url(${qUrl})`;

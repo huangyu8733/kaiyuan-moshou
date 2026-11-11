@@ -52,6 +52,22 @@ html, body {
   font-family: var(--game-font);
   background: #05070c;
   color: #e8e2d0;
+  /* This is a game, not a document: a drag across the screen is a selection box in the world,
+     never a highlight of the words under it, and a phone's long-press must not pop its
+     "copy / look up / share" callout over the HUD. Inputs are the exception — see below. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* A player editing a name, an address or a hotkey still needs the caret and a selection of
+   their own text — and only there. */
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* The STAGE: the game frame takes the window's own aspect between 4:3 and 16:9 — the two
@@ -3326,7 +3342,7 @@ body.observer-hud .metrics { bottom: calc((100vh - var(--stage-h)) / 2 + var(--s
   will-change: transform;
 }
 .gamepad-cursor img { position: absolute; display: block; }
-/* The OS pointer's cover while the pad has the pointer (ui/gamepad.ts `veilEl`): transparent,
+/* The OS pointer's cover while a device has the pointer (ui/virtualCursor.ts `veil`): transparent,
    over the page and under the drawn cursor. An ID and !important, because every other cursor rule
    is !important too (the race gauntlet on `body.in-game *`, the menu hand on
    `body:not(.in-game) *`), and this one has to beat all of them. */
@@ -3589,7 +3605,9 @@ body.in-game .fdf-screen.fdf-ingame {
   position: fixed;
   left: 18px;
   bottom: 14px;
-  z-index: 12;
+  /* Above the glue's 3D backdrop and its canvas (the controls live on `body`, not in #ui —
+     see ui/fdfMainMenu.ts) and below the F10 modal (50) and the loading layer (40). */
+  z-index: 45;
   padding: 4px 8px;
   border: 0;
   background: none;
@@ -3606,95 +3624,376 @@ body.in-game .fdf-screen.fdf-ingame {
   opacity: 1;
 }
 
-/* --- Load-files gate (issue #54) ------------------------------------------------
-   Shown BEFORE the main menu: the game files are required to build the menu, so we
-   prompt for them first. Zero-asset by necessity (no install is mounted yet), so
-   this screen is our own styled DOM over the flying 3D background. */
-.load-gate {
+/* --- "Change Game Folder" (ui/fdfMainMenu.ts) ----------------------------------
+   The one control on the main menu about the INSTALL rather than the game. Fixed
+   beside the language switch for the same reason — an FDF rebuild on resize cannot
+   take it with it, and the screen removes it so it never follows the player in game.
+   A quiet link with a frame, so it reads as a control on a screen otherwise made
+   entirely of the game's own buttons. */
+.change-install {
+  position: fixed;
+  left: 18px;
+  bottom: 44px;
+  z-index: 45;
+  padding: 4px 9px;
+  border: 1px solid rgba(196, 154, 58, 0.55);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.35);
+  font: inherit;
+  font-size: 13px;
+  color: #c9c2ad;
+  text-shadow: 1px 1px 0 #000;
+  cursor: pointer;
+}
+
+.change-install:hover {
+  color: var(--ow3-gold);
+  border-color: var(--ow3-gold);
+}
+
+/* --- Launcher: the load-files gate (issue #54) ---------------------------------
+   Shown BEFORE the main menu, because the menu is built from the game's own files and
+   this is what asks for them. Zero-asset by necessity (no install is mounted yet), so it
+   is dressed as a battle-platform front page instead of a lone button on black: a scenic
+   backdrop, the platform's name and the language to speak across the top, one obvious way
+   in, and what the player is agreeing to beside it. Everything here is our own DOM over a
+   generated painting; the game's art takes over as soon as an install is mounted. */
+.launcher {
   position: fixed;
   inset: 0;
   z-index: 6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-/* The panel, heading, glue button and loading bar are the shared UI kit (packages/ui, imported
-   ahead of this file in main.ts); these rules only lay the screen out. The kit's classes set no
-   cursor, so the screen keeps whatever cursor the page has — never an OS pointer. */
-.load-gate-panel {
-  pointer-events: auto;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
-  width: min(580px, 90vw);
-  padding: 40px 48px 42px;
-  text-align: center;
+  /* STATED, because it is INHERITED. The launcher is mounted into #ui, which is
+     `pointer-events: none` so the map under the HUD stays clickable — and a page that inherits
+     that hit-tests nothing at all: every button on it is inert, hover included, which is
+     exactly how this screen read as broken. */
+  pointer-events: auto;
   font-family: var(--ow3-font);
+  color: #e8e2d0;
+  background: radial-gradient(120% 80% at 50% 0%, #16233b 0%, #0a0f18 55%, #05070c 100%);
 }
 
-.load-gate-title {
-  align-self: stretch;
-  font-size: 34px;
+/* The scenic half. The gradient is the whole of the fallback: with the painting missing or
+   still downloading, the screen is a dark blue field, never a white hole. */
+.launcher-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(180deg, rgba(5, 7, 12, 0.42) 0%, rgba(5, 7, 12, 0.78) 58%, rgba(5, 7, 12, 0.97) 100%),
+    url("https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=epic%20dark%20fantasy%20battlefield%20at%20dusk%2C%20two%20armies%20clashing%20in%20the%20distance%2C%20dramatic%20storm%20clouds%2C%20gold%20embers%2C%20cinematic%20wide%20landscape%2C%20moody%20blue%20and%20amber%2C%20painterly%20digital%20art%2C%20no%20text&image_size=landscape_16_9");
+  background-size: cover;
+  background-position: center 32%;
 }
 
-.load-gate-sub {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.55;
-  color: #d4d8e2;
-  text-shadow: 1px 1px 0 #000;
-}
-
-/* One slot, two tenants: the button, then the bar in its place while the install mounts. Sized
-   for the taller of the two, so swapping them does not move the panel. */
-.load-gate-action {
-  align-self: stretch;
-  min-height: 80px;
+.launcher-top {
+  width: 100%;
+  max-width: 1180px;
   display: flex;
   align-items: center;
-  justify-content: center;
-}
-.load-gate-progress {
-  width: 100%;
-}
-.load-gate-progress .ow3-progress__label {
-  margin-top: 4px;
-  font-size: 13px;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px 32px 0;
 }
 
-.load-gate-status {
-  min-height: 16px;
+.launcher-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* The product's own mark: the SAME picture the tab, the home screen and the desktop app wear
+   (public/icon-512.png, derived from art/openwar3-logo.png by tools/make-icon.mjs), so the
+   launcher and the icon are one face. The gold ring is the game's own chrome, and the gradient
+   underneath is only what shows for the instant the image is still arriving. */
+.launcher-mark {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border-radius: 10px;
+  background: url("/icon-512.png") center / cover no-repeat,
+    linear-gradient(150deg, #f0d27a, #b8862e 55%, #6b4a12);
+  box-shadow: 0 0 0 1px rgba(216, 180, 90, 0.55), 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.launcher-name {
   margin: 0;
+  font-size: 24px;
+  letter-spacing: 0.06em;
+  color: var(--ow3-gold);
+  text-shadow: 0 2px 8px #000;
+}
+
+.launcher-tagline {
+  margin: 3px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #9aa3b6;
+}
+
+/* The language choice (src/i18n/switch.ts): a list of every language, not a toggle — this is
+   the screen a player arrives at before they can read anything. */
+.language-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
   font-size: 13px;
-  line-height: 1.4;
-  color: var(--ow3-text-dim);
+  color: #9aa3b6;
+}
+
+/* The control is ours, not the browser's (src/i18n/switch.ts draws the menu): the caption and
+   the pill together are one button, so there is no dead text to tap and no native popup that
+   WebKit can open and close in the same tap. */
+.language-picker__caption {
+  cursor: pointer;
+}
+
+.language-picker__control {
+  position: relative;
+}
+
+.language-picker__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 138px;
+  padding: 7px 12px;
+  border: 1px solid rgba(216, 180, 90, 0.45);
+  border-radius: 3px;
+  background: rgba(8, 12, 20, 0.78);
+  font: inherit;
+  color: #e8e2d0;
+  cursor: pointer;
+}
+
+.language-picker__button:hover,
+.language-picker__button[aria-expanded="true"] {
+  border-color: var(--ow3-gold);
+  color: #fff;
+  background: rgba(16, 22, 34, 0.92);
+}
+
+.language-picker__value {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.language-picker__chevron {
+  width: 0;
+  height: 0;
+  flex: none;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--ow3-gold);
+  transition: transform 120ms ease;
+}
+
+.language-picker__button[aria-expanded="true"] .language-picker__chevron {
+  transform: rotate(180deg);
+}
+
+.language-picker__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 3;
+  min-width: 100%;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid rgba(216, 180, 90, 0.5);
+  border-radius: 3px;
+  background: rgba(8, 12, 20, 0.97);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+}
+
+.language-picker__option {
+  padding: 7px 12px;
+  border-radius: 2px;
+  color: #cfd6e4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.language-picker__option:hover,
+.language-picker__option:focus-visible {
+  background: rgba(216, 180, 90, 0.16);
+  color: #fff;
+  outline: none;
+}
+
+.language-picker__option[aria-selected="true"] {
+  color: var(--ow3-gold);
+}
+
+/* The stage: the way in on the left, what it means on the right — a launcher's play column
+   and its notes column. Stacked on a narrow window. */
+.launcher-stage {
+  width: 100%;
+  max-width: 1180px;
+  margin: auto 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.85fr);
+  gap: 22px;
+  align-items: stretch;
+  padding: 40px 32px;
+}
+
+@media (max-width: 860px) {
+  .launcher-stage {
+    grid-template-columns: 1fr;
+    padding: 24px 18px 34px;
+  }
+  .launcher-top {
+    padding: 20px 18px 0;
+  }
+  .launcher-foot {
+    padding: 0 18px 18px;
+  }
+}
+
+.launcher-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 34px 34px 30px;
+  text-align: left;
+}
+
+.launcher-kicker {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ow3-gold);
+  opacity: 0.85;
+}
+
+.launcher-headline {
+  margin: 0;
+  font-size: clamp(30px, 4.2vw, 46px);
+  line-height: 1.08;
+  color: #f4efe1;
+  text-shadow: 0 3px 16px rgba(0, 0, 0, 0.85);
+}
+
+.launcher-lead {
+  margin: 0;
+  max-width: 58ch;
+  font-size: 14px;
+  line-height: 1.65;
+  color: #c9d0de;
   text-shadow: 1px 1px 0 #000;
 }
-.load-gate-status:empty { display: none; }
-.load-gate-status.error { color: #ff6a55; }
 
-/* "Download game files" (src/assets/downloadInstall.ts): a quiet text link under the button, and
-   its Cancel twin under the progress bar. Deliberately NOT a glue button — the folder pick is the
-   way in, and the press of the link starts the download rather than opening a form. */
-.load-gate-link {
-  margin-top: -8px;
+/* Play, then install/repair: the two things a launcher puts side by side. The second reads
+   quieter on purpose — picking a folder is still THE way in. */
+.launcher-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.launcher-actions .ow3-glue-btn--lg {
+  min-width: 208px;
+}
+
+.launcher-download .ow3-glue-btn__glow {
+  opacity: 0.3;
+}
+
+.launcher-download-hint {
+  margin: -4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8d97ab;
+}
+
+.launcher-progress {
+  width: 100%;
+  max-width: 540px;
+}
+
+.launcher-progress .ow3-progress__label {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.launcher-cancel {
   padding: 2px 4px;
   border: 0;
   background: none;
   font: inherit;
   font-size: 12px;
   color: var(--ow3-text-dim);
-  opacity: 0.7;
+  opacity: 0.75;
   text-decoration: underline dotted;
   text-underline-offset: 3px;
   text-shadow: 1px 1px 0 #000;
 }
-.load-gate-link:hover,
-.load-gate-link.pad-hover { color: var(--ow3-gold); opacity: 1; }
-.load-gate-link[hidden] { display: none; }
+
+.launcher-cancel:hover {
+  color: var(--ow3-gold);
+  opacity: 1;
+}
+
+.launcher-status {
+  min-height: 16px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ow3-text-dim);
+  text-shadow: 1px 1px 0 #000;
+}
+.launcher-status:empty { display: none; }
+.launcher-status.error { color: #ff6a55; }
+
+.launcher-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 26px 26px 24px;
+}
+
+.launcher-side-title {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ow3-gold);
+}
+
+.launcher-points {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #c2c9d6;
+}
+
+.launcher-points li::marker { color: var(--ow3-gold); }
+
+.launcher-foot {
+  width: 100%;
+  max-width: 1180px;
+  padding: 0 32px 22px;
+  font-size: 12px;
+  color: #6f7a8c;
+}
 
 /* --- FDF-driven frames (issue #54): the WC3 UI system, built from UI\FrameDef\*.fdf.
    Frames are absolutely positioned over the 3D background; only interactive frames
@@ -3707,23 +4006,6 @@ body.in-game .fdf-screen.fdf-ingame {
   user-select: none;
 }
 .fdf-frame { pointer-events: none; }
-
-/* The main menu's version line (ui/fdfMainMenu.ts) — the corner where the reference prints its
-   build number, and the one piece of glue text that is a LINK. It has to take the pointer back
-   (the frame it sits in is pointer-events:none, above) and it lights to the glue's own gold
-   under the cursor — the line itself is white, so gold is the direction left to it (see
-   ui/fdfMainMenu.ts). The game's answer to "this responds" is a colour change, never an
-   underline, so there is none here either. */
-.fdf-version-link {
-  pointer-events: auto;
-  /* the frame's own FontColor, handed over by ui/fdfMainMenu.ts — as a variable, so that the
-     hover below is not fighting an inline style it cannot win against */
-  color: var(--fdf-link-color, inherit);
-  text-decoration: none;
-}
-/* StandardSmallTextTemplate's FontColor 0.99 0.827 0.0705 — the small glue label's gold. */
-.fdf-version-link:hover,
-.fdf-version-link.pad-hover { color: rgb(252, 211, 18); }
 
 /* NO focus ring anywhere on an FDF screen.
    The page-wide `*:focus-visible` rule at the top of this file gives everything a gold outline
@@ -4483,7 +4765,7 @@ body.in-game .fdf-screen.fdf-ingame {
    The in-game FDF panels — the script's dialogs and leaderboards (7.19) — are built from
    the same FDF machinery but must survive it, hence the opt-out class. */
 body.in-game .fdf-screen:not(.fdf-ingame):not(.fdf-loading),
-body.in-game .load-gate { display: none; }
+body.in-game .launcher { display: none; }
 
 /* A HIGHLIGHT frame the SCREEN drives (the loading roster's "this player is ready" band).
    Painted at build time, shown when its screen says so — see fdf/render.ts paintHighlight. */

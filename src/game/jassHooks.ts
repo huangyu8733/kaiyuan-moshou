@@ -269,10 +269,24 @@ export function simHooks(sim: SimWorld, teamOf: (player: number) => number): Par
       if (pathingType === 2) return !sim.grid.walkable(cx, cy, "air"); // …FLYABILITY
       return !sim.grid.walkable(cx, cy, "ground"); // …WALKABILITY
     },
+    // SetTerrainPathable — the write side of the same polarity: `pathable = false` closes the
+    // cell, and the grid's script layer answers it ahead of terrain and footprints so the two
+    // natives always agree.
+    setTerrainPathable: (x, y, pathingType, pathable) => {
+      const [cx, cy] = sim.grid.worldToCell(x, y);
+      sim.grid.setScriptPathable(cx, cy, pathingType === 2 ? "air" : "ground", pathable);
+    },
     // --- per-unit flags (7.17) ---
     // `setUnitAnimation` is NOT here: an animation is a model's, not the world's.
     setUnitInvulnerable: (id, flag) => sim.setInvulnerable(id, flag),
     setUnitPathing: (id, flag) => sim.setPathing(id, flag),
+    // UnitIsSleeping / UnitWakeUp — a night-asleep creep. Waking it is the same one-field change
+    // the sim's own damage/proximity wake makes; nothing else is armed while it sleeps.
+    isUnitSleeping: (id) => sim.units.get(id)?.asleep ?? false,
+    wakeUnit: (id) => {
+      const u = sim.units.get(id);
+      if (u) u.asleep = false;
+    },
     // `ShowUnit` / `IsUnitHidden` — a WORLD flag, not a model one: a hidden unit is off the field
     // for every seat (untargetable, no collision, no minimap dot), and the renderer only follows.
     hideUnit: (id, hidden) => sim.setHidden(id, hidden),
@@ -357,6 +371,8 @@ export function authorityHooks(authority: {
   /** `entangleinstant` — see the interception in `issueUnitOrder` below. `mineHandle` is a
    *  script-side unit handle (so it goes through MINE_ID_BASE), 0 for the no-target form. */
   entangleInstant(unitId: number, mineHandle: number): boolean;
+  /** IssueNeutralImmediateOrderById — see `Authority.issueNeutralImmediateOrder`. */
+  issueNeutralImmediateOrder(player: number, unitId: number, typeId: string): boolean;
 }): Partial<EngineHooks> {
   return {
     // Orders (7.14): trigger issue → the sim; current order ← the sim.
@@ -381,6 +397,11 @@ export function authorityHooks(authority: {
       order === "entangleinstant" || order === "autoentangleinstant"
         ? authority.entangleInstant(id, targetId)
         : authority.issueUnitOrder(id, orderId, order, kind, x, y, targetId),
+    // IssueNeutralImmediateOrderById — "order this unit to use the neutral unit of that TYPE".
+    // A neutral shop belongs to nobody, so the ordinary order path cannot express it; the
+    // authority resolves the type to a shop that serves the player and sends the buyer there.
+    issueNeutralImmediateOrder: (player, unitId, typeId) =>
+      authority.issueNeutralImmediateOrder(player, unitId, typeId),
     getUnitCurrentOrder: (id) => authority.currentOrderId(id),
     // CreateUnit — the sim unit exists the instant this returns, because the native is
     // SYNCHRONOUS and the next JASS statement may order or configure it. Its BODY is queued for

@@ -10,6 +10,7 @@ import { setMapWriter } from "../assets/downloadedMaps";
 import { EditionDataSource } from "./edition";
 import { PatchDataSource } from "./patch";
 import { DerivedArtDataSource } from "./derivedArt";
+import { LooseFilesDataSource } from "./looseFiles";
 import { DowngradeDataSource, downgradeEdits } from "./downgrade";
 
 // Turn a picked install into a mounted VFS (plan §1 exit: "enumerate/extract any file by path
@@ -75,9 +76,14 @@ export async function loadProfile(
     // turned back into, above).
     // …and, over everything, the icons the tables name and the install lacks, derived from the
     // ones it has (src/vfs/derivedArt.ts, docs/icons.md) — computed here, once, after the mount.
-    const vfs = new DerivedArtDataSource(new EditionDataSource(new PatchDataSource(store)));
+    const art = new DerivedArtDataSource(new EditionDataSource(new PatchDataSource(store)));
     onProgress?.("Preparing icons…");
-    vfs.prepare();
+    art.prepare();
+    // …and, last of all, the folder's own loose files over the store's (vfs/looseFiles.ts). A
+    // store keeps each campaign chapter exploded and has no `Maps\Campaign\*.w3m` file, so
+    // without this layer a chapter in the player's folder could never be reached: the Chinese
+    // folder's campaign maps lost to the store's English ones and every subtitle stayed English.
+    const vfs = new LooseFilesDataSource(art, maps);
     // A 1.31 store carries its maps INSIDE (vfs/casc.ts `storeMaps`) and its folder has no
     // `Maps\` — the Internet Archive's copy is just the store. A loose file of the same name
     // wins, as the player's own folder always does.

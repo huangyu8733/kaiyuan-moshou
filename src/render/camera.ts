@@ -24,11 +24,12 @@ export class FlyCamera {
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     canvas.addEventListener("pointerdown", (e) => {
       this.dragging = true;
-      canvas.setPointerCapture(e.pointerId);
+      // A synthetic press replayed by the mouse lock owns no real pointer id (ui/mouseCapture.ts).
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* lock replay */ }
     });
     canvas.addEventListener("pointerup", (e) => {
       this.dragging = false;
-      canvas.releasePointerCapture(e.pointerId);
+      try { canvas.releasePointerCapture(e.pointerId); } catch { /* lock replay */ }
     });
     canvas.addEventListener("pointermove", (e) => {
       if (!this.dragging) return;

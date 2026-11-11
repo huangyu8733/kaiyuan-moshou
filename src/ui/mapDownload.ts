@@ -3,6 +3,7 @@ import { fetchMap } from "../net/mapTransfer";
 import { keepDownloadedMap } from "../assets/downloadedMaps";
 import type { LanLobby } from "../net/lobby";
 import type { DataSource } from "../vfs/types";
+import { t } from "../i18n";
 
 // "Downloading Map" — a LAN game's map, fetched from its host when the joiner's install lacks it
 // (net/mapTransfer.ts), in the box the game used for downloads: `BattleNetPatchDialog`
@@ -21,12 +22,12 @@ import type { DataSource } from "../vfs/types";
  *  DOWNLOADING_MAP, `NetworkStrings.fdf` NETERROR_MAPFILEINCOMPLETE), asked of the screen's
  *  string table and falling back on the same text; the rest is ours. */
 const TEXT = {
-  title: "Downloading Map",
-  failed: "There was an error downloading the map file.",
-  titleStarted: "Download Cancelled",
-  started: "Match started before the download could finish.",
-  titleFailed: "Download Failed",
-  closed: "The game is no longer available.",
+  title: (): string => t("lan.mapTitle"),
+  failed: (): string => t("lan.mapFailed"),
+  titleStarted: (): string => t("lan.mapTitleCancelled"),
+  started: (): string => t("lan.mapStarted"),
+  titleFailed: (): string => t("lan.mapTitleFailed"),
+  closed: (): string => t("lan.mapGone"),
 };
 
 export interface MapDownloadOptions {
@@ -64,7 +65,7 @@ export async function showMapDownload(opts: MapDownloadOptions): Promise<{ key: 
   const dialog = await showPatchDialog({
     container: opts.container,
     vfs: opts.vfs,
-    title: opts.string("DOWNLOADING_MAP") ?? TEXT.title,
+    title: opts.string("DOWNLOADING_MAP") ?? TEXT.title(),
     info: line(opts.mapName, opts.hostName, null),
     className: "map-download",
     onClose: () => {
@@ -88,10 +89,10 @@ export async function showMapDownload(opts: MapDownloadOptions): Promise<{ key: 
   };
 
   // The host said go — and left us out, since a seat still downloading is not in the match.
-  lobby.onStart = () => stop(TEXT.titleStarted, `|cffff8080${TEXT.started}|r`);
+  lobby.onStart = () => stop(TEXT.titleStarted(), `|cffff8080${TEXT.started()}|r`);
   // The room went away under us: the host left, or the relay dropped it.
   lobby.onChange = (st) => {
-    if (st.phase !== "joined") stop(TEXT.titleFailed, st.error ?? TEXT.closed);
+    if (st.phase !== "joined") stop(TEXT.titleFailed(), st.error ?? TEXT.closed());
   };
 
   try {
@@ -125,7 +126,7 @@ export async function showMapDownload(opts: MapDownloadOptions): Promise<{ key: 
     if (running) {
       // The box says it in the game's own one line; the why is for the console.
       console.warn("[OpenWar3] map download failed:", err);
-      stop(TEXT.titleFailed, opts.string("NETERROR_MAPFILEINCOMPLETE") ?? TEXT.failed);
+      stop(TEXT.titleFailed(), opts.string("NETERROR_MAPFILEINCOMPLETE") ?? TEXT.failed());
     }
   }
   return closed;
@@ -135,5 +136,5 @@ export async function showMapDownload(opts: MapDownloadOptions): Promise<{ key: 
  *  line, because it sits directly over the bar (patchDialog.ts `finish`). */
 function line(mapName: string, hostName: string, bytes: number | null): string {
   const size = bytes === null ? "" : ` (${(bytes / (1024 * 1024)).toFixed(1)} MB)`;
-  return `${mapName}${size} from ${hostName}`;
+  return t("lan.mapLine", { name: mapName, size, host: hostName });
 }

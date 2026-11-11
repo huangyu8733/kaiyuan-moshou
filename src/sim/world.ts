@@ -19934,6 +19934,13 @@ export class SimWorld {
     if (u.owner === owner && u.team === team) return;
     u.owner = owner;
     u.team = team;
+    // A unit handed to a REAL player is no longer neutral FURNITURE. That flag is the sim's
+    // stand-in for "belongs to the Neutral Passive player", and it is what keeps a shop or a
+    // hero statue fog-gated (`Viewpoint.fogHides`) and out of the vision rebuild. SetUnitOwner
+    // is exactly how a map turns one of those statues into YOUR hero — 神界危机's picker does
+    // nothing else — so leaving the flag on made the new hero invisible the moment it walked
+    // anywhere the camera could not see, as if it had vanished. A neutral slot keeps the flag.
+    if (owner >= 0) u.neutralPassive = owner === neutralSlot(PlayerSlot.NeutralPassive);
     this.ownerChanges.push({ unitId: u.id, owner });
   }
 

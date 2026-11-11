@@ -68,7 +68,6 @@ import { loadLightningRegistry } from "../data/lightning";
 import { specialFxPhaseAt, type SpecialFxClips } from "./specialFxClock";
 import { pickEffectSequence, yawPitchRollQuat } from "./effectAnim";
 import { loadAbilityRegistry, mdlPath, type AbilityRegistry, type AbilityDef, type BuffFx, isRepairCode, KNOWN_ABILITIES, TREE_UPGRADE_ABILITY, requiredHeroLevel, morphFlags, MORPH_FLAG_PERMANENT, MORPH_FLAG_REQUIRES_PAYMENT, type AbilityLevel, iconAt, isStance } from "../data/abilities";
-import { isDesktopApp } from "../assets/nativeInstall";
 import { loadCommandStrings, disabledIconPath, placeholderIcon, iconFileCandidates, type CommandStrings } from "../data/commandStrings";
 import { resolveTipRefs } from "../data/tipRefs";
 import { loadItemRegistry, type ItemRegistry } from "../data/items";
@@ -4043,6 +4042,7 @@ export class MapViewerScene {
       getDefaultDifficulty: () => this.defaultDifficulty,
       // --- animation (7.17) — a model's, not the world's, so it stays with the renderer ---
       setUnitAnimation: (id, animation) => this.rts?.setUnitAnimation(id, animation),
+      setUnitAnimationByIndex: (id, index) => this.rts?.setUnitAnimationByIndex(id, index),
       addUnitAnimationProperties: (id, props, add) => this.rts?.addUnitAnimationProperties(id, props, add),
       // --- items (7.18) ---
       // The item natives themselves moved to jassHooks.ts (the sim owns the item system).
@@ -10281,13 +10281,11 @@ export class MapViewerScene {
         this.syncPanelPause();
       },
       onEndGame: endGame,
-      // Exit Program closes the GAME. The desktop app is one window, and closing it quits the
-      // process (electron/main.mjs `window-all-closed`), whose `before-quit` also takes a LAN
-      // host's relay down cleanly. A browser tab cannot close itself unless a script opened
-      // it, so there the button does the nearest honest thing and leaves the match.
-      onExitProgram: () => (isDesktopApp() ? window.close() : endGame(false)),
-      // (In a LAN match the window's close says `leave` to the room before it goes — main.ts
-      // `onShellClosing` — so leaving this way is a departure, never a dropped connection.)
+      // Exit Program leaves the MATCH and lands on the main menu, exactly as Quit Mission
+      // does — the player is going back to the menu, not quitting the game. The main menu's
+      // own Exit button is the one that closes the program (main.ts `mainMenuScreen`).
+      // No score screen: this quit says what it is, like `EndGame(false)` (see `leave`).
+      onExitProgram: () => void this.leave(false),
       // Pause Game / Resume Game — ONE button, and in a LAN match the request crosses the
       // wire before anything here moves (see `askPause`).
       onPause: () => {
@@ -18004,7 +18002,11 @@ export class MapViewerScene {
     // Left-drag rotates the camera; a left-click (no drag) selects a unit;
     // right-click issues a move order for the selection.
     this.on(c, "pointerdown", (e: PointerEvent) => {
-      c.setPointerCapture(e.pointerId);
+      // Never fatal: under Pointer Lock (ui/mouseCapture.ts) the press is a SYNTHETIC event at
+      // the drawn cursor, and a pointer id no real pointer owns is not capturable — the browser
+      // throws InvalidStateError. Nothing is lost: the replay already delivers every move the
+      // drag needs. Left unguarded it aborted this handler, taking the drag with it.
+      try { c.setPointerCapture(e.pointerId); } catch { /* not a real pointer (lock replay) */ }
       this.sounds?.unlock(); // browsers gate audio until the first user gesture
       // EnableUserControl(false) — a cinematic owns the mouse (7.24). No selecting, no
       // orders, no drag-pan; the shot is the script's to compose.
@@ -18086,7 +18088,11 @@ export class MapViewerScene {
     this.on(c, "pointerup", (e: PointerEvent) => {
       // Release capture only once ALL buttons are up, so a second button's release
       // can't strand the primary button's pointerup off-target (stuck marquee).
-      if (e.buttons === 0) c.releasePointerCapture(e.pointerId);
+      if (e.buttons === 0) {
+        // Same reason as the capture above: the lock's synthetic pointer owns no capture to give
+        // back, and releasing one throws.
+        try { c.releasePointerCapture(e.pointerId); } catch { /* not captured (lock replay) */ }
+      }
       if (e.button === 1) this.midPanning = false;
       if (e.button === 0) {
         const wasDragging = this.dragging;

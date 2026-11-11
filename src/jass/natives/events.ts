@@ -320,6 +320,10 @@ export function registerEventNatives(rt: Runtime): void {
   });
   def(rt, "GetOrderTarget", (c) => resp(c, "OrderTargetUnit")); // widget = the ordered unit target
   def(rt, "GetOrderTargetUnit", (c) => resp(c, "OrderTargetUnit"));
+  // The WIDGET-KIND refinement: an order aimed at an ITEM answers that handle, and null when the
+  // order did not name one. (The unit form above keeps its meaning; WC3 has no "order target
+  // destructable" native, which is why there is no third one here.)
+  def(rt, "GetOrderTargetItem", (c) => resp(c, "OrderTargetItem"));
   def(rt, "GetOrderedUnit", (c) => resp(c, "OrderedUnit"));
 
   // Spell responses (EVENT_(PLAYER_)UNIT_SPELL_* — 7.17). GetSpellAbilityId is the
@@ -332,6 +336,11 @@ export function registerEventNatives(rt: Runtime): void {
   });
   def(rt, "GetSpellAbility", () => JNULL);
   def(rt, "GetSpellTargetUnit", (c) => resp(c, "SpellTargetUnit"));
+  // …and the item/destructable halves of the same target. A spell aimed at a ground item (DotA's
+  // Bottle, its item-targeted actives) answers the item handle; one aimed at a destructable (War
+  // Club) answers that. Both are null unless the caster's order named one.
+  def(rt, "GetSpellTargetItem", (c) => resp(c, "SpellTargetItem"));
+  def(rt, "GetSpellTargetDestructable", (c) => resp(c, "SpellTargetDestructable"));
   def(rt, "GetSpellTargetX", (c) => {
     const v = resp(c, "SpellTargetX");
     return v.k === "real" ? v : jReal(0);

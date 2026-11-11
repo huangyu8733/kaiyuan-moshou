@@ -1,6 +1,7 @@
 import type { Options } from "../data/options";
 import { preloadVoiceModel, transcribe, voiceModelInstalled, WHISPER_RATE } from "./model";
 import { describe, Lexicon, parse, type LexEntry, type VoiceIntent } from "./parser";
+import { t } from "../i18n";
 
 // Voice Control's PUSH-TO-TALK: hold ".", speak, let go (Options → Gameplay → "Voice Control").
 //
@@ -151,7 +152,7 @@ function openMic(): Promise<boolean> {
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
       });
     } catch {
-      (host ?? menuHost)?.error("Voice Control: microphone unavailable or permission refused.");
+      (host ?? menuHost)?.error(t("voice.micUnavailable"));
       return false;
     }
     source = ctx.createMediaStreamSource(stream);
@@ -217,7 +218,7 @@ async function begin(h: VoiceHost): Promise<void> {
   // The utterance starts with the pre-roll — the audio from just BEFORE the key went down.
   current = { h, lexicon: new Lexicon(h.lexicon()), chunks: preroll, rate: ctx.sampleRate, listening: true };
   preroll = [];
-  h.status("Listening…");
+  h.status(t("voice.listening"));
   if (!keyHeld) release(); // let go while the microphone was opening
 }
 
@@ -332,7 +333,7 @@ async function finish(u: Utterance): Promise<void> {
   if (audio.length < WHISPER_RATE * 0.2 || Math.sqrt(sq / Math.max(1, audio.length)) < SILENCE_RMS) {
     current = null;
     u.h.status(null);
-    u.h.error("Voice Control: didn't catch that.");
+    u.h.error(t("voice.noCatch"));
     return;
   }
   u.h.status("…");
@@ -342,7 +343,7 @@ async function finish(u: Utterance): Promise<void> {
   } catch (err) {
     if (current === u) current = null;
     u.h.status(null);
-    if (!(err instanceof Error && err.message === "cancelled")) u.h.error("Voice Control: the speech model could not run.");
+    if (!(err instanceof Error && err.message === "cancelled")) u.h.error(t("voice.modelFailed"));
     return;
   }
   if (current !== u) return;
@@ -357,7 +358,7 @@ const clean = (text: string): string => text.replace(/\[[^\]]*\]|\([^)]*\)/g, " 
 function run(h: VoiceHost, heard: string, lexicon: Lexicon): string[] {
   h.status(null);
   if (!heard || /^[\s.,!?-]*$/.test(heard)) {
-    h.error("Voice Control: didn't catch that.");
+    h.error(t("voice.noCatch"));
     return [];
   }
   // A match is up but not taking commands — paused, or a panel is open. Its CONSOLE lines still
@@ -377,7 +378,7 @@ function run(h: VoiceHost, heard: string, lexicon: Lexicon): string[] {
   }
   const intents = parse(heard, { lexicon });
   if (!intents.length) {
-    h.error(`Voice Control: “${heard}” is not a command.`);
+    h.error(t("voice.notACommand", { heard }));
     return [];
   }
   console.info("[voice]", JSON.stringify(heard), "→", intents.map(describe).join(" · "));

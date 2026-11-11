@@ -6,6 +6,7 @@ import type { FdfScreen } from "./fdf/render";
 import type { Option } from "./fdf/widgets";
 import { OBSERVER_NAME, type Controller } from "./lobby";
 import { arg, findFrame, num, setProp, size, str } from "./mapBrowser";
+import { t } from "../i18n";
 
 // The player rows — one `UI\FrameDef\Glue\PlayerSlot.fdf` per slot, stacked under the map's
 // own force headings — and everything about laying them out.
@@ -62,14 +63,14 @@ export interface SlotOption {
  * of a hover tooltip is drawn mid-match.
  */
 export const SLOT_OPTIONS: readonly SlotOption[] = [
-  { value: "open", label: "Open", controller: "open" },
-  { value: "closed", label: "Closed", controller: "closed" },
-  { value: "computer-easy", label: "Computer (Easy)", controller: "computer", ai: MELEE_NEWBIE },
-  { value: "computer", label: "Computer (Normal)", controller: "computer", ai: MELEE_NORMAL },
-  { value: "computer-insane", label: "Computer (Insane)", controller: "computer", ai: MELEE_INSANE },
-  { value: "computerplus-easy", label: "Computer+ (Easy)", controller: "computer", ai: MELEE_NEWBIE, plus: true },
-  { value: "computerplus", label: "Computer+ (Normal)", controller: "computer", ai: MELEE_NORMAL, plus: true },
-  { value: "computerplus-insane", label: "Computer+ (Insane)", controller: "computer", ai: MELEE_INSANE, plus: true },
+  { value: "open", label: t("slot.open"), controller: "open" },
+  { value: "closed", label: t("slot.closed"), controller: "closed" },
+  { value: "computer-easy", label: t("slot.computerEasy"), controller: "computer", ai: MELEE_NEWBIE },
+  { value: "computer", label: t("slot.computerNormal"), controller: "computer", ai: MELEE_NORMAL },
+  { value: "computer-insane", label: t("slot.computerInsane"), controller: "computer", ai: MELEE_INSANE },
+  { value: "computerplus-easy", label: t("slot.computerPlusEasy"), controller: "computer", ai: MELEE_NEWBIE, plus: true },
+  { value: "computerplus", label: t("slot.computerPlusNormal"), controller: "computer", ai: MELEE_NORMAL, plus: true },
+  { value: "computerplus-insane", label: t("slot.computerPlusInsane"), controller: "computer", ai: MELEE_INSANE, plus: true },
 ];
 
 /** What a slot's name menu offers when Computer+ is (or is not) switched on: the two empty

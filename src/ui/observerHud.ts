@@ -30,6 +30,7 @@ import { OBSERVER_MAX_HEROES } from "../game/observerView";
 import { setGameTip } from "./gameTip";
 import { wc3ToHtml, escapeHtml } from "./wc3Text";
 import { UI_HEIGHT } from "./fdf/layout";
+import { t } from "../i18n";
 
 /** One seat as the observer HUD shows it: the world's reading plus who the seat is. */
 export interface ObserverSeat extends ObserverPlayerView {
@@ -351,7 +352,7 @@ class HeroRow {
   }
 
   /** "Level N" — the info panel's own `INFOPANEL_LEVEL`. */
-  levelWord: (n: number) => string = (n) => `Level ${n}`;
+  levelWord: (n: number) => string = (n) => t("observer.level", { level: n });
 }
 
 /** One player's column on the hero panel: its pulldown and up to three hero rows. */
@@ -472,7 +473,7 @@ export class ObserverHud {
     // ── top left: Menu and Chat, then the production panel ──
     const buttons = el("div", "obs-buttons", this.root);
     this.buttons = buttons;
-    for (const [panel, key, fallback] of [["menu", "KEY_MENU", "Menu (|Cfffed312F10|R)"], ["chat", "KEY_CHAT", "Chat (|Cfffed312F12|R)"]] as const) {
+    for (const [panel, key, fallback] of [["menu", "KEY_MENU", t("observer.menu")], ["chat", "KEY_CHAT", t("observer.chat")]] as const) {
       const b = el("button", "obs-button obs-esc", buttons);
       b.innerHTML = `<span>${wc3ToHtml(driver.uiString(key, fallback))}</span>`;
       b.addEventListener("pointerdown", (e) => { if (e.button === 0) e.preventDefault(); });
@@ -480,9 +481,9 @@ export class ObserverHud {
     }
     const prod = el("div", "obs-prod", this.root);
     const views: Array<[ProdView, string]> = [
-      ["production", "Production"],
-      ["army", driver.uiString("SCORESCREEN_TAB1", "Units")],
-      ["upgrades", "Upgrades"],
+      ["production", t("observer.production")],
+      ["army", driver.uiString("SCORESCREEN_TAB1", t("observer.units"))],
+      ["upgrades", t("observer.upgrades")],
     ];
     this.prodPull = new Pulldown(prod, () => views.map(([value, label]) => ({ value, html: escapeHtml(label) })), (v) => {
       this.prodView = v as ProdView;
@@ -546,7 +547,7 @@ export class ObserverHud {
     // `renderStatus`, whose list this is — `HudSelection.buffs`).
     const status = el("div", "obs-sel-status", selPanel);
     const statusLabel = el("span", "obs-sel-key obs-sel-status-label", status);
-    statusLabel.textContent = driver.uiString("COLON_STATUS", "Status:");
+    statusLabel.textContent = driver.uiString("COLON_STATUS", t("hud.status"));
     const statusIcons = el("div", "obs-sel-status-icons", status);
     this.sel = {
       panel: selPanel, name, sub, hp, hpFill, hpText, mp, mpFill, mpText, xp, xpFill, xpText,
@@ -601,8 +602,8 @@ export class ObserverHud {
   }
 
   private levelClass = (level: number, type: string): string =>
-    this.driver.uiString("INFOPANEL_LEVEL_CLASS", "Level %u %s").replace("%u", String(level)).replace("%s", type);
-  private levelWord = (n: number): string => this.driver.uiString("INFOPANEL_LEVEL", "Level %u").replace("%u", String(n));
+    this.driver.uiString("INFOPANEL_LEVEL_CLASS", t("observer.levelClass")).replace("%u", String(level)).replace("%s", type);
+  private levelWord = (n: number): string => this.driver.uiString("INFOPANEL_LEVEL", t("observer.levelFmt")).replace("%u", String(n));
 
   private focus = (slot: IconSlot): void => this.driver.observerFocus(slot.simId);
 
@@ -748,12 +749,12 @@ export class ObserverHud {
     const constructing = sel.underConstruction;
     const head = constructing ? null : sel.queue[0] ?? null;
     const secs = Math.max(0, Math.ceil(sel.secondsLeft));
-    const verb = constructing ? d.uiString("CONSTRUCTING", "Constructing")
-      : head?.kind === "research" ? d.uiString("RESEARCHING", "Researching")
-      : head?.kind === "revive" ? d.uiString("REVIVING", "Reviving")
+    const verb = constructing ? d.uiString("CONSTRUCTING", t("observer.constructing"))
+      : head?.kind === "research" ? d.uiString("RESEARCHING", t("observer.researching"))
+      : head?.kind === "revive" ? d.uiString("REVIVING", t("observer.reviving"))
       : head?.kind === "upgrade" ? head.name
-      : d.uiString("TRAINING", "Training");
-    const text = `${verb} (${secs}s)`;
+      : d.uiString("TRAINING", t("observer.training"));
+    const text = t("observer.jobProgress", { verb, secs });
     if (s.jobText.textContent !== text) s.jobText.textContent = text;
     const frac = Math.max(0, Math.min(1, constructing ? sel.buildProgress : sel.trainProgress));
     s.jobFill.style.width = `${frac * 100}%`;
@@ -806,10 +807,10 @@ export class ObserverHud {
     if (working) {
       // the job readout above stands in for the lines
     } else if (sel.isMine) {
-      lines = `${gold("COLON_GOLD", "Gold:")} ${sel.goldRemaining}`;
+      lines = `${gold("COLON_GOLD", t("observer.gold"))} ${sel.goldRemaining}`;
     } else {
-      const dmg = sel.damageMax > 0 ? `${gold("COLON_DAMAGE", "Damage:")} ${sel.damageMin} - ${sel.damageMax}${sel.damageBonus ? ` <span class="obs-bonus">+${sel.damageBonus}</span>` : ""}<br>` : "";
-      const armor = `${gold("COLON_ARMOR", "Armor:")} ${Math.round(sel.armor)}${sel.armorBonus ? ` <span class="obs-bonus">+${Math.round(sel.armorBonus)}</span>` : ""}`;
+      const dmg = sel.damageMax > 0 ? `${gold("COLON_DAMAGE", t("hud.damage"))} ${sel.damageMin} - ${sel.damageMax}${sel.damageBonus ? ` <span class="obs-bonus">+${sel.damageBonus}</span>` : ""}<br>` : "";
+      const armor = `${gold("COLON_ARMOR", t("hud.armor"))} ${Math.round(sel.armor)}${sel.armorBonus ? ` <span class="obs-bonus">+${Math.round(sel.armorBonus)}</span>` : ""}`;
       // A hero's three attributes on one line, each behind the info panel's own attribute art
       // (`InfoPanelIconHeroIconSTR` & co. — war3skins' `HeroStrengthIcon` names a file 1.30.4
       // never shipped) with its name on hover, rather than three labelled lines.
@@ -819,7 +820,7 @@ export class ObserverHud {
         return `<span class="obs-attr" data-tip="${tip}">${url ? `<img src="${url}">` : ""}${value}${bonus ? `<span class="${bonus > 0 ? "obs-bonus" : "obs-malus"}">${bonus > 0 ? "+" : ""}${bonus}</span>` : ""}</span>`;
       };
       const attrs = sel.isHero
-        ? `<br>${attr("InfoPanelIconHeroIconSTR", "COLON_STRENGTH", "Strength:", sel.strength, sel.strengthBonus)}${attr("InfoPanelIconHeroIconAGI", "COLON_AGILITY", "Agility:", sel.agility, sel.agilityBonus)}${attr("InfoPanelIconHeroIconINT", "COLON_INTELLECT", "Intelligence:", sel.intelligence, sel.intelligenceBonus)}`
+        ? `<br>${attr("InfoPanelIconHeroIconSTR", "COLON_STRENGTH", t("hud.strength"), sel.strength, sel.strengthBonus)}${attr("InfoPanelIconHeroIconAGI", "COLON_AGILITY", t("hud.agility"), sel.agility, sel.agilityBonus)}${attr("InfoPanelIconHeroIconINT", "COLON_INTELLECT", t("hud.intelligence"), sel.intelligence, sel.intelligenceBonus)}`
         : "";
       lines = dmg + armor + attrs;
     }
