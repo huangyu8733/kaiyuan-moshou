@@ -42,3 +42,4 @@ electron/main-legacy.cjs
 
 # Claude Code local settings and worktrees
 .claude/
+
