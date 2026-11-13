@@ -81,9 +81,9 @@
   "author": "elevchyt",
   "license": "MIT",
   "build": {
-    "appId": "dev.elevchyt.openwar3",
-    "productName": "开源魔兽争霸",
-    "copyright": "OpenWar3 contributors",
+    "appId": "me.hhkj.warcraft",
+    "productName": "魔兽争霸开源版",
+    "copyright": "Copyright (c) 2023-2026, Warcraft III Open Source contributors",
     "icon": "build/icon.png",
     "files": [
       "dist/**/*",
@@ -101,16 +101,16 @@
         "deb",
         "tar.gz"
       ],
-      "artifactName": "OpenWar3-${version}-${arch}.${ext}",
+      "artifactName": "Warcraft-Open-${version}-${arch}.${ext}",
       "category": "Game",
       "icon": "build/icons",
       "synopsis": "Browser-first re-creation of the Warcraft III engine",
-      "maintainer": "OpenWar3 contributors <openwar3@users.noreply.github.com>",
+      "maintainer": "Warcraft-Open contributors <360268423@qq.com>",
       "syncDesktopName": true,
-      "executableName": "openwar3",
+      "executableName": "warcraft-open",
       "desktop": {
         "entry": {
-          "Name": "OpenWar3"
+          "Name": "Warcraft-Open"
         }
       }
     },
@@ -131,9 +131,9 @@
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "include": "packaging/windows-installer.nsh",
-      "artifactName": "OpenWar3-Setup-${version}.${ext}",
-      "shortcutName": "OpenWar3",
-      "uninstallDisplayName": "OpenWar3"
+      "artifactName": "Warcraft-Open-Setup-${version}.${ext}",
+      "shortcutName": "Warcraft-Open",
+      "uninstallDisplayName": "Warcraft-Open"
     },
     "mac": {
       "target": [
@@ -146,9 +146,9 @@
       {
         "provider": "github",
         "owner": "elevchyt",
-        "repo": "openwar3"
+        "repo": "warcraft-open"
       }
     ]
   },
-  "desktopName": "openwar3.desktop"
+  "desktopName": "warcraft-open.desktop"
 }

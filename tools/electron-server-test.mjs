@@ -6,7 +6,7 @@
 // it; this is verified by a test.
 
 import { startServer } from "../electron/server.mjs";
-import { looksLikeInstall, serveInstall, installVersion, REQUIRED_VERSION, DOWNGRADE_VERSIONS } from "../electron/install.mjs";
+import { looksLikeInstall, serveInstall, installVersion, REQUIRED_VERSION, DOWNGRADE_VERSIONS, ACCEPTED_MAJOR_VERSIONS } from "../electron/install.mjs";
 import { detectInstall } from "../electron/locate.mjs";
 import { mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { PROTOCOL_VERSION } from "../server/rooms.mjs";
@@ -88,6 +88,9 @@ try {
     const downgrades = /DOWNGRADE_VERSIONS[^=]*=\s*\[([^\]]*)\]/.exec(ts)?.[1].match(/"[^"]+"/g)?.map((v) => v.slice(1, -1)).join(",");
     ok("…and turns back the same builds", downgrades === DOWNGRADE_VERSIONS.join(","),
        `install.mjs ${DOWNGRADE_VERSIONS}, version.ts ${downgrades}`);
+    const majors = /ACCEPTED_MAJOR_VERSIONS[^=]*=\s*\[([^\]]*)\]/.exec(ts)?.[1].match(/"[^"]+"/g)?.map((v) => v.slice(1, -1)).join(",");
+    ok("…and accepts the same major versions", majors === ACCEPTED_MAJOR_VERSIONS.join(","),
+       `install.mjs ${ACCEPTED_MAJOR_VERSIONS}, version.ts ${majors}`);
     // The Windows installer asks the same question before it will install anywhere
     // (packaging/windows-installer.nsh), in NSIS, where it cannot import either file.
     const nsh = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "packaging", "windows-installer.nsh"), "utf8");
@@ -105,13 +108,17 @@ try {
       build("1.30.4.11274");
       ok("the build we play is accepted", looksLikeInstall(tmp), installVersion(tmp));
       build("1.29.2.9231");
-      ok("an older one is refused", !looksLikeInstall(tmp), installVersion(tmp));
+      ok("any 1.x install is accepted", looksLikeInstall(tmp), installVersion(tmp));
       build("1.32.10.18820");
-      ok("…and a newer one too — same data, not later data", !looksLikeInstall(tmp));
+      ok("a later 1.x is accepted too — the rule is the major line", looksLikeInstall(tmp));
       // …except the one the game turns back into 1.30.4: the Internet Archive's copy, which
       // "Download game files" falls back on (src/vfs/downgrade.ts).
       build("1.31.1.12164");
       ok("the Internet Archive's 1.31.1 is accepted — the mount downgrades it", looksLikeInstall(tmp));
+      build("2.0.3.22692");
+      ok("the remastered 2.x line is accepted", looksLikeInstall(tmp));
+      build("3.0.0.1");
+      ok("a major line outside 1.x/2.x is refused", !looksLikeInstall(tmp));
       // The build NUMBER is not part of the rule: it varies with the download and says nothing
       // about the data.
       build("1.30.4.99999");

@@ -9,7 +9,7 @@
 // folder, which is why this is not a Windows-only rule.
 //
 // After that come the places Blizzard's own installers wrote the folder down. None of them is
-// trusted: every candidate goes through `looksLikeInstall`, the same 1.30.4 check the picker and
+// trusted: every candidate goes through `looksLikeInstall`, the same version check the picker and
 // every launch ask, so a stale registry value or a patched folder is simply the next candidate.
 
 import { execFile } from "node:child_process";

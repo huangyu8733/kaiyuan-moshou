@@ -43,3 +43,9 @@ electron/main-legacy.cjs
 # Claude Code local settings and worktrees
 .claude/
 
+# 官网：SQLite 数据与本地环境变量
+web/data/
+web/.next/
+web/.env
+web/.env.local
+

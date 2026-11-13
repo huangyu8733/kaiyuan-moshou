@@ -24,6 +24,32 @@ export function AppleIcon() {
   );
 }
 
+export function AndroidIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden fill="currentColor">
+      <path d="M7 10.4C7 6.9 9.2 4.4 12 4.4s5 2.5 5 6V15a2.4 2.4 0 0 1-2.4 2.4H9.4A2.4 2.4 0 0 1 7 15v-4.6Z" />
+      <path
+        d="M8.7 3.1 9.8 4.9M15.3 3.1 14.2 4.9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function HarmonyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden fill="currentColor">
+      <path
+        fillRule="evenodd"
+        d="M5 3.5h14A2.5 2.5 0 0 1 21.5 6v12a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 18V6A2.5 2.5 0 0 1 5 3.5Zm3 4.2v8.6h2v-3.4h4v3.4h2V7.7h-2v3.3h-4V7.7H8Z"
+      />
+    </svg>
+  );
+}
+
 export function StarIcon() {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden fill="currentColor">

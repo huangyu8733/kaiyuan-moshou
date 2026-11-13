@@ -3,7 +3,7 @@
 // and within REVALIDATE seconds the buttons point at the new files — and a platform whose
 // artifact appears for the first time stops saying "Coming soon" on its own.
 
-export const REPO = "elevchyt/openwar3";
+export const REPO = "huangyu8733/kaiyuan-moshou";
 export const REPO_URL = `https://github.com/${REPO}`;
 export const RELEASES_URL = `${REPO_URL}/releases`;
 

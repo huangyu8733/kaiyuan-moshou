@@ -54,6 +54,7 @@
 // reaches through a different, built-in path).
 
 import { parseWts } from "../jass/wts";
+import { currentLocale, type Locale } from "./index";
 import type { MapInfo } from "../world/mapInfo";
 import type { UnitRegistry } from "../data/units";
 import type { AbilityRegistry } from "../data/abilities";
@@ -561,7 +562,9 @@ function baseName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-/** The two names a sidecar may have: `<file name>.zhCN.json` and `<base>.zhCN.json`. */
+/** The two names a sidecar may have: `<file name>.<locale>.json` and `<base>.<locale>.json`.
+ *  The app's own language is asked for first; a Chinese dictionary still answers for a map on
+ *  an English-speaking menu, because that is the one sidecar this project has always shipped. */
 function candidates(mapPath: string): string[] {
   const sep = mapPath.includes("\\") ? "\\" : "/";
   const cut = Math.max(mapPath.lastIndexOf("\\"), mapPath.lastIndexOf("/"));
@@ -569,7 +572,12 @@ function candidates(mapPath: string): string[] {
   const file = cut >= 0 ? mapPath.slice(cut + 1) : mapPath;
   const base = file.replace(/\.w3[mx]$/i, "");
   const prefix = dir ? dir + sep : "";
-  return [`${prefix}${file}.zhCN.json`, `${prefix}${base}.zhCN.json`];
+  const locale: Locale = currentLocale();
+  const locales = locale === "zhCN" ? ["zhCN"] : [locale, "zhCN"];
+  return locales.flatMap((lang) => [
+    `${prefix}${file}.${lang}.json`,
+    `${prefix}${base}.${lang}.json`,
+  ]);
 }
 
 /** Read and parse ONE candidate. Null when it is absent, empty or not a language file. */
@@ -632,7 +640,12 @@ export async function findMapLanguageByName(
   const want = baseName(mapName).toLowerCase();
   if (!want) return null;
   const base = want.replace(/\.w3[mx]$/i, "");
-  const names = new Set([`${want}.zhcn.json`, `${base}.zhcn.json`]);
+  const locale = currentLocale();
+  const locales = locale === "zhCN" ? ["zhCN"] : [locale, "zhCN"];
+  const names = new Set(locales.flatMap((lang) => [
+    `${want}.${lang.toLowerCase()}.json`,
+    `${base}.${lang.toLowerCase()}.json`,
+  ]));
   let hit: string | undefined;
   try {
     hit = list().find((p) => names.has(baseName(p).toLowerCase()));

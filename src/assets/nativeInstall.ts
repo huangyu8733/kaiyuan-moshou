@@ -37,12 +37,20 @@ interface NativeBridge {
     set(on: boolean): Promise<void>;
   };
   relaunch?(): Promise<void>;
+  /** Quit the whole app (the launcher's Exit Program). Absent on an older shell. */
+  quit?(): void;
   /** The window is closing; the shell waits for `fn` before it does. Absent on an older shell. */
   onClosing?(fn: () => Promise<void> | void): void;
   /** Write the install's CustomKeys.txt (issue #156). Absent on a shell older than the editor. */
   saveCustomKeys?(bytes: Uint8Array): Promise<void>;
   /** Keep a map a LAN game handed us in `Maps\Download\`. Absent on a shell older than it. */
   saveMap?(name: string, bytes: Uint8Array): Promise<void>;
+  /** Is that map already in `Maps\Download\`? Absent on a shell older than the shelf's badge. */
+  mapExists?(name: string): Promise<boolean>;
+  /** The maps in `Maps\Download\` (the shelf's "installed" view). */
+  listMaps?(): Promise<DownloadedMap[]>;
+  /** Remove one of them, language sidecars included. */
+  deleteMap?(name: string): Promise<boolean>;
   update: {
     state(): Promise<UpdateState>;
     download(): Promise<void>;
@@ -89,6 +97,8 @@ export const nativeVsync = async (): Promise<boolean | null> => {
 export const setNativeVsync = async (on: boolean): Promise<void> => { await bridge()?.vsync?.set(on); };
 /** Quit and start the desktop app again (electron/main.mjs `ow3:relaunch`). */
 export const relaunchNative = (): void => void bridge()?.relaunch?.();
+/** Quit the desktop app entirely (electron/main.mjs `ow3:quit`). */
+export const quitNative = (): void => void bridge()?.quit?.();
 
 export const downloadUpdate = (): void => void bridge()?.update?.download();
 export const installUpdate = (): void => void bridge()?.update?.install();
@@ -161,6 +171,52 @@ export function cancelNativeDownload(): void {
 
 export async function forgetNativeInstall(): Promise<void> {
   await bridge()?.forgetInstall();
+}
+
+/** Put a downloaded map where Warcraft III keeps them: `<install>\Maps\Download\`. The shell owns
+ *  the folder, so the page only names the file and hands over the bytes. */
+export async function saveMapToDownload(name: string, bytes: Uint8Array): Promise<void> {
+  const save = bridge()?.saveMap;
+  if (!save) throw new Error("This version of the app cannot save maps. Update it first.");
+  await save(name, bytes);
+}
+
+/** One file the launcher keeps in `Maps\Download\` (electron/install.mjs listDownloadedMaps). */
+export interface DownloadedMap {
+  name: string;
+  size: number;
+  updatedAt: string;
+}
+
+/** Whether `name` is already kept in the install's `Maps\Download\` (the shelf's "downloaded"
+ *  badge). False on a shell that predates the question, which is the safe answer: the map can
+ *  still be downloaded again over itself. */
+export async function downloadedMapExists(name: string): Promise<boolean> {
+  const ask = bridge()?.mapExists;
+  if (!ask) return false;
+  try {
+    return await ask(name);
+  } catch {
+    return false;
+  }
+}
+
+/** The maps in `Maps\Download\`; empty on a shell that cannot list them. */
+export async function listDownloadedMaps(): Promise<DownloadedMap[]> {
+  const list = bridge()?.listMaps;
+  if (!list) return [];
+  try {
+    return await list();
+  } catch {
+    return [];
+  }
+}
+
+/** Remove a downloaded map (and its language sidecars). */
+export async function deleteDownloadedMap(name: string): Promise<boolean> {
+  const remove = bridge()?.deleteMap;
+  if (!remove) throw new Error("This version of the app cannot remove maps.");
+  return remove(name);
 }
 
 /** `local` is the scheme's host and means nothing: a `standard` scheme needs an origin, and

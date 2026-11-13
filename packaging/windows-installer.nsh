@@ -33,10 +33,11 @@
 Var ow3Folder   ; in:  the folder to ask about
 Var ow3Verdict  ; out: "ok", "missing" (not Warcraft III at all) or "version" (the wrong one)
 
-; Is $ow3Folder a Warcraft III 1.30.4 folder? The version row of `.build.info` ends
-; `|1.30.4.<build>|<complete>`, so "|1.30.4." is searched for. A line longer than NSIS's string
-; limit arrives in pieces (read 1000 characters at a time, so the glued string still fits), and
-; each piece is searched with the last 7 characters of the one before it in front.
+; Is $ow3Folder a supported Warcraft III folder? The rule is the MAJOR version: the version row
+; of `.build.info` ends `|<version>|<complete>`, so "|1." (the pre-Reforged line) and "|2." (the
+; remastered line) are accepted. A line longer than NSIS's string limit arrives in pieces (read
+; 1000 characters at a time, so the glued string still fits), and each piece is searched with the
+; last 2 characters of the one before it in front.
 Function ow3AskFolder
   Push $0
   Push $1
@@ -58,12 +59,13 @@ Function ow3AskFolder
           ${Break}
         ${EndIf}
         StrCpy $1 "$2$1"
-        ; substring search: slide an 8-character window along the line
+        ; substring search: slide a 3-character window along the line
         StrLen $3 $1
         StrCpy $4 0
         ${DoWhile} $4 < $3
-          StrCpy $2 $1 8 $4
-          ${If} $2 == "|${OW3_REQUIRED_VERSION}."
+          StrCpy $2 $1 3 $4
+          ${If} $2 == "|1."
+          ${OrIf} $2 == "|2."
             StrCpy $ow3Verdict "ok"
             ${Break}
           ${EndIf}
@@ -72,7 +74,7 @@ Function ow3AskFolder
         ${If} $ow3Verdict == "ok"
           ${Break}
         ${EndIf}
-        StrCpy $2 $1 "" -7
+        StrCpy $2 $1 "" -2
       ${Loop}
       FileClose $0
     ${EndIf}
@@ -133,7 +135,7 @@ Function ow3DirectoryLeave
     MessageBox MB_OK|MB_ICONEXCLAMATION "That is not a Warcraft III folder.$\r$\n$\r$\nChoose the folder Warcraft III: The Frozen Throne is installed in — the one with $\"Warcraft III.exe$\" and a $\"Data$\" folder in it."
     Abort
   ${ElseIf} $ow3Verdict == "version"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "That Warcraft III is not version ${OW3_REQUIRED_VERSION}.$\r$\n$\r$\nOpenWar3 reads every unit, ability and cost out of the game's own files, so it needs exactly The Frozen Throne ${OW3_REQUIRED_VERSION}."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "That Warcraft III version is not supported.$\r$\n$\r$\nOpenWar3 reads every unit, ability and cost out of the game's own files, so it needs a Warcraft III 1.x or 2.x install."
     Abort
   ${EndIf}
 FunctionEnd
@@ -161,12 +163,12 @@ FunctionEnd
 
   !define MUI_PAGE_CUSTOMFUNCTION_PRE ow3SkipIfUpdated
   !define MUI_WELCOMEPAGE_TITLE "Welcome to OpenWar3"
-  !define MUI_WELCOMEPAGE_TEXT "OpenWar3 plays out of your own copy of Warcraft III: The Frozen Throne ${OW3_REQUIRED_VERSION} and ships none of its files.$\r$\n$\r$\nOn the next page, choose your Warcraft III folder. OpenWar3 is installed into an OpenWar3 folder inside it, and nothing of the game's is changed.$\r$\n$\r$\nClick Next to continue."
+  !define MUI_WELCOMEPAGE_TEXT "OpenWar3 plays out of your own copy of Warcraft III 1.x or 2.x and ships none of its files.$\r$\n$\r$\nOn the next page, choose your Warcraft III folder. OpenWar3 is installed into an OpenWar3 folder inside it, and nothing of the game's is changed.$\r$\n$\r$\nClick Next to continue."
   !insertmacro MUI_PAGE_WELCOME
 
   ; Consumed by the MUI_PAGE_DIRECTORY the template inserts next.
   !define MUI_PAGE_HEADER_TEXT "Choose your Warcraft III folder"
-  !define MUI_PAGE_HEADER_SUBTEXT "OpenWar3 needs Warcraft III: The Frozen Throne ${OW3_REQUIRED_VERSION}."
+  !define MUI_PAGE_HEADER_SUBTEXT "OpenWar3 needs Warcraft III 1.x or 2.x."
   !define MUI_DIRECTORYPAGE_TEXT_TOP "Choose the folder Warcraft III is installed in — the one with $\"Warcraft III.exe$\" in it. OpenWar3 will be installed into an OpenWar3 folder inside it."
   !define MUI_DIRECTORYPAGE_TEXT_DESTINATION "Warcraft III folder"
   !define MUI_PAGE_CUSTOMFUNCTION_LEAVE ow3DirectoryLeave

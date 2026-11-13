@@ -50,6 +50,7 @@ import { mountLoadingScreen, type LoadingScreen } from "./ui/loadingScreen";
 import { mountScoreScreen, scoreScreenMusic } from "./ui/scoreScreen";
 import type { ScoreTable } from "./game/scoreTable";
 import { mountLoadGate, type GateLoad } from "./ui/gate";
+import { mountHome, type Home } from "./ui/home";
 import { setFdfClickSound, type FdfScreen } from "./ui/fdf/render";
 import { GlueAudio } from "./ui/glueAudio";
 import { SoundBoard } from "./audio/sounds";
@@ -244,11 +245,12 @@ async function enterMap(bytes: Uint8Array, name: string): Promise<string> {
 // out and the panel slides away → beat → the next panel drops in and its contents fade up),
 // all of it timed off the chrome's own Birth/Death clips.
 
-/** Quit. The desktop app closes its window; a browser will not let a page close a tab it did not
- *  open, so the press would do nothing at all there. It instead reloads onto the launcher, which
- *  is the site's front page (`/`, no query) and also where a player changes game folder. */
+/** Quit the main menu → the launcher. In the desktop app that is a reload: the front page IS the
+ *  launcher (src/ui/home.ts), and the folder is remembered by the shell, so the same screen comes
+ *  back — with its own Exit Program, which is what really quits. A browser will not let a page
+ *  close a tab it did not open, so it reloads onto the site's front page instead. */
 function quitToStart(): void {
-  if (isDesktopApp()) { window.close(); return; }
+  if (isDesktopApp()) { location.reload(); return; }
   location.replace(`${location.origin}${location.pathname}`);
 }
 
@@ -1430,6 +1432,8 @@ async function fadeOutLayer(layer: HTMLElement, ms: number): Promise<void> {
 // UI\FrameDef\*.fdf files, so we gate on loading the game files first — a single
 // button over the flying terrain — then build the FDF main menu and continue.
 let gate: { dispose(): void } | null = null;
+// The DESKTOP front page (src/ui/home.ts) — the site's layout with the launcher's own buttons.
+let home: Home | null = null;
 
 /** Build the authentic FDF-driven main menu; fall back to the flat skin if the install
  *  lacks the glue files or the FDF fails to construct. Every screen the game can reach is
@@ -1455,6 +1459,8 @@ function mountInstall(load: GateLoad): void {
   ((window as unknown as { openwar3: Record<string, unknown> }).openwar3 ??= {}).vfs = load.vfs;
   gate?.dispose();
   gate = null;
+  home?.dispose();
+  home = null;
   applyMenuCursor(load.vfs); // WC3 human hand cursor in the menus
   applyGameFont(load.vfs); // Friz Quadrata TT, out of the install's own Fonts\ (issue #72)
   // Every `setGameTip` hover hint from here on wears the game's tooltip art (the command card's border strip
@@ -1569,6 +1575,11 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has("dev")) {
       console.error("[dev-boot] failed:", err);
       gate = mountLoadGate(ui, onFilesLoaded); // fall back to the human path
     });
+} else if (isDesktopApp()) {
+  // The packaged app's front page: the site's layout, with the game's own launch button and a
+  // map shelf that writes into the install. The browser keeps the load gate, where picking a
+  // folder is also the gesture that opens its autoplay gate.
+  home = mountHome(ui, onFilesLoaded);
 } else {
   // The launcher IS the front page: a browser lands here, and the game starts when the player
   // presses Play. A remembered install is opened by that press rather than for them, so "/" is

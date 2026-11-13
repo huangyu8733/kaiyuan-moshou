@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { startServer } from "./server.mjs";
-import { installVersion, looksLikeInstall, serveInstall, writeCustomKeys, writeDownloadedMap, REQUIRED_VERSION } from "./install.mjs";
+import { deleteDownloadedMap, downloadedMapExists, installVersion, listDownloadedMaps, looksLikeInstall, serveInstall, writeCustomKeys, writeDownloadedMap } from "./install.mjs";
 import { downloadFromSources } from "./download.mjs";
 import { detectInstall } from "./locate.mjs";
 import { startBeacon } from "./beacon.mjs";
@@ -305,7 +305,7 @@ app.whenReady().then(async () => {
         if (!event.sender.isDestroyed()) event.sender.send("ow3:install-download-progress", progress);
       }, downloadAbort.signal);
       if (!looksLikeInstall(folder)) {
-        throw new Error(`The download finished, but ${folder} is not Warcraft III ${REQUIRED_VERSION}.`);
+        throw new Error(`The download finished, but ${folder} is not a supported Warcraft III install.`);
       }
       writeSettings({ installPath: folder });
       return folder;
@@ -319,6 +319,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("ow3:customkeys-save", (_event, bytes) => writeCustomKeys(currentInstall().path, bytes));
   // …and a map a LAN game handed us, into Maps\Download\ (src/assets/downloadedMaps.ts).
   ipcMain.handle("ow3:map-save", (_event, name, bytes) => writeDownloadedMap(currentInstall().path, name, bytes));
+  // …and whether a map the launcher offers is already in that folder, so the shelf can say so.
+  ipcMain.handle("ow3:map-exists", (_event, name) => downloadedMapExists(currentInstall().path, name));
+  // …and the shelf's "installed" view: what that folder holds, and removing one of them.
+  ipcMain.handle("ow3:map-list", () => listDownloadedMaps(currentInstall().path));
+  ipcMain.handle("ow3:map-delete", (_event, name) => deleteDownloadedMap(currentInstall().path, name));
   // The map list's Download Maps dialog (src/ui/mapSites.ts): EpicWar READ for the page, under
   // the allow-list in electron/mapSites.mjs — and the sites it cannot read SHOWN in a web view
   // laid over the dialog, whose map downloads land in Maps\Download\ and on the page's list.
@@ -343,6 +348,9 @@ app.whenReady().then(async () => {
     app.relaunch(process.env.APPIMAGE ? { execPath: process.env.APPIMAGE, args: process.argv.slice(1) } : {});
     app.quit();
   });
+  // The launcher's Exit Program: quit the app itself, not merely its window (macOS keeps an
+  // app alive with none, and `before-quit` still takes the relay down cleanly).
+  ipcMain.on("ow3:quit", () => app.quit());
   // Asked by a page that has just started listening. The push below only fires when the SET
   // CHANGES, and the game subscribes when the LAN screen opens — long after the beacon found
   // whoever was already there — so without this a machine that has been quietly present the
@@ -390,7 +398,7 @@ app.whenReady().then(async () => {
       ? "[OpenWar3] no install remembered — the game will ask for it"
       : !install.present
         ? `[OpenWar3] install: ${install.path} — NOT FOUND, the game will ask for it`
-        : `[OpenWar3] install: ${install.path} is ${install.version ?? "an unknown version"}, not ${REQUIRED_VERSION} — the game will ask for another`);
+        : `[OpenWar3] install: ${install.path} is ${install.version ?? "an unknown version"}, which is not supported — the game will ask for another`);
 
   // Announce this game on the subnet and listen for others (electron/beacon.mjs). This is the
   // half of LAN play a page cannot do at all, and it is why the export is native: with it,

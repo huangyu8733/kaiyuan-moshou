@@ -17,15 +17,17 @@
 // paths in it speak WC3's `\` separator so they can be used as `InstallFiles` keys verbatim.
 
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 
 const MPQ = /\.mpq$/i;
 const MAP = /\.(w3m|w3x)$/i;
-// A map's own Chinese dictionary beside it (src/i18n/mapLanguage.ts): served like any loose
-// file, never listed as a map.
-const LANGUAGE_FILE = /\.zhCN\.json$/i;
+// What may be written into `Maps\Download\`: a map, or its own language sidecar beside it.
+const DOWNLOADED_NAME = /^[^\\/:*?"<>|\u0000-\u001f]+\.(w3m|w3x)(\.[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{2,8})?\.json)?$/i;
+// A map's own dictionary beside it (src/i18n/mapLanguage.ts): served like any loose file, never
+// listed as a map. The sidecar follows the language it translates into.
+const LANGUAGE_FILE = /\.(zhCN|enUS)\.json$/i;
 const IDX = /^[0-9a-f]{10}\.idx$/i;
 const DATA_FILE = /^data\.\d{3}$/i;
 const CONFIG_HASH = /^[0-9a-f]{32}$/i;
@@ -126,12 +128,14 @@ export async function writeCustomKeys(root, bytes) {
  *
  * As narrow as `writeCustomKeys`: the page names a FILE and no folder, and a name that is not a
  * plain `.w3m`/`.w3x` file name — a separator, a `..`, anything that could climb out — is refused
- * here whatever the page already checked. `Maps` and `Download` are found under whatever case the
- * folder spells them with and made when they are missing.
+ * here whatever the page already checked. The one exception is the map's own language sidecar
+ * (`<map>.w3x.zhCN.json`), which belongs in the same folder and is written the same way.
+ * `Maps` and `Download` are found under whatever case the folder spells them with and made when
+ * they are missing.
  */
 export async function writeDownloadedMap(root, name, bytes) {
   if (!root || !existsSync(root)) throw new Error("No Warcraft III folder is selected.");
-  if (typeof name !== "string" || !/^[^\\/:*?"<>|\u0000-\u001f]+\.(w3m|w3x)$/i.test(name) || name.startsWith(".")) {
+  if (typeof name !== "string" || !DOWNLOADED_NAME.test(name) || name.startsWith(".")) {
     throw new Error("Not a map file name.");
   }
   const folder = async (parent, want) => {
@@ -145,11 +149,104 @@ export async function writeDownloadedMap(root, name, bytes) {
   await writeFile(join(dir, name), Buffer.from(bytes));
 }
 
-/** The build OpenWar3 plays. MUST equal `REQUIRED_VERSION` in src/vfs/version.ts, which states
- *  WHY there is a version rule at all and says it to the player; this side only has to agree, so
- *  that a folder the game would refuse is never remembered in the first place. `pnpm app:test`
- *  compares the two. */
+/**
+ * Everything in the install's `Maps\Download\`: the maps the launcher keeps there, with the size
+ * and mtime the shelf shows. Only plain map files — a language sidecar belongs to its map and is
+ * listed/removed with it, not as a row of its own.
+ */
+export async function listDownloadedMaps(root) {
+  if (!root || !existsSync(root)) return [];
+  const dir = await findFolder(await findFolder(root, "Maps"), "Download");
+  if (!dir) return [];
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    const maps = await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && MAP.test(entry.name))
+        .map(async (entry) => {
+          const info = await stat(join(dir, entry.name));
+          return { name: entry.name, size: info.size, updatedAt: info.mtime.toISOString() };
+        }),
+    );
+    return maps.sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Remove one map (and its own language sidecars) from `Maps\Download\`. The name is checked like
+ * a write, and matched against the folder's own spelling, so only a file that folder holds can
+ * be unlinked — a page-supplied path never becomes one.
+ */
+export async function deleteDownloadedMap(root, name) {
+  if (!root || !existsSync(root)) throw new Error("No Warcraft III folder is selected.");
+  if (typeof name !== "string" || !MAP.test(name) || name.startsWith(".") || /[\\/:*?"<>|\u0000-\u001f]/.test(name)) {
+    throw new Error("Not a map file name.");
+  }
+  const dir = await findFolder(await findFolder(root, "Maps"), "Download");
+  if (!dir) return false;
+  const entries = await readdir(dir, { withFileTypes: true });
+  const lower = name.toLowerCase();
+  const map = entries.find((entry) => entry.isFile() && entry.name.toLowerCase() === lower);
+  if (!map) return false;
+  await unlink(join(dir, map.name));
+  // `<map>.<locale>.json` sidecars go with it: they translate a map that is no longer there.
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const entryLower = entry.name.toLowerCase();
+    if (entryLower.startsWith(`${lower}.`) && entryLower.endsWith(".json")) {
+      await unlink(join(dir, entry.name)).catch(() => {});
+    }
+  }
+  return true;
+}
+
+/** A folder under `parent`, whatever case the disk spells it with; null when it is not there. */
+async function findFolder(parent, want) {
+  if (!parent) return null;
+  try {
+    const hit = (await readdir(parent, { withFileTypes: true }))
+      .find((entry) => entry.isDirectory() && entry.name.toLowerCase() === want.toLowerCase());
+    return hit ? join(parent, hit.name) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Is `name` already in the install's `Maps\Download\`? Spelled the same way `writeDownloadedMap`
+ * accepts it, and matched case-insensitively — a disk that spells the folder `maps` still keeps
+ * the same map, and the launcher must not offer "download" for a file it already has.
+ */
+export async function downloadedMapExists(root, name) {
+  if (!root || !existsSync(root)) return false;
+  if (typeof name !== "string" || !DOWNLOADED_NAME.test(name) || name.startsWith(".")) return false;
+  const maps = await findFolder(root, "Maps");
+  const download = await findFolder(maps, "Download");
+  if (!download) return false;
+  try {
+    const lower = name.toLowerCase();
+    return (await readdir(download, { withFileTypes: true }))
+      .some((entry) => entry.isFile() && entry.name.toLowerCase() === lower);
+  } catch {
+    return false;
+  }
+}
+
+/** The build OpenWar3 plays by default. Kept for the download/downgrade paths and for the
+ *  message the game shows; it is no longer the only version the picker accepts. */
 export const REQUIRED_VERSION = "1.30.4";
+
+/** Major versions the folder picker accepts: every 1.x client (the current engine) and every
+ *  2.x build (the remastered line). The exact patch is not part of the selection rule. */
+export const ACCEPTED_MAJOR_VERSIONS = ["1", "2"];
+
+/** Does a version string name a supported major line? */
+export function isAcceptedInstallVersion(version) {
+  const major = version?.split(".")[0];
+  return !!major && ACCEPTED_MAJOR_VERSIONS.includes(major);
+}
 
 /** The builds the game's mount turns back into REQUIRED_VERSION (src/vfs/version.ts, which says
  *  why): the Internet Archive's 1.31.1, which "Download game files" falls back on. `pnpm
@@ -181,15 +278,14 @@ export function installVersion(root) {
  * never SAVED as the remembered one. The game checks again every launch (src/vfs/version.ts);
  * this is the same rule asked earlier, not a second one.
  *
- * A pre-1.30 (MPQ) folder has no `.build.info` at all and so cannot pass, which is correct: it is
- * older than the build we play by construction.
+ * The rule is the MAJOR version: 1.x is the pre-Reforged client line, 2.x the remastered line.
+ * A pre-1.30 (MPQ) folder has no `.build.info` at all and so cannot pass, which is correct: it
+ * predates the content-store layout this engine reads.
  */
 export function looksLikeInstall(root) {
   if (!root || !existsSync(root)) return false;
   if (!existsSync(join(root, "Data"))) return false;
-  const version = installVersion(root);
-  const build = version?.split(".").slice(0, 3).join(".");
-  return !!build && (build === REQUIRED_VERSION || DOWNGRADE_VERSIONS.includes(build));
+  return isAcceptedInstallVersion(installVersion(root));
 }
 
 /**

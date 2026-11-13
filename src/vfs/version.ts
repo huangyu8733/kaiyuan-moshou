@@ -16,15 +16,22 @@ import { t } from "../i18n";
 // time (src/assets/nativeInstall.ts), and a player can patch Warcraft III between one launch and
 // the next without touching OpenWar3 at all.
 //
-// **1.30.4** is the target because it is the last build of the pre-Reforged client, and the one
-// this engine is written against — see CLAUDE.md and docs/casc.md. A pre-1.30 install is an MPQ
-// one, which has no `.build.info` and is therefore not 1.30.4 by construction.
+// **The gate checks the MAJOR version**, not an exact patch: 1.x is the pre-Reforged client
+// line this engine reads (1.30.4 is still REQUIRED_VERSION and the downgrade target), and 2.x
+// is the remastered line. A pre-1.30 install is an MPQ one, which has no `.build.info` and is
+// therefore refused by the content-store check below.
 
-/** The build OpenWar3 plays. Matched on the first three components — `.build.info` carries a
- *  fourth (the build number, 11274 here) that varies with the download and says nothing about
- *  the data. MUST equal `REQUIRED_VERSION` in electron/install.mjs, which asks the same question
- *  of the folder dialog before the answer can be remembered; `pnpm app:test` compares them. */
+/** The build OpenWar3 plays by default. Matched on the first three components — `.build.info`
+ *  carries a fourth (the build number, 11274 here) that varies with the download and says
+ *  nothing about the data. Used as the downgrade target and in player-facing messages; MUST
+ *  equal `REQUIRED_VERSION` in electron/install.mjs. */
 export const REQUIRED_VERSION = "1.30.4";
+
+/** Major versions the install gate accepts: 1.x is the pre-Reforged client line the engine reads
+ *  today, 2.x is the remastered line. The exact patch is not part of the gate. MUST equal
+ *  `ACCEPTED_MAJOR_VERSIONS` in electron/install.mjs, which asks the same question of the folder
+ *  dialog before the answer can be remembered. */
+export const ACCEPTED_MAJOR_VERSIONS: readonly string[] = ["1", "2"];
 
 /** Builds the mount turns BACK into REQUIRED_VERSION, and so plays as it: the Internet Archive's
  *  1.31.1, which "Download game files" falls back on (src/assets/downloadInstall.ts). Its store
@@ -54,9 +61,9 @@ export interface VersionVerdict {
   message: string;
 }
 
-/** Does this version string name the build we play? */
-export const isRequiredVersion = (version: string | null): boolean =>
-  !!version && version.split(".").slice(0, 3).join(".") === REQUIRED_VERSION;
+/** Does this version string name a supported major line (1.x or 2.x)? */
+export const isAcceptedVersion = (version: string | null): boolean =>
+  !!version && ACCEPTED_MAJOR_VERSIONS.includes(version.split(".")[0]);
 
 /** Check a picked folder before it is mounted. */
 export function checkVersion(install: PickedInstall): VersionVerdict {
@@ -80,6 +87,6 @@ export function checkVersion(install: PickedInstall): VersionVerdict {
     };
   }
   const version = buildInfoVersion(install.casc.buildInfo);
-  if (isRequiredVersion(version) || isDowngradable(version)) return { ok: true, version, message: "" };
+  if (isAcceptedVersion(version) || isDowngradable(version)) return { ok: true, version, message: "" };
   return { ok: false, version, message: wrongVersionMessage(version) };
 }

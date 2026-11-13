@@ -48,6 +48,9 @@ contextBridge.exposeInMainWorld("ow3native", {
   /** Quit and start the game again — how a saved vsync choice is applied without the player
    *  having to do it by hand. */
   relaunch: () => ipcRenderer.invoke("ow3:relaunch"),
+  /** Quit the whole app (the launcher's Exit Program). macOS keeps an app alive with no windows,
+   *  so closing the window is not the same thing. */
+  quit: () => ipcRenderer.send("ow3:quit"),
   /** `{ path, valid }` — the remembered folder, and whether it is still an install. A folder
    *  that has been moved or deleted is reported rather than silently re-asked for, so the
    *  screen can say which one it lost. */
@@ -92,6 +95,11 @@ contextBridge.exposeInMainWorld("ow3native", {
   /** Keep a map a LAN game handed us, in the install's Maps\Download\ (src/assets/downloadedMaps.ts).
    *  The page names a FILE, never a folder: the shell puts it in that one folder or nowhere. */
   saveMap: (name, bytes) => ipcRenderer.invoke("ow3:map-save", String(name), bytes),
+  /** Whether that map is already kept in `Maps\Download\` (the launcher's "already downloaded"). */
+  mapExists: (name) => ipcRenderer.invoke("ow3:map-exists", String(name)),
+  /** The maps kept in `Maps\Download\`, and removing one (its language files go with it). */
+  listMaps: () => ipcRenderer.invoke("ow3:map-list"),
+  deleteMap: (name) => ipcRenderer.invoke("ow3:map-delete", String(name)),
   /**
    * The map list's Download Maps dialog (src/ui/mapSites.ts, electron/mapSitesView.mjs).
    * `fetch` reads an EpicWar page or file — the shell refuses any other address
