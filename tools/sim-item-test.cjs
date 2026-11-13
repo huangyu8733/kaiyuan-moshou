@@ -76,6 +76,11 @@ const ABILITIES = new Map([
   // Tome of Intelligence / Strength — DataA agi, DataB int, DataC str (the +2 tomes)
   ["AIim", ability("AIim", "AIim", { levelData: [lvl({ data: D(0, 2, 0) })] })],
   ["AIsm", ability("AIsm", "AIsm", { levelData: [lvl({ data: D(0, 0, 2) })] })],
+  // Manual of Health — DataA hit points, permanent. `AImiN` is the SAME code with a negative
+  // DataA: DotA's hidden "Morphling BUG Reparar" (`I00E`), which the real engine treats as
+  // nothing at all.
+  ["AImi", ability("AImi", "AImi", { levelData: [lvl({ data: D(100) })] })],
+  ["AImiN", ability("AImiN", "AImi", { levelData: [lvl({ data: D(-2000) })] })],
   // Cloak of Flames — Dur 1, Area 160, DataA 10, and its buff row `[BIcf]` wears Immolation's
   // own `Targetart = Abilities\Spells\NightElf\Immolation\ImmolationTarget.mdl`.
   ["AIcf", ability("AIcf", "AIcf", { targetFlags: ["ground", "enemy", "neutral"],
@@ -103,6 +108,8 @@ const ITEMS = new Map([
   ["sreg", item("sreg", ["AIsl"])], ["hslv", item("hslv", ["AIrl"])], ["pclr", item("pclr", ["AIpr"])],
   ["phea", item("phea", ["AIh1"])], ["shea", item("shea", ["AIha"])], ["sres", item("sres", ["AIra"])],
   ["tkno", item("tkno", ["AIlm"])], ["tint", item("tint", ["AIim"])], ["tstr", item("tstr", ["AIsm"])],
+  ["manh", item("manh", ["AImi"], { powerup: true, classType: "PowerUp" })],
+  ["manx", item("manx", ["AImiN"], { powerup: true, classType: "PowerUp" })],
   ["evtl", passive("evtl", ["AIev"])], ["penr", passive("penr", ["AImb"])],
   ["brac", passive("brac", ["AIsr"])], ["arsh", passive("arsh", ["AIdd"])],
   ["nspi", passive("nspi", ["AImx"])], ["gemt", passive("gemt", ["Adt1"])],
@@ -458,6 +465,24 @@ console.log("\na tome's attribute points confer what attribute points confer  (r
   const brute = give(unit({ isHero: true, baseStr: 22, startStr: 22, str: 22 }), "tstr");
   check("a Tome of Strength fires", world.useItem(brute.id, 0, 0, brute.x, brute.y), true);
   check("…and 25 hit points ceiling for each point", brute.maxHp, 1050);
+}
+
+console.log("\na Manual of Health raises the ceiling — a NEGATIVE one must do nothing  (DotA's `I00E`)");
+{
+  world = newWorld();
+  const hero = unit({ isHero: true, hp: 500, maxHp: 1000, baseMaxHp: 1000 });
+  hero.inventory = [null, null, null, null, null, null];
+  world.unitAddItem(hero.id, world.createItem("manh", hero.x, hero.y));
+  check("the manual is spent on pick-up", hero.maxHp, 1100);
+  check("…and the pool keeps its share of the ceiling", hero.hp, 550);
+  // "Morphling BUG Reparar": an `AImi` with DataA1 = -2000, handed to every freshly hired
+  // Morphling. Read as a delta it put the ceiling at -1520 and the hero died on the spot.
+  const morphling = unit({ isHero: true, hp: 480, maxHp: 480, baseMaxHp: 480 });
+  morphling.inventory = [null, null, null, null, null, null];
+  check("the -2000 \"fix\" item is picked up", world.unitAddItem(morphling.id, world.createItem("manx", morphling.x, morphling.y)), true);
+  check("…it does not lower the ceiling", morphling.maxHp, 480);
+  check("…nor the base the ceiling comes from", morphling.baseMaxHp, 480);
+  check("…so the hero keeps every point he had", morphling.hp, 480);
 }
 
 console.log("\na HEXED hero uses nothing and picks up nothing — a critter has no hands");

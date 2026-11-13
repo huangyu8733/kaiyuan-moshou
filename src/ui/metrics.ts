@@ -1,5 +1,9 @@
 // Discrete on-screen performance metrics plus a sound mute toggle — the bottom corner strip.
 //
+// HIDDEN BY DEFAULT (issue: "turn off the bottom-left debug info") — it sits over the corner
+// where a player reads nothing the game needs. F4 toggles it (render/mapViewer.ts keydown);
+// `toggle()` reports the new state.
+//
 // Two dresses, decided once at build time:
 //
 //   · A DEV build (`pnpm dev`) prints the whole developer's readout — fps, frame time, the
@@ -24,7 +28,9 @@ export class MetricsOverlay {
   private el: HTMLDivElement;
   private text: HTMLSpanElement;
   private muteBtn: HTMLButtonElement;
+  private closeBtn: HTMLButtonElement;
   private muted = false;
+  private visible = false; // off until F4 — the corner is the player's, not the debugger's
   private frames = 0;
   private accMs = 0;
 
@@ -47,17 +53,36 @@ export class MetricsOverlay {
       this.onToggleMute?.(this.muted);
     };
     this.muteBtn.hidden = !DEV_READOUT; // a player's strip carries no debug control
-    this.el.append(this.text, this.muteBtn);
+    // The collapse button is the strip's own door out — visible whenever the strip is, so
+    // dismissing it never needs the keyboard (F4 stays as the shortcut).
+    this.closeBtn = document.createElement("button");
+    this.closeBtn.className = "metrics-mute metrics-close";
+    this.closeBtn.textContent = "✕";
+    setGameTip(this.closeBtn, "收起调试信息 (F4)");
+    this.closeBtn.onclick = () => this.toggle();
+    this.el.append(this.text, this.muteBtn, this.closeBtn);
     document.body.appendChild(this.el);
   }
 
+  /** F4 — show or hide the strip. Returns the new visibility. The CSS hides the strip by
+   *  default (`.metrics` has no display) and only `.metrics-live` shows it: the class, not
+   *  the `hidden` attribute, is what a stale cached script cannot undo. The attribute is
+   *  kept in sync for the gamepad toast stack, which measures the strip by it. */
+  toggle(): boolean {
+    this.visible = !this.visible;
+    this.el.hidden = !this.visible;
+    this.el.classList.toggle("metrics-live", this.visible);
+    return this.visible;
+  }
+
   /** Call once per rendered frame with the frame delta in ms. `ping` as `RtsController.pingMs`
-   *  answers it: a number, null (linked, nothing measured yet) or undefined (single player). */
+   *  answers it: a number, null (linked, nothing measured yet) or undefined (single player).
+   *  Counts every frame regardless, so a freshly toggled-on strip reads true at once; it
+   *  writes the DOM only while visible. */
   frame(dtMs: number, units: number, ping: number | null | undefined): void {
-    this.el.hidden = false;
     this.frames++;
     this.accMs += dtMs;
-    if (this.accMs < UPDATE_PERIOD) return;
+    if (!this.visible || this.accMs < UPDATE_PERIOD) return;
     const avg = this.accMs / this.frames;
     const fps = `${Math.round(1000 / avg)} fps`;
     const pingText = ping === undefined ? "" : ` · ping ${ping === null ? "—" : `${Math.round(ping)} ms`}`;
@@ -68,6 +93,8 @@ export class MetricsOverlay {
 
   hide(): void {
     this.el.hidden = true;
+    this.el.classList.remove("metrics-live");
+    this.visible = false;
   }
 
   dispose(): void {

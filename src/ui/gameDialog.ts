@@ -29,6 +29,7 @@ import type { Arg, FdfFrame, FdfProp } from "./fdf/parser";
 import { numProp, type FdfLibrary } from "./fdf/library";
 import { textBoxHeight, type MeasureTextLines } from "./fdf/layout";
 import { mountFdfScreen, type FdfScreen } from "./fdf/render";
+import { mapDisplayText } from "../i18n/mapLanguage";
 
 const SCRIPT_DIALOG_FDF = "UI\\FrameDef\\UI\\ScriptDialog.fdf";
 
@@ -99,8 +100,8 @@ export class GameDialogOverlay {
       d.buttons.forEach((b, i) => {
         handlers[buttonName(i)] = () => this.handlers.onClick(b);
       });
-      const textOverrides: Record<string, string> = { ScriptDialogText: d.message };
-      d.buttons.forEach((b, i) => (textOverrides[textName(i)] = b.text));
+      const textOverrides: Record<string, string> = { ScriptDialogText: mapDisplayText(d.message) };
+      d.buttons.forEach((b, i) => (textOverrides[textName(i)] = mapDisplayText(b.text)));
       // Each button's KEY is the one the script handed DialogAddButton — MeleeVictoryDialogBJ
       // passes GetLocalizedHotkey("GAMEOVER_CONTINUE_GAME"), the letter its caption gilds
       // ("|CFFFFFFFFC|Rontinue Game"). The template's own ControlShortcutKey is one key for

@@ -132,6 +132,10 @@ export function registerFieldNatives(rt: Runtime): void {
     "ConvertItemIntegerField", "ConvertItemRealField", "ConvertItemBooleanField", "ConvertItemStringField",
     "ConvertAbilityIntegerField", "ConvertAbilityRealField", "ConvertAbilityBooleanField", "ConvertAbilityStringField",
     "ConvertAbilityIntegerLevelField", "ConvertAbilityRealLevelField", "ConvertAbilityBooleanLevelField", "ConvertAbilityStringLevelField",
+    // …and the LEVEL-ARRAY families, which are the per-level arrays BlzGetAbility…LevelArrayField
+    // indexes. Same interning, so the constants exist even where the accessor is still a default.
+    "ConvertAbilityIntegerLevelArrayField", "ConvertAbilityRealLevelArrayField",
+    "ConvertAbilityBooleanLevelArrayField", "ConvertAbilityStringLevelArrayField",
   ]) {
     def(rt, kind, (c, a) => c.rt.enumHandle(kind, asInt(a[0])));
   }

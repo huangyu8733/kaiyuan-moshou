@@ -1,0 +1,5 @@
+const fs=require('fs');
+const mpq=require('mdx-m3-viewer/dist/cjs/parsers/mpq');const Archive=(mpq.default??mpq).Archive;
+const a=new Archive();a.load(fs.readFileSync(process.argv[2]).buffer);
+const names=['Units\\AbilityData.slk','Units\\UnitData.slk','Units\\UnitAbilities.slk','Units\\unitUI.slk','Units\\UnitBalance.slk','Units\\AbilityMetaData.slk','Units\\AbilityStrings.txt','Units\\AbilityFunc.txt','Units\\CampaignAbilityFunc.txt','Units\\CampaignAbilityStrings.txt','Units\\OrcAbilityFunc.txt','Units\\OrcAbilityStrings.txt','Units\\CommonAbilityFunc.txt','Units\\CommonAbilityStrings.txt','Units\\AbilityData.csv','Units\\ItemData.slk','Units\\ItemStrings.txt','Units\\UnitStrings.txt','Units\\CampaignUnitStrings.txt','Units\\NeutralAbilityFunc.txt','Units\\NeutralAbilityStrings.txt'];
+for(const n of names){const f=a.get(n);if(!f){console.log(n,'MISSING');continue;}const b=f.bytes();console.log(n,b.length);fs.mkdirSync('/tmp/dota-units-'+process.argv[3],{recursive:true});fs.writeFileSync('/tmp/dota-units-'+process.argv[3]+'/'+n.replace('Units\\',''),Buffer.from(b));}

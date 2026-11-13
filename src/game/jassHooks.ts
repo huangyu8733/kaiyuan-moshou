@@ -1,6 +1,7 @@
 import { armorSoundCode, defenseTypeCode, targetedAsCode } from "../data/unitFieldCodes";
 import { jassOwnerOf, type SimWorld, type SimMine, type SimUnit, type StoredUnitState, type UnitStat } from "../sim/world";
 import type { EngineHooks, UnitSnapshot } from "../jass/runtime";
+import { mapDisplayText } from "../i18n/mapLanguage";
 import { MAIN_HALL_CHAINS } from "../data/races";
 import { AttackType, MoveType } from "../data/enums";
 import { MELEE } from "../data/gameplayConstants";
@@ -210,7 +211,11 @@ export function simHooks(sim: SimWorld, teamOf: (player: number) => number): Par
     setUnitName: (id, name, proper) => {
       const u = sim.units.get(id);
       if (!u || !name) return; // "Setting to an empty string will crash the game" (jassbot) — we refuse it instead
-      if (proper) { if (u.isHero) u.properName = name; } else u.nameOverride = name;
+      // The one door a script-given name has to the map's dictionary ("Summoned Turtle" →
+      // 召唤海龟). A name the script sets and later COMPARES would read the translated string
+      // back — the sidecar's text table is authored to never name such a flag.
+      const shown = mapDisplayText(name);
+      if (proper) { if (u.isHero) u.properName = shown; } else u.nameOverride = shown;
     },
     unitHasAbility: (id, abil) => sim.units.get(id)?.abilities.some((a) => a.id === abil) ?? false,
     unitAbilityAt: (id, index) => sim.units.get(id)?.abilities[index]?.id,
@@ -248,6 +253,10 @@ export function simHooks(sim: SimWorld, teamOf: (player: number) => number): Par
     stripHeroLevel: (id, n) => sim.stripHeroLevel(id, n),
     xpHandicap: (player) => sim.xpHandicap(player),
     setXpHandicap: (player, rate) => sim.setXpHandicap(player, rate),
+    playerHandicap: (player) => sim.playerHandicap(player),
+    setPlayerHandicap: (player, handicap) => sim.setPlayerHandicap(player, handicap),
+    unitRallyPoint: (id) => sim.unitRallyPoint(id),
+    abilityEffectArt: (id) => sim.abilityEffectArt(id),
     pauseTimedLife: (id, flag) => sim.pauseTimedLife(id, flag),
     setUnitClassification: (id, t, on) => sim.setUnitClassification(id, t, on),
     removeBuffs: (id, q) => void sim.removeBuffs(id, q),
@@ -280,6 +289,13 @@ export function simHooks(sim: SimWorld, teamOf: (player: number) => number): Par
     // `setUnitAnimation` is NOT here: an animation is a model's, not the world's.
     setUnitInvulnerable: (id, flag) => sim.setInvulnerable(id, flag),
     setUnitPathing: (id, flag) => sim.setPathing(id, flag),
+    // UnitSetConstructionProgress / UnitSetUpgradeProgress — a script finishing a build or the
+    // upgrade at a building's queue head (the "-fastbuild" cheat in DotA v6.83d and its kin).
+    setConstructionProgress: (id, percent) => sim.setConstructionProgress(id, percent),
+    setUpgradeProgress: (id, percent) => sim.setUpgradeProgress(id, percent),
+    // SetUnitUseFood — whether the body eats supply. It is the flag a charmed/possessed unit
+    // already wears, so nothing new has to be modelled: false just sets it.
+    setUnitUseFood: (id, useFood) => sim.setUnitUseFood(id, useFood),
     // UnitIsSleeping / UnitWakeUp — a night-asleep creep. Waking it is the same one-field change
     // the sim's own damage/proximity wake makes; nothing else is armed while it sleeps.
     isUnitSleeping: (id) => sim.units.get(id)?.asleep ?? false,

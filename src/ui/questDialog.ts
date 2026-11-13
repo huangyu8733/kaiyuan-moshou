@@ -32,6 +32,7 @@ import { UI_HEIGHT } from "./fdf/layout";
 import { mountFdfScreen, playFdfClick, type FdfScreen } from "./fdf/render";
 import { fitLine } from "./fdf/widgets";
 import { wc3ToHtml } from "./wc3Text";
+import { mapDisplayText } from "../i18n/mapLanguage";
 
 const QUEST_FDF = "UI\\FrameDef\\UI\\QuestDialog.fdf";
 
@@ -364,17 +365,17 @@ export class QuestDialogOverlay {
     // under it the white line naming what these quests belong to — the map.
     const out: Record<string, string> = {
       QuestTitleValue: this.string("QUESTS"),
-      QuestSubtitleValue: this.model.mapName(),
+      QuestSubtitleValue: mapDisplayText(this.model.mapName()),
     };
     for (const q of this.enabled()) {
-      out[`QuestListItemTitle${q.handleId}`] = q.discovered ? q.title : this.string("QUESTNOTDISCOVERED");
+      out[`QuestListItemTitle${q.handleId}`] = q.discovered ? mapDisplayText(q.title) : this.string("QUESTNOTDISCOVERED");
       out[`QuestListItemComplete${q.handleId}`] = !q.discovered ? ""
         : q.failed ? this.string("QUESTFAILED")
         : q.completed ? this.string("QUESTCOMPLETED")
         : this.string("QUESTNOTCOMPLETED");
     }
     const sel = this.selectedQuest();
-    if (sel) out.QuestDetailsTitle = sel.discovered ? sel.title : this.string("QUESTNOTDISCOVERED");
+    if (sel) out.QuestDetailsTitle = sel.discovered ? mapDisplayText(sel.title) : this.string("QUESTNOTDISCOVERED");
     return out;
   }
 
@@ -401,7 +402,7 @@ export class QuestDialogOverlay {
       if (sel?.discovered) this.paintRequirements(screen, host, sel);
     }
     screen.textArea("QuestDisplay")?.setLines(
-      sel ? [sel.discovered ? sel.description : this.string("QUESTNEEDTODISCOVER")] : [],
+      sel ? [sel.discovered ? mapDisplayText(sel.description) : this.string("QUESTNEEDTODISCOVER")] : [],
     );
     // The selected row keeps its mouse-over glow on, the way the game marks the selection
     // (QuestListItemSelectedHighlight is the same art as the hover highlight).
@@ -474,7 +475,7 @@ export class QuestDialogOverlay {
       el.className = it.completed ? "quest-req quest-req-done" : "quest-req";
       el.style.fontSize = `${font}px`;
       el.style.height = `${Math.round(font * 1.3)}px`;
-      el.innerHTML = `-&nbsp;${wc3ToHtml(it.description)}`;
+      el.innerHTML = `-&nbsp;${wc3ToHtml(mapDisplayText(it.description))}`;
       host.appendChild(el);
     }
   }

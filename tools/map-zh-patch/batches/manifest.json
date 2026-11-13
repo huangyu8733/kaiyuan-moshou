@@ -1,0 +1,518 @@
+[
+  {
+    "file": "ability-01.json",
+    "group": "ability",
+    "keys": 38,
+    "chars": 10835
+  },
+  {
+    "file": "ability-02.json",
+    "group": "ability",
+    "keys": 33,
+    "chars": 10942
+  },
+  {
+    "file": "ability-03.json",
+    "group": "ability",
+    "keys": 34,
+    "chars": 10925
+  },
+  {
+    "file": "ability-04.json",
+    "group": "ability",
+    "keys": 25,
+    "chars": 10841
+  },
+  {
+    "file": "ability-05.json",
+    "group": "ability",
+    "keys": 25,
+    "chars": 9292
+  },
+  {
+    "file": "ability-06.json",
+    "group": "ability",
+    "keys": 32,
+    "chars": 10990
+  },
+  {
+    "file": "ability-07.json",
+    "group": "ability",
+    "keys": 39,
+    "chars": 10853
+  },
+  {
+    "file": "ability-08.json",
+    "group": "ability",
+    "keys": 39,
+    "chars": 10430
+  },
+  {
+    "file": "ability-09.json",
+    "group": "ability",
+    "keys": 43,
+    "chars": 10922
+  },
+  {
+    "file": "ability-10.json",
+    "group": "ability",
+    "keys": 25,
+    "chars": 10768
+  },
+  {
+    "file": "ability-11.json",
+    "group": "ability",
+    "keys": 37,
+    "chars": 10372
+  },
+  {
+    "file": "ability-12.json",
+    "group": "ability",
+    "keys": 21,
+    "chars": 10756
+  },
+  {
+    "file": "ability-13.json",
+    "group": "ability",
+    "keys": 20,
+    "chars": 10013
+  },
+  {
+    "file": "ability-14.json",
+    "group": "ability",
+    "keys": 31,
+    "chars": 10846
+  },
+  {
+    "file": "ability-15.json",
+    "group": "ability",
+    "keys": 22,
+    "chars": 10950
+  },
+  {
+    "file": "ability-16.json",
+    "group": "ability",
+    "keys": 21,
+    "chars": 10860
+  },
+  {
+    "file": "ability-17.json",
+    "group": "ability",
+    "keys": 27,
+    "chars": 10966
+  },
+  {
+    "file": "ability-18.json",
+    "group": "ability",
+    "keys": 48,
+    "chars": 10974
+  },
+  {
+    "file": "ability-19.json",
+    "group": "ability",
+    "keys": 33,
+    "chars": 10869
+  },
+  {
+    "file": "ability-20.json",
+    "group": "ability",
+    "keys": 29,
+    "chars": 10710
+  },
+  {
+    "file": "ability-21.json",
+    "group": "ability",
+    "keys": 31,
+    "chars": 10878
+  },
+  {
+    "file": "ability-22.json",
+    "group": "ability",
+    "keys": 40,
+    "chars": 10631
+  },
+  {
+    "file": "ability-23.json",
+    "group": "ability",
+    "keys": 35,
+    "chars": 10949
+  },
+  {
+    "file": "ability-24.json",
+    "group": "ability",
+    "keys": 46,
+    "chars": 7735
+  },
+  {
+    "file": "unitBody-01.json",
+    "group": "unitBody",
+    "keys": 48,
+    "chars": 10076
+  },
+  {
+    "file": "unitBody-02.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 9564
+  },
+  {
+    "file": "unitBody-03.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 9564
+  },
+  {
+    "file": "unitBody-04.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 9592
+  },
+  {
+    "file": "unitBody-05.json",
+    "group": "unitBody",
+    "keys": 8,
+    "chars": 9828
+  },
+  {
+    "file": "unitBody-06.json",
+    "group": "unitBody",
+    "keys": 7,
+    "chars": 10152
+  },
+  {
+    "file": "unitBody-07.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 9978
+  },
+  {
+    "file": "unitBody-08.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 10420
+  },
+  {
+    "file": "unitBody-09.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 10130
+  },
+  {
+    "file": "unitBody-10.json",
+    "group": "unitBody",
+    "keys": 7,
+    "chars": 10474
+  },
+  {
+    "file": "unitBody-11.json",
+    "group": "unitBody",
+    "keys": 12,
+    "chars": 10922
+  },
+  {
+    "file": "unitBody-12.json",
+    "group": "unitBody",
+    "keys": 10,
+    "chars": 9942
+  },
+  {
+    "file": "unitBody-13.json",
+    "group": "unitBody",
+    "keys": 8,
+    "chars": 9836
+  },
+  {
+    "file": "unitBody-14.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 10388
+  },
+  {
+    "file": "unitBody-15.json",
+    "group": "unitBody",
+    "keys": 10,
+    "chars": 10550
+  },
+  {
+    "file": "unitBody-16.json",
+    "group": "unitBody",
+    "keys": 9,
+    "chars": 9914
+  },
+  {
+    "file": "unitBody-17.json",
+    "group": "unitBody",
+    "keys": 7,
+    "chars": 9832
+  },
+  {
+    "file": "unitBody-18.json",
+    "group": "unitBody",
+    "keys": 7,
+    "chars": 10486
+  },
+  {
+    "file": "unitBody-19.json",
+    "group": "unitBody",
+    "keys": 16,
+    "chars": 10634
+  },
+  {
+    "file": "unitBody-20.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 10908
+  },
+  {
+    "file": "unitBody-21.json",
+    "group": "unitBody",
+    "keys": 11,
+    "chars": 10682
+  },
+  {
+    "file": "unitBody-22.json",
+    "group": "unitBody",
+    "keys": 15,
+    "chars": 10878
+  },
+  {
+    "file": "unitBody-23.json",
+    "group": "unitBody",
+    "keys": 7,
+    "chars": 9854
+  },
+  {
+    "file": "unitBody-24.json",
+    "group": "unitBody",
+    "keys": 8,
+    "chars": 9492
+  },
+  {
+    "file": "unitBody-25.json",
+    "group": "unitBody",
+    "keys": 12,
+    "chars": 10614
+  },
+  {
+    "file": "unitBody-26.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 9620
+  },
+  {
+    "file": "unitBody-27.json",
+    "group": "unitBody",
+    "keys": 7,
+    "chars": 10886
+  },
+  {
+    "file": "unitBody-28.json",
+    "group": "unitBody",
+    "keys": 7,
+    "chars": 9946
+  },
+  {
+    "file": "unitBody-29.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 10390
+  },
+  {
+    "file": "unitBody-30.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 9882
+  },
+  {
+    "file": "unitBody-31.json",
+    "group": "unitBody",
+    "keys": 7,
+    "chars": 10890
+  },
+  {
+    "file": "unitBody-32.json",
+    "group": "unitBody",
+    "keys": 10,
+    "chars": 10792
+  },
+  {
+    "file": "unitBody-33.json",
+    "group": "unitBody",
+    "keys": 7,
+    "chars": 10456
+  },
+  {
+    "file": "unitBody-34.json",
+    "group": "unitBody",
+    "keys": 10,
+    "chars": 10488
+  },
+  {
+    "file": "unitBody-35.json",
+    "group": "unitBody",
+    "keys": 10,
+    "chars": 10710
+  },
+  {
+    "file": "unitBody-36.json",
+    "group": "unitBody",
+    "keys": 8,
+    "chars": 10504
+  },
+  {
+    "file": "unitBody-37.json",
+    "group": "unitBody",
+    "keys": 9,
+    "chars": 10814
+  },
+  {
+    "file": "unitBody-38.json",
+    "group": "unitBody",
+    "keys": 8,
+    "chars": 9612
+  },
+  {
+    "file": "unitBody-39.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 9696
+  },
+  {
+    "file": "unitBody-40.json",
+    "group": "unitBody",
+    "keys": 6,
+    "chars": 9442
+  },
+  {
+    "file": "unitBody-41.json",
+    "group": "unitBody",
+    "keys": 9,
+    "chars": 10754
+  },
+  {
+    "file": "unitBody-42.json",
+    "group": "unitBody",
+    "keys": 8,
+    "chars": 9682
+  },
+  {
+    "file": "unitBody-43.json",
+    "group": "unitBody",
+    "keys": 19,
+    "chars": 10572
+  },
+  {
+    "file": "unitBody-44.json",
+    "group": "unitBody",
+    "keys": 19,
+    "chars": 10760
+  },
+  {
+    "file": "unitBody-45.json",
+    "group": "unitBody",
+    "keys": 19,
+    "chars": 10794
+  },
+  {
+    "file": "unitBody-46.json",
+    "group": "unitBody",
+    "keys": 18,
+    "chars": 10688
+  },
+  {
+    "file": "unitBody-47.json",
+    "group": "unitBody",
+    "keys": 18,
+    "chars": 10870
+  },
+  {
+    "file": "unitBody-48.json",
+    "group": "unitBody",
+    "keys": 22,
+    "chars": 10932
+  },
+  {
+    "file": "unitBody-49.json",
+    "group": "unitBody",
+    "keys": 24,
+    "chars": 10676
+  },
+  {
+    "file": "unitBody-50.json",
+    "group": "unitBody",
+    "keys": 21,
+    "chars": 10638
+  },
+  {
+    "file": "unitBody-51.json",
+    "group": "unitBody",
+    "keys": 19,
+    "chars": 10236
+  },
+  {
+    "file": "unitBody-52.json",
+    "group": "unitBody",
+    "keys": 15,
+    "chars": 10296
+  },
+  {
+    "file": "unitBody-53.json",
+    "group": "unitBody",
+    "keys": 15,
+    "chars": 10770
+  },
+  {
+    "file": "unitBody-54.json",
+    "group": "unitBody",
+    "keys": 15,
+    "chars": 10952
+  },
+  {
+    "file": "unitBody-55.json",
+    "group": "unitBody",
+    "keys": 19,
+    "chars": 10900
+  },
+  {
+    "file": "unitBody-56.json",
+    "group": "unitBody",
+    "keys": 11,
+    "chars": 10450
+  },
+  {
+    "file": "unitBody-57.json",
+    "group": "unitBody",
+    "keys": 15,
+    "chars": 10550
+  },
+  {
+    "file": "unitBody-58.json",
+    "group": "unitBody",
+    "keys": 12,
+    "chars": 10922
+  },
+  {
+    "file": "unitBody-59.json",
+    "group": "unitBody",
+    "keys": 13,
+    "chars": 10622
+  },
+  {
+    "file": "unitBody-60.json",
+    "group": "unitBody",
+    "keys": 15,
+    "chars": 10740
+  },
+  {
+    "file": "unitBody-61.json",
+    "group": "unitBody",
+    "keys": 8,
+    "chars": 5906
+  },
+  {
+    "file": "unitTip-01.json",
+    "group": "unitTip",
+    "keys": 134,
+    "chars": 9500
+  }
+]

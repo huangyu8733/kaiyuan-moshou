@@ -31,6 +31,7 @@
 //    TimerDialogSetRealTimeRemaining last put in it, so it must not crash on the null.
 
 import type { NativeCtx, Runtime, TimerDialogObj, TimerObj } from "../runtime";
+import { mapDisplayText } from "../../i18n/mapLanguage";
 import { asInt, asNum, asStr, jBool, jHandle, JNULL, truthy, type JassValue } from "../values";
 
 type NativeFn = (ctx: NativeCtx, args: JassValue[]) => JassValue;
@@ -73,7 +74,9 @@ export function registerTimerDialogNatives(rt: Runtime): void {
   def(rt, "TimerDialogSetTitle", (c, a) => {
     const d = td(c, a[0]);
     if (d) {
-      d.title = asStr(a[1]);
+      // A display boundary like DisplayTextToPlayer: the title is said, not compared — the
+      // map's dictionary answers here (Spellcraft's "Level 12  in " countdown reads 等级).
+      d.title = mapDisplayText(asStr(a[1]));
       d.revision++;
     }
     return JNULL;

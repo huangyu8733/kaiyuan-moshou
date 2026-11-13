@@ -25,13 +25,24 @@ export type InstallFiles = Map<string, File>;
 export const MAPS_PREFIX = "Maps\\";
 
 const isMap = (name: string): boolean => /\.(w3m|w3x)$/i.test(name);
+/** A map's own Chinese dictionary beside it (i18n/mapLanguage.ts). Not a map: it must not show
+ *  up in any map list, but it IS an install file the VFS has to be able to read. */
+const isLanguageFile = (name: string): boolean => /\.zhCN\.json$/i.test(name);
 const isUnderMaps = (key: string): boolean => key.toLowerCase().startsWith(MAPS_PREFIX.toLowerCase());
 
 /** The maps in a picked install, as `path → File` (path with WC3's `\` separators). */
 export function installMaps(files: InstallFiles): Map<string, File> {
   const maps = new Map<string, File>();
-  for (const [key, file] of files) if (isUnderMaps(key)) maps.set(key, file);
+  for (const [key, file] of files) if (isUnderMaps(key) && isMap(key)) maps.set(key, file);
   return maps;
+}
+
+/** Everything under `Maps\` — the maps AND their `.zhCN.json` sidecars — for the VFS's loose
+ *  layer (vfs/looseFiles.ts). The map list keeps using `installMaps`, which drops the sidecars. */
+export function installLooseFiles(files: InstallFiles): Map<string, File> {
+  const loose = new Map<string, File>();
+  for (const [key, file] of files) if (isUnderMaps(key)) loose.set(key, file);
+  return loose;
 }
 
 /** Ask the browser to keep the OPFS cache from being evicted under storage pressure. */
@@ -390,12 +401,13 @@ async function collectCasc(dir: DirEntry, into: CascFiles, depth = 0): Promise<v
   }
 }
 
-/** Walk `Maps\` and add every .w3m/.w3x under it, keyed by its relative path. */
+/** Walk `Maps\` and add every .w3m/.w3x — and every `.zhCN.json` beside one — keyed by its
+ *  relative path. */
 async function collectMaps(dir: DirEntry, prefix: string, into: InstallFiles): Promise<void> {
   for await (const entry of dir.values()) {
     const path = `${prefix}\\${entry.name}`;
     if (entry.kind === "file") {
-      if (isMap(entry.name)) into.set(path, await entry.getFile());
+      if (isMap(entry.name) || isLanguageFile(entry.name)) into.set(path, await entry.getFile());
     } else {
       await collectMaps(entry, path, into);
     }
@@ -464,7 +476,7 @@ function pickViaInput(): Promise<PickedInstall | null> {
             if (/^[0-9a-f]{32}$/i.test(file.name)) casc.config.set(file.name.toLowerCase(), await file.text());
             continue;
           }
-          if (!isMap(file.name)) continue;
+          if (!isMap(file.name) && !isLanguageFile(file.name)) continue;
           const rel = parts.join("\\");
           if (isUnderMaps(rel)) files.set(rel, file);
         }

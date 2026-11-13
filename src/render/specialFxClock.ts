@@ -25,6 +25,11 @@ export interface SpecialFxClips {
   birthSecs: number;
   /** Does it have a Stand to settle into — i.e. is it a PERSISTENT effect? */
   hasStand: boolean;
+  /** How long the ONE clip a Birth-less model plays (`ThunderclapCaster`, `WarStompCaster`,
+   *  and the imported `…Death.mdx` bursts) runs. A persistent effect loops it for as long as
+   *  the script keeps it; a DOOMED one gets exactly one pass. 0 when the model has no sane
+   *  clip at all. */
+  standSecs: number;
 }
 
 export type SpecialFxPhase =
@@ -40,6 +45,35 @@ export type SpecialFxPhase =
    *  whether or not anyone saw it — and it is never drawn again. This is what keeps an
    *  effect that played out in the fog from turning up late. */
   | { kind: "spent" };
+
+/**
+ * Does DestroyEffect owe this effect the clip the game still shows?
+ *
+ * `call DestroyEffect(AddSpecialEffect(…))` destroys an effect in the very frame it was made,
+ * and WC3 plays it out anyway — that one-shot idiom is the whole of DotA's spell-art layer (a
+ * Fissure is twenty-five VolcanoDeath models written exactly that way). So an effect whose Birth
+ * still has time on it is NOT taken off the scene: it runs the clip and leaves at the end of it
+ * (the `doomed` release in updateSpecialFx). Once the Birth is done there is nothing owed — a
+ * persistent effect goes through its Death clip, a Birth-only one has already been spent.
+ *
+ * `scriptOwnsClip` is BlzPlaySpecialEffect: from then on the script picked the animation, and
+ * the Birth → Stand lifecycle — this rule included — no longer speaks for it.
+ *
+ * A model with NO Birth (ThunderclapCaster, WarStompCaster, the imported `…Death.mdx` bursts —
+ * 52 of DotA's 236 script effects) is owed ONE PASS of the single clip it has: those are
+ * one-shot bursts too, and dropping them on the DestroyEffect line drew nothing.
+ */
+export function specialFxOwesItsClip(age: number, clips: SpecialFxClips, scriptOwnsClip: boolean): boolean {
+  if (scriptOwnsClip) return false;
+  if (clips.hasBirth) return age < clips.birthSecs;
+  return clips.standSecs > 0 && age < clips.standSecs;
+}
+
+/** Is a DOOMED effect (see specialFxOwesItsClip) done — has the life it was owed run out? A
+ *  Birth-full model leaves when its Birth does, a Birth-less one after its one pass. */
+export function specialFxDoomedOver(age: number, clips: SpecialFxClips): boolean {
+  return age >= (clips.hasBirth ? clips.birthSecs : clips.standSecs);
+}
 
 /** The effect's phase at `age` seconds old. Total: age alone decides it. */
 export function specialFxPhaseAt(age: number, clips: SpecialFxClips): SpecialFxPhase {

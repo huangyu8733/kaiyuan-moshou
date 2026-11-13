@@ -1892,11 +1892,20 @@ endfunction`;
 // The game's own string table (UI\FrameDef\GlobalStrings.fdf) — the engine's
 // GetLocalizedString reads it, and blizzard.j writes the whole end screen in its keys.
 // Parsed here with a regex rather than our FDF library, so the check is independent of it.
+// The install's own FDF text is Latin-1 on an English client and UTF-8 once the client is
+// Chinese (the extractor transcodes CP936 on the way into ExtractedData). Decode whichever it
+// is, so the oracle below holds the same characters the engine's decodeGameText() gives the
+// game — an English-only assumption here silently turned every Chinese string into mojibake.
+const decodeText = (buf) => {
+  const utf8 = new TextDecoder('utf-8').decode(buf);
+  return utf8.includes('\uFFFD') ? buf.toString('latin1') : utf8;
+};
+
 const GLOBAL_STRINGS = (() => {
   const path = join(WC3, 'ExtractedData', 'merged', 'UI', 'FrameDef', 'GlobalStrings.fdf');
   const map = new Map();
   if (!existsSync(path)) return map;
-  const src = readFileSync(path, 'latin1');
+  const src = decodeText(readFileSync(path));
   for (const m of src.matchAll(/^\s*([A-Z0-9_]+)\s+"((?:[^"\\]|\\.)*)"/gm)) map.set(m[1], m[2]);
   return map;
 })();
@@ -2076,15 +2085,16 @@ endfunction`;
   // label arrives with WC3 markup: "|CFFFFFFFFQ|Ruit Game". Strip it to read the words.
   const plain = (s) => (s ?? '').replace(/\|[cC][0-9a-fA-F]{8}|\|[rRnN]/g, '');
 
-  if (d && d.message === 'Victory!' && GLOBAL_STRINGS.get('GAMEOVER_VICTORY_MSG') === 'Victory!') {
-    ok(`MeleeVictoryDialogBJ → a dialog reading "Victory!" (GetLocalizedString("GAMEOVER_VICTORY_MSG") off the game's own GlobalStrings.fdf)`);
-  } else fail(`victory dialog message: ${JSON.stringify(d?.message)}`);
+  if (d && d.message === GLOBAL_STRINGS.get('GAMEOVER_VICTORY_MSG') && d.message) {
+    ok(`MeleeVictoryDialogBJ → a dialog reading the install's own GAMEOVER_VICTORY_MSG ("${d.message}") — GetLocalizedString("GAMEOVER_VICTORY_MSG") off GlobalStrings.fdf`);
+  } else fail(`victory dialog message: ${JSON.stringify(d?.message)} (install says ${JSON.stringify(GLOBAL_STRINGS.get('GAMEOVER_VICTORY_MSG'))})`);
 
   const labels = (d?.buttons ?? []).map((b) => plain(b.text));
   const quitBtn = (d?.buttons ?? []).find((b) => b.quit);
-  if (labels.join('|') === 'Continue Game|Quit Game' && quitBtn && quitBtn.doScoreScreen === true) {
-    ok(`its buttons are "Continue Game" + a QUIT button ("Quit Game", doScoreScreen) — DialogAddQuitButton's quit flag is what ends the match`);
-  } else fail(`victory buttons: ${JSON.stringify(labels)} quit=${!!quitBtn}`);
+  const wantLabels = ['GAMEOVER_CONTINUE_GAME', 'GAMEOVER_QUIT_GAME'].map((k) => plain(GLOBAL_STRINGS.get(k) ?? '')).join('|');
+  if (labels.join('|') === wantLabels && quitBtn && quitBtn.doScoreScreen === true) {
+    ok(`its buttons are the install's GAMEOVER_CONTINUE_GAME + a QUIT button (GAMEOVER_QUIT_GAME, doScoreScreen) — DialogAddQuitButton's quit flag is what ends the match`);
+  } else fail(`victory buttons: ${JSON.stringify(labels)} (want ${JSON.stringify(wantLabels)}) quit=${!!quitBtn}`);
 
   // The hotkey comes out of the string itself: GlobalStrings marks the accelerator by
   // colouring it white ("|CFFFFFFFFQ|Ruit Game" → Q).
@@ -2096,9 +2106,10 @@ endfunction`;
     ok(`DialogDisplay puts it up for the winning player, and bj_victoryDialogSound plays the game's own "QuestCompleted" sting`);
   } else fail(`display: visibleFor=${[...(d?.visibleFor ?? [])]} sounds=${JSON.stringify(sounds)}`);
 
-  if (messages.some((m) => m === 'Elev was victorious.')) {
-    ok(`DisplayTimedTextFromPlayer substitutes the player into PLAYER_VICTORIOUS ("%s was victorious.") — the subject, not the audience`);
-  } else fail(`victory message: ${JSON.stringify(messages)}`);
+  const victorious = (GLOBAL_STRINGS.get('PLAYER_VICTORIOUS') ?? '').replace('%s', 'Elev');
+  if (victorious && messages.some((m) => m === victorious)) {
+    ok(`DisplayTimedTextFromPlayer substitutes the player into PLAYER_VICTORIOUS ("${victorious}") — the subject, not the audience`);
+  } else fail(`victory message: ${JSON.stringify(messages)} (want ${JSON.stringify(victorious)})`);
 
   // A click runs the script's own dialog-button trigger, with GetClickedButton/Dialog in scope.
   interp.run('OwnDialog', []);
@@ -2118,9 +2129,10 @@ endfunction`;
   interp.run('DefeatOther', []);
   const lost = rt.dialogs.find((x) => x.visibleFor.has(1));
   const defeated = interp.rt.globalArrays.get('bj_meleeDefeated')?.get(1);
-  if (lost && lost.message === 'You failed to achieve victory.' && defeated?.b === true) {
-    ok(`MeleeDoDefeat(Player(1)) → bj_meleeDefeated[1] and the "You failed to achieve victory." dialog`);
-  } else fail(`defeat: msg ${JSON.stringify(lost?.message)} flag ${defeated?.b}`);
+  const defeatMsg = GLOBAL_STRINGS.get('GAMEOVER_DEFEAT_MSG');
+  if (lost && lost.message === defeatMsg && defeated?.b === true) {
+    ok(`MeleeDoDefeat(Player(1)) → bj_meleeDefeated[1] and the install's GAMEOVER_DEFEAT_MSG dialog ("${defeatMsg}")`);
+  } else fail(`defeat: msg ${JSON.stringify(lost?.message)} flag ${defeated?.b} (want ${JSON.stringify(defeatMsg)})`);
 
   // ...but the LOSING sting is the local player's, not everyone's: StartSoundForPlayerBJ
   // gates on GetLocalPlayer, so player 1's defeat is silent here and player 0's is not.
@@ -2337,9 +2349,12 @@ endfunction
   const line = sndOf('udg_line');
   // ...whereas CreateSoundFromLabel has no file to keep, so it takes the row's — and the
   // row is in a DIFFERENT table (DialogSounds), which is the "one label namespace" rule.
-  if (line.file === 'Sound\\Dialogue\\NightElfCampaign\\NightElf03\\N03Tyrande01.mp3' && line.volume === 120) {
-    ok(`CreateSoundFromLabel resolves its file + volume 120 out of DialogSounds.slk — one label namespace spans every SoundInfo table`);
-  } else fail(`from-label: file ${line.file}, vol ${line.volume}`);
+  // Both halves are read off the install's own row: the volume is the table's, not a literal
+  // (it differs between client versions — 120 on the 1.27 data, 127 on the 1.30+ data).
+  const tyrande = SOUND_LABELS('N03Tyrande01');
+  if (tyrande && line.file === tyrande.files[0] && line.volume === tyrande.volume) {
+    ok(`CreateSoundFromLabel resolves its file + volume ${tyrande.volume} out of DialogSounds — one label namespace spans every SoundInfo table`);
+  } else fail(`from-label: file ${line?.file}, vol ${line?.volume} (row says ${tyrande?.files[0]}, vol ${tyrande?.volume})`);
   if (Math.abs(g('udg_dur').n - 3.385) < 1e-6) {
     ok(`GetSoundDurationBJ → 3.385 s (the real BJ: I2R(GetSoundDuration) * 0.001 over the editor's baked 3385 ms)`);
   } else fail(`GetSoundDurationBJ: ${g('udg_dur').n}`);
@@ -2501,9 +2516,10 @@ endfunction
     ok(`the "finish soon" window is CreateTimerDialog(null) — a legal, clock-less dialog (it reads TimerDialogSetRealTimeRemaining)`);
   } else fail(`null-timer seconds: ${rt.timerDialogSeconds(nullTimer[0])}`);
   // Its title is the race-specific "Build <main hall>" string, off the game's own table.
-  if (crippleWins[0].title === 'Build Town Hall' && crippleWins[1].title === 'Build Great Hall') {
-    ok(`the cripple windows are titled from the game's own strings, per RACE — "Build Town Hall" (human) / "Build Great Hall" (orc)`);
-  } else fail(`cripple titles: ${crippleWins.map((d) => d.title).join(' / ')}`);
+  const wantCripple = ['CRIPPLE_TIMER_HUMAN', 'CRIPPLE_TIMER_ORC'].map((k) => GLOBAL_STRINGS.get(k));
+  if (crippleWins[0].title === wantCripple[0] && crippleWins[1].title === wantCripple[1]) {
+    ok(`the cripple windows are titled from the game's own strings, per RACE — CRIPPLE_TIMER_HUMAN ("${wantCripple[0]}") / CRIPPLE_TIMER_ORC ("${wantCripple[1]}")`);
+  } else fail(`cripple titles: ${crippleWins.map((d) => d.title).join(' / ')} (want ${wantCripple.join(' / ')})`);
   // Not shown yet — a player is only crippled once they LOSE their last hall.
   if (!crippleWins.some((d) => d.displayed)) {
     ok(`...and neither is on screen yet: a cripple window only shows when its player actually becomes crippled`);
@@ -3884,7 +3900,7 @@ endfunction
 // effect created in the fog of war froze at frame 0 and then played its Birth from the
 // start whenever the player finally looked — the art queued up instead of happening.
 // `specialFxPhaseAt` is the rule that fixes it: AGE alone decides the phase.
-const { specialFxPhaseAt } = require(join(REPO, '.jass-build', 'src', 'render', 'specialFxClock.js'));
+const { specialFxPhaseAt, specialFxOwesItsClip, specialFxDoomedOver } = require(join(REPO, '.jass-build', 'src', 'render', 'specialFxClock.js'));
 
 console.log("\n[7.26b] Special effects run on the game's clock (fog must not queue art up)");
 {
@@ -3927,10 +3943,45 @@ console.log("\n[7.26b] Special effects run on the game's clock (fog must not que
 
   // A model with no Birth at all just loops the one clip it has — it is never "spent", or
   // every such effect would blink out the frame it was created.
-  const NO_BIRTH = { hasBirth: false, birthStart: 0, birthSecs: 0, hasStand: false };
+  const NO_BIRTH = { hasBirth: false, birthStart: 0, birthSecs: 0, hasStand: false, standSecs: 0 };
   if (specialFxPhaseAt(0, NO_BIRTH).kind === 'stand' && specialFxPhaseAt(999, NO_BIRTH).kind === 'stand') {
     ok('a model with NO Birth clip is steady from birth to death — never spent (it has no flourish to run out of)');
   } else fail(`no-birth model: ${JSON.stringify(specialFxPhaseAt(0, NO_BIRTH))}`);
+
+  // --- `call DestroyEffect(AddSpecialEffect(…))` — the one-shot idiom --------------------
+  //
+  // DotA's whole spell-art layer: Fissure lays 25 of these in a row and destroys each in the
+  // frame it makes it. WC3 still shows them, so a clip that still has time on it is OWED to
+  // the player and the effect is released at the end of it instead of being detached on the
+  // spot. VolcanoDeath.mdx (read out of the install): ONE sequence, `Birth [6333, 11333]`,
+  // no Death — which is why taking it off the scene "now" drew nothing at all.
+  const VOLCANO_DEATH = { hasBirth: true, birthStart: 6333, birthSecs: 5, hasStand: false, standSecs: 0 };
+  if (specialFxOwesItsClip(0, VOLCANO_DEATH, false)) {
+    ok('an effect destroyed in its creation frame still owes its Birth (DotA\'s DestroyEffect(AddSpecialEffect(…)))');
+  } else fail('a fresh effect was refused its Birth');
+  if (!specialFxOwesItsClip(5.1, VOLCANO_DEATH, false)) {
+    ok('...and once the Birth has run there is nothing owed — the scene may let it go');
+  } else fail('a spent Birth-only effect still claims a clip');
+  if (!specialFxOwesItsClip(0, VOLCANO_DEATH, true)) {
+    ok('BlzPlaySpecialEffect takes the clip over: the script owns the animation, so DestroyEffect means destroy');
+  } else fail('a script-played effect kept its Birth lifecycle');
+  if (!specialFxOwesItsClip(0, NO_BIRTH, false)) {
+    ok('a model with no clip at all has nothing to owe either');
+  } else fail('a clipless model claimed a clip it has not got');
+
+  // The Birth-less half of the same idiom: ThunderclapCaster.mdx / WarStompCaster.mdx have ONE
+  // sane clip and no Birth, and 27 of DotA's one-shot effects are models like them. They are
+  // owed exactly one pass — not zero (invisible) and not forever (a looping flame on the map).
+  const THUNDERCLAP = { hasBirth: false, birthStart: 0, birthSecs: 0, hasStand: true, standSecs: 1.3 };
+  if (specialFxOwesItsClip(0, THUNDERCLAP, false)) {
+    ok('a Birth-less one-shot is owed one pass of its only clip (ThunderclapCaster / WarStompCaster)');
+  } else fail('a Birth-less one-shot was dropped on the DestroyEffect line');
+  if (!specialFxOwesItsClip(1.4, THUNDERCLAP, false)) {
+    ok('...and its one pass is all: after that the scene may take it back');
+  } else fail('a Birth-less one-shot wanted a second pass');
+  if (!specialFxDoomedOver(0, THUNDERCLAP) && specialFxDoomedOver(1.4, THUNDERCLAP) && specialFxDoomedOver(5, VOLCANO_DEATH)) {
+    ok('a doomed effect is released when the life it was owed runs out (not on the frame it is visible)');
+  } else fail('doomed release timing is wrong');
 }
 
 // --- TriggerRegisterUnitInRange — the region that WALKS ABOUT with a unit ------------------

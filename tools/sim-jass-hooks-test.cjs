@@ -54,6 +54,10 @@ const EXPECTED = [
   // script may change, the buff filters, a laid corpse and the cliff layer
   // (sim-script-natives-test.cjs).
   "damagePoint", "stripHeroLevel", "xpHandicap", "setXpHandicap", "pauseTimedLife",
+  // …the LOBBY handicap beside the experience rate (a different number), and the two natives
+  // that drive a building's own clock (DotA v6.83d's "-fastbuild") plus the food opt-out.
+  "playerHandicap", "setPlayerHandicap", "setConstructionProgress", "setUpgradeProgress",
+  "setUnitUseFood", "unitRallyPoint", "abilityEffectArt",
   "setUnitClassification", "removeBuffs", "countBuffs", "createCorpse", "terrainCliffLevel",
   // The PREDICATES whose answer is the world's rather than a viewpoint's (pass 4). The vision
   // half of that family is NOT here: `IsUnitVisible` and its four siblings are answered by the
@@ -89,6 +93,12 @@ const EXPECTED = [
   "getTimeOfDayScale", "setTimeOfDayScale", "suspendTimeOfDay",
   "setUnitFacing", "setUnitFlyHeight", "setUnitInvulnerable", "setUnitMoveSpeed", "setUnitOwner",
   "setUnitPathing", "setUnitPosition",
+  // A unit's SLEEP — its own state, turned by an attack or by a script, and the pair of natives
+  // that asks and wakes (natives/unitState.ts). `wakeUnit` writes the world; the renderer only
+  // plays the stand-up.
+  "isUnitSleeping", "wakeUnit",
+  // SetTerrainPathable — the map's own walkability override, which is ground rather than art.
+  "setTerrainPathable",
   "setUnitState", "setUnitTurnSpeed", "unitAddAbility", "unitAddItem", "unitDropItemPoint",
   "unitDropItemSlot", "unitDropItemTarget", "unitInventorySize", "unitItemInSlot",
   "unitRemoveAbility", "unitRemoveItem", "unitRemoveItemFromSlot", "unitUseItem",
@@ -246,7 +256,7 @@ const ah = authorityHooks({
   restoreScriptUnit: (...a) => { restored.push(a); return 910; },
 });
 check("authorityHooks holds the resource, order and create natives", Object.keys(ah).sort(),
-  ["createUnit", "getPlayerState", "getUnitCurrentOrder", "issueUnitOrder", "restoreUnit", "setPlayerState"]);
+  ["createUnit", "getPlayerState", "getUnitCurrentOrder", "issueNeutralImmediateOrder", "issueUnitOrder", "restoreUnit", "setPlayerState"]);
 
 // RestoreUnit is a CREATE — the game cache only says what to make (docs/campaigns.md) — so it
 // is here beside CreateUnit rather than in the pure-world half, and it is synchronous for the

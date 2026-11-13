@@ -34,6 +34,7 @@
 //    (board, row, col) cursor and let the write go through the board.
 
 import type { MultiboardItem, MultiboardObj, NativeCtx, Runtime } from "../runtime";
+import { mapDisplayText } from "../../i18n/mapLanguage";
 import { asInt, asNum, asStr, jBool, jHandle, jInt, JNULL, jStr, truthy, type JassValue } from "../values";
 
 type NativeFn = (ctx: NativeCtx, args: JassValue[]) => JassValue;
@@ -154,7 +155,9 @@ export function registerMultiboardNatives(rt: Runtime): void {
   def(rt, "MultiboardSetTitleText", (c, a) => {
     const mb = board(c, a[0]);
     if (mb) {
-      mb.title = asStr(a[1]);
+      // Display boundary: the title is said, not compared — Spellcraft's "Statistics - Round
+      // 3 of 5" reads 统计 through the map's dictionary, same door DisplayTextToPlayer uses.
+      mb.title = mapDisplayText(asStr(a[1]));
       mb.revision++;
     }
     return JNULL;
@@ -195,7 +198,7 @@ export function registerMultiboardNatives(rt: Runtime): void {
       cell.showIcon = truthy(a[2]);
     }),
   );
-  def(rt, "MultiboardSetItemsValue", (c, a) => allCells(c, a[0], (cell) => (cell.value = asStr(a[1]))));
+  def(rt, "MultiboardSetItemsValue", (c, a) => allCells(c, a[0], (cell) => (cell.value = mapDisplayText(asStr(a[1])))));
   def(rt, "MultiboardSetItemsValueColor", (c, a) =>
     allCells(c, a[0], (cell) => (cell.valueColor = argb(asInt(a[1]), asInt(a[2]), asInt(a[3]), asInt(a[4])))),
   );
@@ -227,7 +230,7 @@ export function registerMultiboardNatives(rt: Runtime): void {
       cell.showIcon = truthy(a[2]);
     }),
   );
-  def(rt, "MultiboardSetItemValue", (c, a) => withCell(c, a[0], (cell) => (cell.value = asStr(a[1]))));
+  def(rt, "MultiboardSetItemValue", (c, a) => withCell(c, a[0], (cell) => (cell.value = mapDisplayText(asStr(a[1])))));
   def(rt, "MultiboardSetItemValueColor", (c, a) =>
     withCell(c, a[0], (cell) => (cell.valueColor = argb(asInt(a[1]), asInt(a[2]), asInt(a[3]), asInt(a[4])))),
   );

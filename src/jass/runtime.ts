@@ -683,6 +683,9 @@ export interface EngineHooks {
   getUnitX?(unitId: number): number | undefined;
   getUnitY?(unitId: number): number | undefined;
   getUnitFacing?(unitId: number): number | undefined;
+  /** GetUnitRallyPoint — the building's rally destination, or its own position when it has
+   *  none (`rallyKind` "none"); null for a unit the sim no longer holds. */
+  unitRallyPoint?(unitId: number): { x: number; y: number } | null;
   // --- orders (7.14): IssueXOrder → sim; GetUnitCurrentOrder ← sim ---
   /** Issue{Immediate,Point,Target}Order — order id + target kind → the matching sim
    *  command (a trigger-issued unit marches/attacks/casts). Returns whether the order
@@ -765,6 +768,11 @@ export interface EngineHooks {
   /** Get/SetPlayerHandicapXP — a player's experience rate, 1 = 100 %. */
   xpHandicap?(player: number): number;
   setXpHandicap?(player: number, rate: number): void;
+  /** Get/SetPlayerHandicap — the LOBBY handicap, 1 = 100 % (`SimWorld.handicap`). A different
+   *  number from the experience rate above: this one is the player's units' hit points and
+   *  damage. DotA reads it once at init to notice a non-standard handicap. */
+  playerHandicap?(player: number): number;
+  setPlayerHandicap?(player: number, handicap: number): void;
   /** UnitPauseTimedLife — hold (or release) a unit's timed-life clock. */
   pauseTimedLife?(unitId: number, flag: boolean): void;
   /** UnitAddType / UnitRemoveType — `t` is the ConvertUnitType index; false when the engine
@@ -939,6 +947,13 @@ export interface EngineHooks {
   // --- per-unit flags / animation (7.17) ---
   setUnitInvulnerable?(unitId: number, flag: boolean): void; // SetUnitInvulnerable
   setUnitPathing?(unitId: number, flag: boolean): void; // SetUnitPathing (false = ghost)
+  /** UnitSetConstructionProgress / UnitSetUpgradeProgress — push a building's scaffolding, or
+   *  the upgrade/research at the head of its queue, to `percent` (100 = finished). */
+  setConstructionProgress?(unitId: number, percent: number): void;
+  setUpgradeProgress?(unitId: number, percent: number): void;
+  /** SetUnitUseFood — whether the unit is counted against its owner's supply (false = the
+   *  body still stands and still eats nothing; `SimUnit.foodFree`). */
+  setUnitUseFood?(unitId: number, useFood: boolean): void;
   /** SetUnitAnimation / ResetUnitAnimation — play the named clip ("" resets to stand). */
   setUnitAnimation?(unitId: number, animation: string): void;
   /** AddUnitAnimationProperties — add (true) or remove (false) an animation TAG ("alternate",
@@ -1229,6 +1244,9 @@ export interface EngineHooks {
    *  model, but riding a unit's own attachment point, so it moves and animates with him.
    *  `attach` is the point's TOKENS ("origin", ["hand","left"]) — see attachmentNode. */
   addSpecialEffectTarget?(path: string, unitId: number, attach: string[]): number;
+  /** AddSpellEffectById — the model is the ABILITY's own "Effect Art" (falling back to
+   *  Target Art and Caster Art, the order the sim itself uses), looked up by rawcode. */
+  abilityEffectArt?(abilityId: string): string | undefined;
   /** DestroyEffect — play the model's Death clip out, then take it off the scene. */
   destroyEffect?(id: number): void;
   // --- an effect's transform and look (the BlzSetSpecialEffect… family — pass 10) ---
@@ -1587,6 +1605,10 @@ export class Runtime {
   /** Live floating text tags (CreateTextTag). The renderer polls this list; dead
    *  entries (DestroyTextTag) are flagged so it can drop them. */
   readonly textTags: TextTagObj[] = [];
+  /** SetPlayerTaxRate's (source, other, resource) → rate. Resource taxes only matter to a
+   *  shared-control economy the sim does not run, so the pair of natives keeps its own
+   *  bookkeeping here and GetPlayerTaxRate answers exactly what Set wrote (default 0). */
+  readonly playerTaxRates = new Map<string, number>();
   /** Live dialogs (DialogCreate) and leaderboards (CreateLeaderboard) — polled by the
    *  UI the same way, for the same reason: a script configures one over several calls
    *  (message, then buttons, then DialogDisplay), so there is no single moment to push. */

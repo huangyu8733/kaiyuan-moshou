@@ -35,6 +35,7 @@ import { firstProp, numProp, type FdfLibrary } from "./fdf/library";
 import { UI_HEIGHT } from "./fdf/layout";
 import { mountFdfScreen, type FdfScreen } from "./fdf/render";
 import { wc3ToHtml } from "./wc3Text";
+import { mapDisplayText } from "../i18n/mapLanguage";
 
 const LEADERBOARD_FDF = "UI\\FrameDef\\UI\\LeaderBoard.fdf";
 
@@ -110,7 +111,7 @@ export class LeaderboardOverlay {
         overlayClass: "fdf-ingame",
         skin: this.skin,
         buildRoot: (lib) => this.rootFrame(lib, lb),
-        textOverrides: { LeaderboardTitle: lb.showLabel ? lb.label : "" },
+        textOverrides: { LeaderboardTitle: lb.showLabel ? mapDisplayText(lb.label) : "" },
         // The rows aren't part of the FDF tree, so every rebuild of the panel — and a RESIZE
         // is a rebuild — throws them away. This is the hook that puts them back, and it is the
         // only correct place for it: a `resize` listener of our own could only ever run before
@@ -206,7 +207,7 @@ export class LeaderboardOverlay {
       if (lb.showNames && it.showLabel) {
         const label = document.createElement("span");
         label.className = "leaderboard-label";
-        label.innerHTML = wc3ToHtml(it.label);
+        label.innerHTML = wc3ToHtml(mapDisplayText(it.label));
         // No explicit colour → the player's own, as WC3 draws it. (LeaderboardSetItemLabelColor
         // leaves `labelColor` non-null, and that wins; so does the board-wide one.)
         label.style.color = it.labelColor !== null ? css(it.labelColor)

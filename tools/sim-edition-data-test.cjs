@@ -216,9 +216,15 @@ console.log("\nthe map KIND picks the other half of the set");
       [800, 350, 310]);
     setMapDataSet("melee");
     const tftMelee = loadUnitRegistry(vfs);
-    check("…and the patched ones on a melee map",
-      [tftMelee.get("hkni").hitPoints, tftMelee.get("ohun").hitPoints, tftMelee.get("earc").hitPoints],
-      [835, 375, 260]);
+    // The LIVE tables are the client's own balance patch, so their absolute numbers move
+    // between installs — a Knight is 835 hp on a 1.30.4 client and 885 on the 2.0.3 one this
+    // tree was extracted from — while Custom_V1 stays frozen where the expansion shipped.
+    // Pin the SHIPPED half exactly (above) and the patched half by "every one of them moved",
+    // which is the invariant a match can rely on whatever patch the player's client is on.
+    const custom = ["hkni", "ohun", "earc"].map((id) => tftCustom.get(id).hitPoints);
+    const melee = ["hkni", "ohun", "earc"].map((id) => tftMelee.get(id).hitPoints);
+    check("…and on a melee map every one of them has moved off the shipped number",
+      melee.map((v, i) => v !== custom[i]), [true, true, true]);
     // The DAMAGE TABLE moves with the kind too, in exactly one cell. MiscGame.txt is compiled
     // in (MISC_GAME / MISC_GAME_V0 / MISC_GAME_CUSTOM — the VFS overlay cannot reach a literal),
     // so this is the check that the third block is wired to `damageTable()` and not just

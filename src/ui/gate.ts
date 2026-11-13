@@ -1,8 +1,6 @@
 import { pickInstall, readInstallDir, rememberedInstallHandle, anyRememberedInstallHandle, requestPersistence, type DirHandle, type PickedInstall } from "../assets/opfs";
-import {
-  downloadInstall, gameFilesSources, gb, storedInstall, type DownloadProgress, type GameFilesSource,
-} from "../assets/downloadInstall";
-import { cancelNativeDownload, downloadNativeInstall, isDesktopApp, loadNativeInstall, pickNativeInstall, rememberedInstall } from "../assets/nativeInstall";
+import { storedInstall } from "../assets/downloadInstall";
+import { isDesktopApp, loadNativeInstall, pickNativeInstall, rememberedInstall } from "../assets/nativeInstall";
 import { loadProfile } from "../vfs/loader";
 import { wrongVersionMessage } from "../vfs/version";
 import { DEFAULT_PROFILE } from "../vfs/profiles";
@@ -114,39 +112,35 @@ export function mountLoadGate(
   actions.className = "launcher-actions";
   actions.append(btn.root);
 
-  // "Download game files": the player's OWN install, zipped and kept somewhere they can reach from
-  // a new machine (src/assets/downloadInstall.ts). It sits BESIDE the way in, as launchers put
-  // install and repair next to play, but reads as the secondary: picking a folder is still THE
-  // way in, and this is for the player who has no folder on this machine to pick. The press IS
-  // the start: it goes straight down the link the game ships with (GAME_FILES_LINK) into the bar
-  // below, Cancel under it.
-  const downloadable = native || !!navigator.storage?.getDirectory;
-  const dlBtn = createGlueButton({ label: t("gate.download"), size: "lg" });
-  dlBtn.root.classList.add("launcher-download");
-  dlBtn.root.hidden = !downloadable;
-  actions.append(dlBtn.root);
+  // "Download game files": the player has no folder on this machine to pick. The launcher does
+  // not fetch anything itself any more — it POINTS at the two editions, which live on 139 cloud,
+  // and the player downloads the one whose language they want. The links open in the system
+  // browser (electron/main.mjs hands window.open to the shell), so a 100 MB+ transfer is not
+  // something this page has to hold in storage.
+  const dlZh = createGlueButton({ label: t("gate.downloadZh"), size: "lg" });
+  const dlEn = createGlueButton({ label: t("gate.downloadEn"), size: "lg" });
+  for (const [btnEl, url] of [
+    [dlZh.root, "https://yun.139.com/shareweb/#/w/i/2yA8ERhQm6xrv"],
+    [dlEn.root, "https://yun.139.com/shareweb/#/w/i/2yA8E5et3Msmh"],
+  ] as const) {
+    btnEl.classList.add("launcher-download");
+    btnEl.onclick = (): void => void window.open(url, "_blank", "noopener");
+    actions.append(btnEl);
+  }
 
   const dlHint = document.createElement("p");
   dlHint.className = "launcher-download-hint";
   dlHint.textContent = t("gate.downloadHint");
-  dlHint.hidden = !downloadable;
-
-  const dlCancel = document.createElement("button");
-  dlCancel.type = "button";
-  dlCancel.className = "launcher-cancel";
-  dlCancel.textContent = t("gate.cancel");
-  dlCancel.hidden = true;
 
   const status = document.createElement("p");
   status.className = "launcher-status";
 
-  /** `cancelable` is the download's own: the mount that follows it has nothing to cancel. */
-  const showBar = (on: boolean, cancelable = false): void => {
+  /** While the install mounts the bar stands where the buttons were: there is nothing left to
+   *  press, and the mount is the one wait on this screen worth watching. */
+  const showBar = (on: boolean): void => {
     bar.root.hidden = !on;
     btn.root.hidden = on;
-    dlBtn.root.hidden = on || !downloadable;
-    dlHint.hidden = on || !downloadable;
-    dlCancel.hidden = !on || !cancelable;
+    for (const el of [dlZh.root, dlEn.root, dlHint]) el.hidden = on;
   };
 
   const fail = (msg: string): void => {
@@ -189,78 +183,6 @@ export function mountLoadGate(
       fail(t("gate.loadFailed", { error: (err as Error).message }));
     }
   };
-
-  /** The browser half's abort; the desktop half's lives in the shell (electron/download.mjs).
-   *  `dlCancelled` is the press of Cancel, which tells an abort apart from a failure. */
-  let dlAbort: AbortController | null = null;
-  let dlCancelled = false;
-
-  const cancelled = (): void => {
-    dlCancelled = true;
-    dlAbort?.abort();
-    void cancelNativeDownload();
-  };
-
-  const download = async (): Promise<void> => {
-    // The Drive install first, the Internet Archive behind it (src/assets/downloadInstall.ts).
-    const sources = gameFilesSources();
-    dlCancelled = false;
-    btn.setDisabled(true);
-    status.textContent = "";
-    status.classList.remove("error");
-    bar.set(0);
-    bar.setLabel(t("gate.connecting"));
-    showBar(true, true);
-    /** Which source the bytes are coming from — said only once it is a mirror, since the
-     *  primary is the ordinary case and needs no name on the bar. */
-    let from = "";
-    const onSource = (source: GameFilesSource, index: number): void => {
-      from = index > 0 ? t("gate.fromSource", { source: source.name }) : "";
-      if (index > 0) bar.setLabel(t("gate.trying", { source: source.name }));
-    };
-    const progress = (p: DownloadProgress): void => {
-      bar.set(p.fraction);
-      bar.setLabel(t("gate.downloading", { from, received: gb(p.received), total: gb(p.total) }));
-    };
-    try {
-      if (native) {
-        // The shell asks where to put it before a byte moves, and its own dialog cannot be
-        // cancelled from here — only the transfer itself can, once it has started. It walks the
-        // same sources in the same order, and says which one it is on through the progress.
-        const folder = await downloadNativeInstall(sources, (p) => {
-          if (p.source !== undefined) onSource(sources[p.source], p.source);
-          progress(p);
-        });
-        if (!folder) {
-          showBar(false);
-          btn.setDisabled(false);
-          status.textContent = t(dlCancelled ? "gate.cancelled" : "gate.noFolderChosen");
-          return;
-        }
-        return mount(await loadNativeInstall());
-      }
-      dlAbort = new AbortController();
-      await downloadInstall(sources, progress, dlAbort.signal, onSource);
-      const install = await storedInstall();
-      if (!install) throw new Error("the files did not arrive whole.");
-      return mount(install);
-    } catch (err) {
-      if (dlCancelled) {
-        showBar(false);
-        btn.setDisabled(false);
-        status.textContent = t("gate.cancelled");
-        return;
-      }
-      // An IPC rejection arrives wrapped in Electron's own words around the shell's message.
-      const msg = (err as Error).message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, "");
-      fail(t("gate.downloadFailed", { error: msg }));
-    } finally {
-      dlAbort = null;
-    }
-  };
-
-  dlBtn.button.onclick = (): void => void download();
-  dlCancel.onclick = (): void => cancelled();
 
   /** A folder this origin picked before, whose grant did not survive a reload (assets/opfs.ts).
    *  The click below is the gesture that can ask for it back. */
@@ -308,7 +230,7 @@ export function mountLoadGate(
     return mount(install);
   };
 
-  hero.append(kicker, headline, sub, actions, bar.root, dlCancel, dlHint, status);
+  hero.append(kicker, headline, sub, actions, bar.root, dlHint, status);
 
   // What the player is agreeing to, on the side the way a launcher's patch notes sit: the
   // privacy line is the one thing here that is not obvious from the buttons.
@@ -360,12 +282,13 @@ export function mountLoadGate(
     });
   }
 
-  // The browser's twin of that: a copy an earlier "Download game files" left in this origin's
-  // storage is this browser's install, so it is mounted without asking — the same as the desktop
-  // app's remembered folder, and for the same reason. A FOLDER picked last visit (IndexedDB,
-  // assets/opfs.ts) comes second: "Change Game Folder" on the menu is that pick plus a reload,
-  // and this is the boot that has to honour it.
-  if (!native && downloadable) {
+  // The browser's twin of that: a copy an earlier in-app download left in this origin's storage
+  // is this browser's install, so it is mounted without asking — the same as the desktop app's
+  // remembered folder, and for the same reason. Downloads are links to the cloud now, but a copy
+  // from before that change is still the player's install and must not be orphaned. A FOLDER
+  // picked last visit (IndexedDB, assets/opfs.ts) comes second: "Change Game Folder" on the menu
+  // is that pick plus a reload, and this is the boot that has to honour it.
+  if (!native) {
     btn.setDisabled(true);
     void (async () => {
       const install = await storedInstall();

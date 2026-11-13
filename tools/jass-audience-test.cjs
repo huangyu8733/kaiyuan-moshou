@@ -77,6 +77,17 @@ function Ungated takes nothing returns nothing
     endif
 endfunction
 
+// A gated block that rebuilds a value OUT OF ITSELF, which is the shape DotA's respawn board
+// uses for its multiboard title: set s = "[" + label + s + "]". The extra per-viewer passes
+// re-run the same set, so without care the string nests once per seated viewer.
+function GatedConcat takes nothing returns string
+    local string s = ""
+    if GetLocalPlayer() != Player(99) then
+        set s = "[" + s + "]"
+    endif
+    return s
+endfunction
+
 // ---- Phase G item 1: blizzard.j's own end-of-game signal ------------------------------------
 // CustomVictoryBJ and CustomDefeatBJ both call RemovePlayer(p, PLAYER_GAME_RESULT_*) before they
 // show anything. common.j numbers them VICTORY 0, DEFEAT 1, TIE 2, NEUTRAL 3 -- verified in the
@@ -258,6 +269,17 @@ console.log("\nan if that never asks who is watching does not fan out");
   interp.callFunction("Ungated", []);
   // The probe is what keeps this from becoming "every if runs N times".
   check("it runs exactly once", JSON.stringify(cam), '["7,7"]');
+}
+
+console.log("\na gated block that rebuilds a string out of itself does not compound per viewer");
+{
+  rt.applyLobby([seat(0), seat(5), seat(9)], 0);
+  rt.localPlayer = 0;
+  // Three viewers, so the gate runs three times. Each extra pass used to carry the previous
+  // pass's `s` in, and the string came back "[[[ ]]]" — the run of stray `]` that made DotA's
+  // scoreboard read "[[[[[ 12 | 08 ]]]]]". The host's pass is the one the script keeps.
+  const v = interp.callFunction("GatedConcat", []);
+  check("one pair of brackets, not one per viewer", v && v.s, "[]");
 }
 
 console.log("\nalready inside a forAudience, the gate does not fan out again");

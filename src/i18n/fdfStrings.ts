@@ -54,3 +54,19 @@ export function localizedFdfStrings(english: string): string {
     })
     .join("\n");
 }
+
+/**
+ * Keys the INSTALL's own GlobalStrings leaves in English even in the zhCN data set (the
+ * observer panel's `REPLAY_CAMERA` is one: the label reads "Auto Camera" over a Chinese HUD).
+ * Applied to a loaded string table rather than to our override file, because these lines are
+ * the install's, not ours.
+ */
+const INSTALL_ZH: Readonly<Record<string, string>> = {
+  REPLAY_CAMERA: "自动视角",
+};
+
+/** Swap `INSTALL_ZH`'s keys in a loaded GlobalStrings table, when the UI is Chinese. */
+export function localizeGlobalStrings(strings: Map<string, string>): void {
+  if (currentLocale() !== "zhCN") return;
+  for (const [key, value] of Object.entries(INSTALL_ZH)) strings.set(key, value);
+}

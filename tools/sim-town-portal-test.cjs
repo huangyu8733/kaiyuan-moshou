@@ -62,6 +62,13 @@ const ABILITIES = new Map([
     code: "AItp", target: "point", targetFlags: TP_TARGS,
     levelData: [lvl({ castTime: 0, area: 1100, castRange: 99999, data: D(90, 1) })],
   })],
+  // DotA's own scroll: the item (`I05I`) grants `A1R5`, a custom alias over the `ANto` base —
+  // which is Tornado — and the teleport is entirely `war3map.j` (see the last block). The
+  // alias is what the script is handed; the base is only how the sim finds the behaviour.
+  ["A1R5", ability("A1R5", {
+    code: "AItp", target: "point", targetFlags: TP_TARGS,
+    levelData: [lvl({ castTime: 5, area: 1100, castRange: 99999, data: D(90, 1) })],
+  })],
 ]);
 const item = (id, abil) => ({
   id, name: id, description: "", icon: "", tip: "", hotkey: "", buttonX: -1, buttonY: -1,
@@ -70,7 +77,7 @@ const item = (id, abil) => ({
   droppable: true, sellable: true, pawnable: true, pickRandom: false, maxHp: 75,
   stockMax: 1, stockRegen: 120, stockStart: 0,
 });
-const ITEMS = new Map([["stwp", item("stwp", "AItp")], ["stwq", item("stwq", "AItq")], ["stel", { ...item("stel", "AImt"), charges: 0, perishable: false, cooldownGroup: "AImt" }]]);
+const ITEMS = new Map([["stwp", item("stwp", "AItp")], ["stwq", item("stwq", "AItq")], ["stel", { ...item("stel", "AImt"), charges: 0, perishable: false, cooldownGroup: "AImt" }], ["tp83", item("tp83", "A1R5")]]);
 // `buffType = "townhall"` is what a Town Portal resolves to — UnitData's own category, so a
 // Great Hall, a Necropolis and a Tree of Life all answer without a per-race list.
 const DEF = { priority: 0, buffType: "", abilities: [], upgradesUsed: [], classification: [], moveHeight: 0, defUp: 2, foodUsed: 0 };
@@ -476,6 +483,29 @@ console.log("\n-- a map that edits the cast away -------------------------------
   world.useItem(h.id, 0, 0, h.x, h.y);
   at("with Cast1 = 0 it teleports on the press", h, 1000, 1000);
   check("…with no channel", h.portalLeft, 0);
+}
+
+console.log("\n-- the press is a spell the script can see ------------------------------------");
+
+{
+  // DotA's Scroll of Town Portal (`I05I`) is not a native teleport: it grants `A1R5`, a dummy
+  // over the `ANto` (Tornado) base, and the whole thing — destination, the three-second timer,
+  // the channel, the interrupt — is a `war3map.j` trigger on SPELL_EFFECT. So an item's active
+  // has to reach the script as a spell, with `GetSpellAbilityId()` naming the item's OWN alias
+  // (not the base code it borrows) and `GetSpellTargetLoc()` the click. Without it the scroll
+  // was spent, the Tornado handler put up nothing anyone could see, and the teleport never ran.
+  world = newWorld();
+  world.captureSpells = true;
+  const h = give(heroAt(6000, 6000), "tp83");
+  hall(1000, 1000);
+  check("the DotA-shaped scroll is accepted", world.useItem(h.id, 0, 0, 1400, 1200), true);
+  const spells = world.drainSpellEvents();
+  const own = spells.filter((e) => e.abilityId === "A1R5");
+  check("…and the script is handed one spell event", own.length, 1);
+  check("…for the EFFECT", own[0] && own[0].phase, "effect");
+  check("…from the hero", own[0] && own[0].caster && own[0].caster.id, h.id);
+  check("…at the clicked point", own[0] && `${Math.round(own[0].x)},${Math.round(own[0].y)}`, "1400,1200");
+  check("…with no unit target (a point cast)", own[0] && own[0].target, null);
 }
 
 console.log(failed ? `\n${failed} FAILED` : "\nall ok");

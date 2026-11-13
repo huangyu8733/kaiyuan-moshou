@@ -3285,10 +3285,17 @@ body.hud-widget-skinned .hud-console.hud-console-skinned .hud-inventory .hud-inv
   border-radius: 4px;
   pointer-events: none;
   z-index: 5;
-  display: flex;
+  /* HIDDEN BY DEFAULT, and not via the `hidden` attribute alone: the display:flex layout
+     below outranks the UA's [hidden] rule, and a stale cached script (pre-F4 build) would
+     clear the attribute every frame anyway. Only .metrics-live (added by toggle()) shows
+     the strip — CSS wins over any JS generation. */
+  display: none;
   align-items: center;
   gap: 6px;
 }
+.metrics.metrics-live { display: flex; }
+/* Belt and braces: the attribute still hides, for the gamepad stack that reads it. */
+.metrics[hidden] { display: none !important; }
 /* A watcher's minimap panel stands where this strip does; lift it clear of the panel's top
    (ui/observerHud.ts OBS.bottom.h, plus its frame). */
 body.observer-hud .metrics { bottom: calc((100vh - var(--stage-h)) / 2 + var(--stage-h) * 0.17 / 0.6); }
@@ -3305,6 +3312,8 @@ body.observer-hud .metrics { bottom: calc((100vh - var(--stage-h)) / 2 + var(--s
   padding: 2px 5px;
 }
 .metrics-mute:hover { background: rgba(255, 255, 255, 0.18); }
+/* The strip's collapse button (✕): same dress as the mute toggle, a touch tighter. */
+.metrics-close { padding: 2px 6px; }
 
 /* Gamepad (issue #162, ui/gamepad.ts). The notification stack stands directly above the fps
    strip — the script lifts it by the strip's height while that is up — in the strip's own
@@ -3895,7 +3904,7 @@ body.in-game .fdf-screen.fdf-ingame {
   text-shadow: 1px 1px 0 #000;
 }
 
-/* Play, then install/repair: the two things a launcher puts side by side. The second reads
+/* Play, then the two download links: the things a launcher puts side by side. The links read
    quieter on purpose — picking a folder is still THE way in. */
 .launcher-actions {
   display: flex;
@@ -3929,24 +3938,6 @@ body.in-game .fdf-screen.fdf-ingame {
 .launcher-progress .ow3-progress__label {
   margin-top: 6px;
   font-size: 13px;
-}
-
-.launcher-cancel {
-  padding: 2px 4px;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 12px;
-  color: var(--ow3-text-dim);
-  opacity: 0.75;
-  text-decoration: underline dotted;
-  text-underline-offset: 3px;
-  text-shadow: 1px 1px 0 #000;
-}
-
-.launcher-cancel:hover {
-  color: var(--ow3-gold);
-  opacity: 1;
 }
 
 .launcher-status {

@@ -1,0 +1,14 @@
+2026-11-12T15:10:52.168Z start argv=["--no-sandbox","--disable-gpu","./.tmp-ediag.cjs","http://localhost:5173/?dev&map=DotA%20AI%20v6.90G","/tmp/ediag","40000"]
+2026-11-12T15:10:52.209Z ready
+2026-11-12T15:10:52.269Z window
+2026-11-12T15:10:52.272Z loadURL
+2026-11-12T15:10:52.275Z fail-load -300 ERR_INVALID_URL
+2026-11-12T15:10:52.279Z load-error ERR_INVALID_URL (-300) loading ''
+2026-11-12T15:10:52.295Z waited, 0 console lines
+2026-11-12T15:14:02.536Z start argv=["--no-sandbox","--disable-gpu","./.tmp-ediag.cjs","http://localhost:5173/?dev","/tmp/ediag","3000"]
+2026-11-12T15:14:02.579Z ready
+2026-11-12T15:14:02.635Z window
+2026-11-12T15:14:02.638Z loadURL
+2026-11-12T15:14:02.641Z fail-load -300 ERR_INVALID_URL
+2026-11-12T15:14:02.645Z load-error ERR_INVALID_URL (-300) loading ''
+2026-11-12T15:14:02.662Z waited, 0 console lines

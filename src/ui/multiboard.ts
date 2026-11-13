@@ -30,6 +30,7 @@ import { UI_HEIGHT } from "./fdf/layout";
 import { mountFdfScreen, type FdfScreen } from "./fdf/render";
 import { wc3ToHtml } from "./wc3Text";
 import { blpToCanvas } from "../render/blputil";
+import { mapDisplayText } from "../i18n/mapLanguage";
 
 const MULTIBOARD_FDF = "UI\\FrameDef\\UI\\MultiBoard.fdf";
 
@@ -80,6 +81,8 @@ export class MultiboardOverlay {
   private builtFor = "";
   private lastHeight = 0;
   private lastTop = 0;
+  /** Dev-only: the last title logged, so the probe prints a change and not every rebuild. */
+  private loggedTitle = "";
 
   constructor(private container: HTMLElement, private vfs: DataSource, private skin: string) {}
 
@@ -101,6 +104,12 @@ export class MultiboardOverlay {
       return;
     }
     const key = `${mb.handleId}:${mb.revision}:${topOffset.toFixed(4)}`;
+    // Dev-only probe: the title is the script's raw string (MultiboardSetTitleText stores it
+    // untouched), so this line is what tells "the map wrote it" apart from "we drew it twice".
+    if (import.meta.env.DEV && mb.title !== this.loggedTitle) {
+      this.loggedTitle = mb.title;
+      console.debug(`[mb] title ${JSON.stringify(mb.title)}`);
+    }
     if (key === this.builtFor || this.mounting) return;
     this.builtFor = key;
     void this.build(mb, topOffset);
@@ -125,7 +134,7 @@ export class MultiboardOverlay {
         overlayClass: "fdf-ingame",
         skin: this.skin,
         buildRoot: (lib) => this.rootFrame(lib, mb, topOffset),
-        textOverrides: { MultiboardTitle: mb.title },
+        textOverrides: { MultiboardTitle: mapDisplayText(mb.title) },
         // The corner button is the PLAYER's: clicking it opens a minimized board and folds an
         // open one, on this machine — what minimizing is for, and the only way a board a script
         // created minimized ever opens. DotA makes its scoreboard that way
@@ -309,7 +318,7 @@ export class MultiboardOverlay {
         if (item.showValue && item.value) {
           const text = document.createElement("span");
           text.className = "multiboard-value";
-          text.innerHTML = wc3ToHtml(item.value);
+          text.innerHTML = wc3ToHtml(mapDisplayText(item.value));
           text.style.color = css(item.valueColor);
           cell.appendChild(text);
         }

@@ -168,6 +168,10 @@ export function registerConfigNatives(rt: Runtime): void {
 
   // The selected game type gates blizzard.j's generic slot init (melee vs custom).
   def(rt, "GetGameTypeSelected", (c) => c.rt.enumHandle("GameType", c.rt.gameType));
+  // DoNotSaveReplay — a map opting its match out of the replay file. There is no replay to
+  // save here, so the opt-out is already true; DotA v6.83d calls it from its "-noreplay" chat
+  // command and nothing else depends on it.
+  def(rt, "DoNotSaveReplay", () => JNULL);
 
   // --- player resources / state (SetPlayerState & the AdjustPlayerState*BJ family
   //     ride on these two). `state` is the raw playerstate index — the sim maps

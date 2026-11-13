@@ -43,20 +43,13 @@ const EN = {
     "Select your Warcraft III (The Frozen Throne) folder to begin. Every player has to be on the same game data. The menu is built from the game's own files, so they're loaded first. Nothing is uploaded — your install is read locally in the browser.",
   "gate.load": "Play",
   "gate.chooseFolder": "Choose Warcraft III Folder",
-  "gate.download": "Download game files",
-  "gate.cancel": "Cancel",
+  "gate.downloadZh": "Download Chinese version",
+  "gate.downloadEn": "Download English version",
   "gate.loading": "Loading game data…",
   "gate.loaded": "Data successfully loaded",
-  "gate.connecting": "Connecting…",
-  "gate.trying": "Trying {source}…",
-  "gate.downloading": "Downloading game files{from}… {received} of {total}",
-  "gate.fromSource": " from {source}",
-  "gate.cancelled": "Cancelled.",
-  "gate.noFolderChosen": "No folder chosen.",
   "gate.noWar3Folder": "No Warcraft III folder selected.",
   "gate.noFolder": "No folder selected.",
   "gate.loadFailed": "Couldn't load that folder: {error}",
-  "gate.downloadFailed": "Couldn't download the game files: {error}",
   "gate.folderMissing": "Your Warcraft III folder is no longer at {path}.",
   "gate.wrongVersion":
     "That folder is Warcraft III {version}. OpenWar3 plays {required} — every player has to be on the same game data, so this is checked every launch.",
@@ -74,7 +67,7 @@ const EN = {
   "gate.pointLocal": "Your game files are read on this device and never uploaded.",
   "gate.pointVersion": "Needs Warcraft III: The Frozen Throne, the build every player shares.",
   "gate.pointPlay": "Campaign, custom games and LAN are all here; online play joins the server's room list.",
-  "gate.downloadHint": "No Warcraft III folder on this machine? Download a copy; the browser keeps it for next time.",
+  "gate.downloadHint": "No Warcraft III folder on this machine? Download one from the cloud storage link — Chinese or English — then point the game at it.",
   "gate.footer": "OpenWar3 is an unofficial fan reimplementation. No game files are included.",
 
   "menu.singlePlayer": "Single Player",
@@ -118,6 +111,7 @@ const EN = {
   "hud.carryingGold": "Carrying {gold} gold",
   "hud.carryingLumber": "Carrying {lumber} lumber",
   "hud.build": "Build {name}",
+  "hud.revive": "Revive {name}",
 
   // The Multiplayer (LAN) browser (ui/fdfLan.ts) and the reachability line it prints from
   // src/net/lobby.ts. The game's own captions around them come from the install.
@@ -296,6 +290,33 @@ const EN = {
   "hotkey.discard": "Discard your changes to the hotkeys?",
   "hotkey.resetConfirm": "Reset every hotkey, button position and tooltip to the game's defaults?",
 
+  // The map-info pane's VALUES (ui/mapBrowser.ts). Its labels — "Suggested Players", "Map
+  // Size", "Map Tileset" — come out of the install's own FDF and are already Chinese there;
+  // these are the halves that are OURS: the word the World Editor coins for a player-count
+  // bucket, and the tileset names its terrain dialog lists. A map's own name and blurb are NOT
+  // here — they belong to the map and its sidecar (i18n/mapLanguage.ts `info`/`wts`).
+  "mapinfo.size.small": "Small",
+  "mapinfo.size.medium": "Medium",
+  "mapinfo.size.large": "Large",
+  "mapinfo.tileset.A": "Ashenvale",
+  "mapinfo.tileset.B": "Barrens",
+  "mapinfo.tileset.C": "Felwood",
+  "mapinfo.tileset.D": "Dungeon",
+  "mapinfo.tileset.F": "Lordaeron Fall",
+  "mapinfo.tileset.G": "Underground",
+  "mapinfo.tileset.I": "Icecrown",
+  "mapinfo.tileset.J": "Dalaran Ruins",
+  "mapinfo.tileset.K": "Black Citadel",
+  "mapinfo.tileset.L": "Lordaeron Summer",
+  "mapinfo.tileset.N": "Northrend",
+  "mapinfo.tileset.O": "Outland",
+  "mapinfo.tileset.Q": "Village Fall",
+  "mapinfo.tileset.V": "Village",
+  "mapinfo.tileset.W": "Lordaeron Winter",
+  "mapinfo.tileset.X": "Dalaran",
+  "mapinfo.tileset.Y": "Cityscape",
+  "mapinfo.tileset.Z": "Sunken Ruins",
+
   // The Download Maps dialog (ui/mapSitesPanel.ts, ui/mapSites.ts).
   "mapsites.title": "Download Maps",
   "mapsites.done": "Done",
@@ -429,20 +450,13 @@ const ZH: Record<MessageKey, string> = {
     "选择你的《魔兽争霸 III：冰封王座》文件夹以开始。所有玩家必须使用相同的游戏数据。菜单由游戏自身的文件构建，因此会先加载它们。不会上传任何内容——安装只在浏览器本地读取。",
   "gate.load": "开始游戏",
   "gate.chooseFolder": "选择《魔兽争霸 III》文件夹",
-  "gate.download": "下载游戏文件",
-  "gate.cancel": "取消",
+  "gate.downloadZh": "下载中文版",
+  "gate.downloadEn": "下载英文版",
   "gate.loading": "正在加载游戏数据…",
   "gate.loaded": "数据加载成功",
-  "gate.connecting": "正在连接…",
-  "gate.trying": "正在尝试 {source}…",
-  "gate.downloading": "正在下载游戏文件{from}… {received} / {total}",
-  "gate.fromSource": "（{source}）",
-  "gate.cancelled": "已取消。",
-  "gate.noFolderChosen": "未选择文件夹。",
   "gate.noWar3Folder": "未选择《魔兽争霸 III》文件夹。",
   "gate.noFolder": "未选择文件夹。",
   "gate.loadFailed": "无法加载该文件夹：{error}",
-  "gate.downloadFailed": "无法下载游戏文件：{error}",
   "gate.folderMissing": "你的《魔兽争霸 III》文件夹已不在 {path}。",
   "gate.wrongVersion":
     "该文件夹是《魔兽争霸 III》{version}。开源魔兽争霸 使用 {required}——所有玩家必须使用相同的游戏数据，因此每次启动都会检查。",
@@ -459,7 +473,7 @@ const ZH: Record<MessageKey, string> = {
   "gate.pointLocal": "游戏文件只在本机读取，不会上传到任何服务器。",
   "gate.pointVersion": "需要《魔兽争霸 III：冰封王座》，所有玩家必须使用同一份游戏数据。",
   "gate.pointPlay": "战役、自定义游戏与局域网都在这里；联机从大厅的服务器列表进入。",
-  "gate.downloadHint": "本机没有《魔兽争霸 III》文件夹？下载一份，浏览器会为你保留。",
+  "gate.downloadHint": "本机没有《魔兽争霸 III》文件夹？可从网盘下载中文版或英文版，再用上面的按钮选择该文件夹。",
   "gate.footer": "开源魔兽争霸 是非官方粉丝重制，不附带任何游戏文件。",
 
   "menu.singlePlayer": "单人游戏",
@@ -502,6 +516,7 @@ const ZH: Record<MessageKey, string> = {
   "hud.carryingGold": "携带 {gold} 金币",
   "hud.carryingLumber": "携带 {lumber} 木材",
   "hud.build": "建造 {name}",
+  "hud.revive": "复活 {name}",
 
   "lan.title": "多人游戏",
   "lan.gamesTitle": "网络游戏",
@@ -670,6 +685,32 @@ const ZH: Record<MessageKey, string> = {
   "hotkey.discard": "放弃对快捷键的更改？",
   "hotkey.resetConfirm": "将所有快捷键、按钮位置和提示重置为游戏默认值？",
 
+  // 地图信息面板上的“值”（ui/mapBrowser.ts）。它旁边的标签（“建议玩家”“地图尺寸”
+  // “地形”）来自安装自己的 FDF，中文安装已是中文；这里是我们自己的两半：世界编辑器
+  // 按玩家数分档造的那个词，以及它地形列表里的地形名。地图自己的名字和简介不在这里——
+  // 那属于地图和它的侧车文件（i18n/mapLanguage.ts 的 `info` / `wts`）。
+  "mapinfo.size.small": "小型",
+  "mapinfo.size.medium": "中型",
+  "mapinfo.size.large": "大型",
+  "mapinfo.tileset.A": "灰谷",
+  "mapinfo.tileset.B": "贫瘠之地",
+  "mapinfo.tileset.C": "费伍德森林",
+  "mapinfo.tileset.D": "地牢",
+  "mapinfo.tileset.F": "洛丹伦的秋天",
+  "mapinfo.tileset.G": "地下",
+  "mapinfo.tileset.I": "冰冠冰川",
+  "mapinfo.tileset.J": "达拉然废墟",
+  "mapinfo.tileset.K": "黑色城堡",
+  "mapinfo.tileset.L": "洛丹伦的夏天",
+  "mapinfo.tileset.N": "诺森德",
+  "mapinfo.tileset.O": "外域",
+  "mapinfo.tileset.Q": "村庄的秋天",
+  "mapinfo.tileset.V": "村庄",
+  "mapinfo.tileset.W": "洛丹伦的冬天",
+  "mapinfo.tileset.X": "达拉然",
+  "mapinfo.tileset.Y": "城市",
+  "mapinfo.tileset.Z": "沉没的废墟",
+
   "mapsites.title": "下载地图",
   "mapsites.done": "完成",
   "mapsites.import": "导入地图文件…",
@@ -818,6 +859,18 @@ export function currentLocale(): Locale {
   // still opens in Chinese. English stays one click away (the language switch) or `?lang=enUS`.
   cached = urlLocale() ?? storedLocale() ?? "zhCN";
   return cached;
+}
+
+/**
+ * A hero's name as the UI should print it. WC3 prints the hero's GIVEN name where it has one
+ * ("Usyl", "Razzil Darkbrew"), and a map's own given names are whatever its author typed — in
+ * DotA 6.90G they are English, so the Chinese UI would show "Usyl" where the translated class
+ * name ("矮人狙击手") belongs. Chinese keeps the class name for a given name that has no
+ * Chinese in it; English, and given names that ARE Chinese (the install's own), never change.
+ */
+export function displayHeroName(properName: string | undefined, typeName: string): string {
+  if (!properName) return typeName;
+  return currentLocale() === "zhCN" && !/[\u4e00-\u9fff]/.test(properName) ? typeName : properName;
 }
 
 /** Set the UI language and remember it. Callers that want the change on screen NOW reload

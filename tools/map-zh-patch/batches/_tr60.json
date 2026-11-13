@@ -1,0 +1,17 @@
+[
+  "|cffffcc00属性:|r|n+9 伤害|n+6 敏捷|n+3 全属性|n+1 护甲|n|n|cff0033ccAura de Devoção:|r|n900 半径内的友方: +2 护甲|n|n|cff0033ccAura de Brilho:|r|n900 半径内的友方: +0.65 每秒魔法回复|n|n|cffffcc00点击使 Aura de Devoção 仅影响英雄|r|n|n|c00838B8B在第二次大战中，这枚戒指曾作为奖赏赠予联盟最强大的法师|r",
+  "|cffffcc00属性:|r|n+9 伤害|n|n|cff838B8B施虐者最钟爱的武器之一|r",
+  "|cffffcc00属性:|r|n+9 智力|n+6 力量|n+3 敏捷|n+3 伤害|n+3 生命回复|n|n|cff0033ccAura de Resistência|r|n900 半径内的友方: +5/5% 攻击/移动速度|n|cffff8000Tambor de guerra:|r|n900 半径内的友方单位: +25/13% 攻击/移动速度，持续 6s|n|cff99ccff冷却时间:|r 30|n|n|c00fffc01再次购买卷轴可补充|r",
+  "|cffffcc00属性:|r|n受到普通攻击时，有 50% 的几率格挡 16 点伤害|n|n|c00838B8B这面小盾曾经是啤酒桶的桶底|r",
+  "|cffffcc00属性:|r|n每秒提供 4/ 点生命值|n+10 智力|n|n|cffff8000Empurrão:|r|n将目标向其前方推动 600 距离。|n|cff99ccff冷却时间:|r 20",
+  "|cffffcc00属性:|r|n使被攻击目标的护甲降低 2 点，持续 8s。|n|n|cffff0303对建筑有效|r|n|cffff0303法球效果不叠加|r|n|cff99ccff攻击特效不叠加|r",
+  "|cffffcc00属性:|r|n|cff0033ccArmazenar água da fonte:|r|n每次使用，在 2.5s 内恢复 90 点生命值和 60 点魔法值；可使用 3 次。空瓶时，靠近己方泉水会自动装满|n|n|cffff8000Armazenar Runa:|r|n空瓶时可储存一枚符文；2 分钟后符文会自动使用；使用符文后，Bottle 会重新装满|n|n|c00838B8B这里用不着藏着小仙女...|r",
+  "|cffffcc00属性:|r|n|cff0033ccSupressão:|r|n对非-英雄单位造成额外 40% 伤害|n|n|cffff8000Cortar árvore:|r|n砍倒一棵树或摧毁一个守卫|n|cff99ccff冷却时间:|r 4|n|n|c00838B8B樵夫的廉价斧头；对付野兽也一样好使|r",
+  "|cffffcc00属性:|r|n|cff0033ccVisão Verdadeira:|r|n显形附近的隐身单位|n|n|cffff0303死亡时掉落|n不可出售|r|n|n|c00838B8B一块能让你看到视野之外的魔法石|r",
+  "|cffffcc00属性:|r|n|cff0042ffEnvenenar:|r|n为武器淬毒；被攻击的目标每秒受到 3 点伤害，并在 4s 内移动速度降低 12%|n|n|cff99ccff攻击特效不叠加|r",
+  "|cffffcc00属性:|r|n|cffff8000Blink:|r|n瞬间传送到目标地点|n|n|cffff0303受到英雄伤害后 3s 内无法使用|r|n|cff99ccff施法距离:|r 1200|n|cff99ccff冷却时间:|r 12|n|n|c00838B8B传奇刺客 Kelen 的匕首，在 Azeroth 快如疾风|r",
+  "|cffffcc00属性:|r|n|cffff8000Cargas:|r|n使用后恢复生命值与魔法值（取决于充能数；每层充能恢复 15 点生命值和魔法值）；在 1200 半径内，当有可见敌人使用技能时获得一层充能（最多 10 层）|n|cff99ccff冷却时间:|r 13|n|n|c00838B8B一根简单却实用的魔杖，能恢复使用者的能量--学徒与老练的术士都爱不释手！|r",
+  "|cffffcc00属性:|r|n|cffff8000Devorar:|r|n可吞食树木或守卫；16s 内恢复 115 点生命值；吞食守卫使治疗翻倍|n|n可使用|cffff03034|r 次|n|n|c00838B8B用得越多，就越离不开它！|r",
+  "|cffffcc00属性:|r|n|cffff8000Observer Ward:|r|n放置一个 Observer Ward 监视一片区域；不具备真视|n|cff99ccff持续时间:|r 7 min",
+  "|cffffcc00属性:|r|n|cffff8000Recuperar Mana:|r|n在 50s 内恢复 190 点魔法值；受到攻击时效果中断|n|n|c00838B8B每只小瓶里都困着一只活生生的小仙女|r"
+]

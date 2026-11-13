@@ -76,6 +76,16 @@ const CONVERT_NATIVES = [
   // …and the mouse button (common.j 146; its three MOUSE_BUTTON_TYPE_ constants at 299-301 are
   // initialised by EVERY map's globals, so its absence was a "not implemented" line on each one).
   "ConvertMouseButtonType",
+  // The second table of names the same constants go by. 1.24 renamed a batch of enums and every
+  // older name was kept alive as a Convert* that maps the old index onto the new value —
+  // TEXT_ALIGN_*, OSKEY_*, MOVETYPE_*, TARGET_FLAG_*, ARMOR_TYPE_*, HERO_ATTRIBUTE_*,
+  // DEFENSE_TYPE_*, REGEN_TYPE_*, UNIT_CATEGORY_* and PATHING_FLAG_* are ALL initialised from
+  // them, so an unregistered one left every one of those constants null (that is what
+  // "ConvertTextAlignType not implemented" on each map's globals meant). Interned like the rest:
+  // the index survives as the handle id, which is what GetHandleId and the sim read back.
+  "ConvertTextAlignType", "ConvertOsKeyType", "ConvertMoveType", "ConvertTargetFlag",
+  "ConvertArmorType", "ConvertHeroAttribute", "ConvertDefenseType", "ConvertRegenType",
+  "ConvertUnitCategory", "ConvertPathingFlag",
 ];
 
 /** Cheap, pure utility natives (string/number conversions, RNG, camera/env

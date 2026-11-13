@@ -1,7 +1,8 @@
 // Headless check of a map's `war3mapSkin.txt` (src/data/mapSkin.ts — docs/map-compatibility.md,
 // Test of Balance): its [CustomSkin] is a layer over UI\war3skins.txt for every race, its
-// [FrameDef] a layer over the FrameDef string tables with TRIGSTR_ resolved, and both come down
-// with the map. Against the developer's own copy of Test of Balance when it is in the install.
+// [FrameDef] a layer over the FrameDef string tables with TRIGSTR_ resolved, its [Errors] a layer
+// over the engine's refusal lines (Units\commandstrings.txt), and all of them come down with the
+// map. Against the developer's own copy of Test of Balance when it is in the install.
 //
 // Run: pnpm sim:test
 const { join } = require("node:path");
@@ -9,7 +10,9 @@ const { existsSync, readFileSync } = require("node:fs");
 const REPO = join(__dirname, "..");
 require("node:fs").writeFileSync(join(REPO, ".sim-build", "package.json"), '{"type":"commonjs"}');
 const B = (...p) => require(join(REPO, ".sim-build", "src", ...p));
-const { parseMapSkin, setMapSkinOverlay, mapSkinOverlay, OverlaidStrings } = B("data", "mapSkin.js");
+const { parseMapSkin, setMapSkinOverlay, mapSkinOverlay, OverlaidStrings, mapErrorString } = B("data", "mapSkin.js");
+const { CommandStrings } = B("data", "commandStrings.js");
+const { parseMapLanguage, setMapLanguage } = B("i18n", "mapLanguage.js");
 const { parseWar3Skins, skinValue } = B("data", "war3skins.js");
 const { makeTrigStr } = B("data", "objectData.js");
 
@@ -34,9 +37,14 @@ console.log("the file");
 const mine = parseMapSkin([
   "[CustomSkin]", "IdlePeon=ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "",
   "[FrameDef]", "UPKEEP_NONE=TRIGSTR_3837", "IDLE_PEON=Traits", "", "[SomethingElse]", "Ignored=1",
+  "[Errors]", "Nolumber=\"You do not need a recipe for this item.\"", "NeedEmptyTree=That tree already has eyes.",
 ].join("\r\n"), (v) => (v === "TRIGSTR_3837" ? "|Cff00ff00Balanced" : v));
 check("[CustomSkin] keys are read as written", [...mine.skins], [["IdlePeon", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp"]]);
 check("[FrameDef] values have their TRIGSTR_ resolved; a literal passes through", [...mine.strings], [["UPKEEP_NONE", "|Cff00ff00Balanced"], ["IDLE_PEON", "Traits"]]);
+check("[Errors] keys are folded to lower case and unquoted", [...mine.errors], [
+  ["nolumber", "You do not need a recipe for this item."],
+  ["needemptytree", "That tree already has eyes."],
+]);
 
 console.log("\nno map (the menus)");
 setMapSkinOverlay(null);
@@ -56,6 +64,38 @@ setMapSkinOverlay(null);
 check("the install's art is back", skinValue(skins, "Human", "IdlePeon"), "ReplaceableTextures\\CommandButtons\\BTNPeasant.blp");
 check("…and the file's words", strings.get("IDLE_PEON"), "Idle Workers (|Cfffed312F8|R)");
 check("an empty file puts up no layer", (setMapSkinOverlay(parseMapSkin("[CustomSkin]\n")), mapSkinOverlay()), null);
+
+console.log("\nthe engine's refusal lines (Units\\commandstrings.txt [Errors])");
+const install = new CommandStrings(new Map([
+  ["nolumber", "Not enough lumber."], ["nogold", "Not enough gold."], ["targettree", "Must target a tree."],
+]));
+setMapSkinOverlay(null);
+setMapLanguage(null);
+check("outside a map a refusal reads the install's line", install.get("Nolumber"), "Not enough lumber.");
+check("…and a key no table knows is empty", install.get("Needemptytree"), "");
+setMapSkinOverlay(mine);
+check("the map's own re-wording wins, matched case-insensitively", install.get("Nolumber"), "You do not need a recipe for this item.");
+check("…also when the map spells the key differently", install.get("Needemptytree"), "That tree already has eyes.");
+check("a key it does not name is still the install's", install.get("Nogold"), "Not enough gold.");
+setMapSkinOverlay(parseMapSkin("[FrameDef]\nIDLE_PEON=Traits\n"));
+check("a map layer with no [Errors] block changes nothing", install.get("Nolumber"), "Not enough lumber.");
+setMapSkinOverlay(mine);
+setMapLanguage(parseMapLanguage(JSON.stringify({
+  format: 1, locale: "zhCN",
+  errors: { Nolumber: "该物品不需要卷轴。请直接购买配方中列出的组件。" },
+})));
+check("the sidecar's `errors` table translates the map's wording", install.get("Nolumber"), "该物品不需要卷轴。请直接购买配方中列出的组件。");
+check("…and leaves a key it does not name in the author's language", install.get("Needemptytree"), "That tree already has eyes.");
+setMapLanguage(null);
+setMapSkinOverlay(null);
+check("both layers down: the install's line is back", install.get("Nolumber"), "Not enough lumber.");
+
+// A map's line is never the stock file's race-indexed four-building list, so the comma split
+// `forRace` applies to "Nofood" must not cut it into clauses.
+setMapSkinOverlay(parseMapSkin("[Errors]\nNofood=One, two, three, four, five.\n"));
+check("a re-worded race-indexed key comes back whole", install.forRace("Nofood", "orc"), "One, two, three, four, five.");
+setMapSkinOverlay(null);
+check("…and an install key still picks the race's own entry", install.forRace("Nofood", "orc"), "");
 
 const MAP = join(REPO, "Warcraft III", "Maps", "Download", "Test of Balance v1.24-4p.w3x");
 console.log("\nTest of Balance's own war3mapSkin.txt");

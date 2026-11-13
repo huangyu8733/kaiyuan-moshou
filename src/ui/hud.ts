@@ -11,7 +11,7 @@ import {
 } from "../data/gameplayConstants";
 import type { MinimapPing } from "../jass/runtime";
 import { escapeHtml, wc3StripMarkup, wc3ToHtml } from "./wc3Text";
-import { t } from "../i18n";
+import { t, displayHeroName } from "../i18n";
 import { DevToolsDrawer } from "./devTools";
 
 import { CHAT_MAX_LENGTH, sanitizeChat, type ChatTarget } from "../game/chat";
@@ -4036,7 +4036,7 @@ export class GameHud {
       // The NAME carries WC3's own markup and the game draws it: a custom map colours its
       // unit names in the object editor (Candy War's "|cffffaa00Boogie Kid"), and printing the
       // raw string put the code on screen instead of the colour on the name.
-      this.selName.innerHTML = wc3ToHtml(sel.isHero && sel.properName ? sel.properName : sel.name);
+      this.selName.innerHTML = wc3ToHtml(sel.isHero ? displayHeroName(sel.properName, sel.name) : sel.name);
       this.selHpText.textContent = poolReadout(Math.ceil(sel.hp), sel.maxHp);
       // …and the NUMBER carries the bar's own tint: green→yellow→red as it drains, at the same
       // two thresholds every health bar in the console uses (barState). The readout under the

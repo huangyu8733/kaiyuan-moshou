@@ -1265,21 +1265,44 @@ export class AbilityRegistry {
    * Two abilities in 1.30 list a pair like this, and both are the same spell aimed two ways:
    * Ensnare (`buffid1 = Bena,Beng`) and Web (`Bwea,Bweb`). Each pair is one buff wearing two
    * MODELS — `ensnareTarget.mdx` for a body standing on the ground, `ensnare_AirTarget.mdx`
-   * for one in the air, with its own `chest,mount` attachment — and the ONLY thing in the data
-   * that says which row is which is the strings file's `EditorSuffix`, " (Air)" / " (Ground)".
+   * for one in the air, with its own `chest,mount` attachment — and the data says which row is
+   * which in exactly two places: the strings file's `EditorSuffix`, and the model's own name.
+   *
+   * **The model is the one to read.** `EditorSuffix` is localized: an English client says
+   * " (Air)" / " (Ground)", a Chinese one " (空中的)" / " (地面的)". Matching the English words
+   * looked right and failed silently on every translated install — no row matched, the fallback
+   * below took `ids[0]`, and every ensnared Footman on a zhCN client wore the net built for a
+   * Gargoyle's chest (tools/sim-creep-spells-test.cjs caught it: `want Beng, got Bena`). A file
+   * name is never translated, so `_AirTarget` on the model path decides, and the suffix is only
+   * a fallback for a row whose art does not carry the word.
    *
    * Note the ORDER: the air row is listed FIRST in both. Taking `buffs[0]` — which is what
-   * every other ability in the game wants, and what `buffIdOf` still does — therefore dressed
+   * every other ability in the game wants, and what `buffIdOf` still does — is what dressed
    * every ensnared Footman in the net meant for a Gargoyle's chest.
    *
-   * Falls back to the first id, so a list with no such suffixes (every other ability) answers
+   * Falls back to the first id, so a list with no such rows (every other ability) answers
    * exactly as it did before.
    */
   domainBuff(ids: readonly string[], flying: boolean): string {
-    const want = flying ? "air" : "ground";
+    // Which DOMAIN a row belongs to, or null when the row does not say. The model decides;
+    // the (possibly translated) EditorSuffix is the second opinion, in the words either of the
+    // two clients we have data for uses.
+    const domainOf = (id: string): boolean | null => {
+      const b = this.buff(id);
+      if (!b) return null;
+      const model = b.fx.map((f) => f.path).join(" ");
+      // "Air" as its own word in the asset name — `ensnare_AirTarget`/`Web_AirTarget` say it
+      // after an underscore, so a `\b` test would miss them; "repair" must not count, so it is
+      // the character BEFORE the word that matters, not a boundary.
+      if (/(^|[^a-z])air/i.test(model)) return true;
+      const suffix = b.suffix.toLowerCase();
+      if (/\bair\b|空中|飞行/.test(suffix)) return true;
+      if (/\bground\b|地面/.test(suffix)) return false;
+      return null;
+    };
     for (const id of ids) {
-      const suffix = this.buff(id)?.suffix.toLowerCase() ?? "";
-      if (suffix.includes(want)) return id;
+      const isAir = domainOf(id);
+      if (isAir !== null && isAir === flying) return id;
     }
     return ids[0] ?? "";
   }

@@ -19,7 +19,8 @@ import { gameFontsReady, onGameFontsReady } from "./gameFont";
 import type { ListItem } from "./fdf/widgets";
 import { mountWorking } from "./workingIndicator";
 import { modalOver } from "./modal";
-import { t } from "../i18n";
+import { t, type MessageKey } from "../i18n";
+import { installReader, loadMapLanguage, localizedMapInfo, type MapLanguage } from "../i18n/mapLanguage";
 
 // The map browser: the folder-browsing map list (MapListBox.fdf) and the map summary pane
 // (MapInfoPane.fdf), which are the SAME two widgets on every screen that picks a map.
@@ -35,12 +36,23 @@ import { t } from "../i18n";
 // description at all). So `layoutInfoPane` takes the box it is laying out into rather than
 // baking Skirmish's numbers in, and takes the list of stat rows that box has room for.
 
-/** Tileset letter → name, as the World Editor lists them (WorldEditStrings tileset names). */
-const TILESETS: Record<string, string> = {
-  A: "Ashenvale", B: "Barrens", C: "Felwood", D: "Dungeon", F: "Lordaeron Fall",
-  G: "Underground", I: "Icecrown", J: "Dalaran Ruins", K: "Black Citadel",
-  L: "Lordaeron Summer", N: "Northrend", O: "Outland", Q: "Village Fall",
-  V: "Village", W: "Lordaeron Winter", X: "Dalaran", Y: "Cityscape", Z: "Sunken Ruins",
+/** Tileset letter → its message key, as the World Editor lists them (WorldEditStrings tileset
+ *  names). The WORDS live in the app's own catalogue (i18n/index.ts `mapinfo.tileset.*`) rather
+ *  than here: the letter is the map's, the name is ours to say, and an English install should
+ *  read "Felwood" while a Chinese one reads "费伍德森林". */
+const TILESETS: Record<string, MessageKey> = {
+  A: "mapinfo.tileset.A", B: "mapinfo.tileset.B", C: "mapinfo.tileset.C",
+  D: "mapinfo.tileset.D", F: "mapinfo.tileset.F", G: "mapinfo.tileset.G",
+  I: "mapinfo.tileset.I", J: "mapinfo.tileset.J", K: "mapinfo.tileset.K",
+  L: "mapinfo.tileset.L", N: "mapinfo.tileset.N", O: "mapinfo.tileset.O",
+  Q: "mapinfo.tileset.Q", V: "mapinfo.tileset.V", W: "mapinfo.tileset.W",
+  X: "mapinfo.tileset.X", Y: "mapinfo.tileset.Y", Z: "mapinfo.tileset.Z",
+};
+
+/** The player-count bucket `mapSizeLabel` answers, as a key. It stays a WORD in a table
+ *  because the string it produces is data (`WorldEditData`'s `MapRange`), not a sentence. */
+const MAP_SIZES: Record<string, MessageKey> = {
+  Small: "mapinfo.size.small", Medium: "mapinfo.size.medium", Large: "mapinfo.size.large",
 };
 
 // The list's row icons — the game's own (MapInfoPane.fdf names icon-file-melee for the
@@ -53,6 +65,11 @@ const ICON_UMS = "UI\\Widgets\\Glues\\icon-file-ums.blp";
 /** Every map we have read, path → info. Module-level, so coming back to a map-picking
  *  screen doesn't re-read and re-parse the whole install's Maps folder a second time. */
 const mapCache = new Map<string, MapInfo>();
+/** …and the Chinese sidecar each map has (path → dictionary, null for none), per install door.
+ *  Reading one is a VFS round trip per candidate file name, and the list asks for every row of
+ *  a folder on every visit; keyed by the door because an install switch is a different tree
+ *  holding maps with the same paths. */
+const languageCache = new WeakMap<object, Map<string, MapLanguage | null>>();
 /** …and the minimap markers of the maps that were actually picked. */
 const previewCache = new Map<string, MapPreview | null>();
 /** The folders whose maps have all been read — the only ones a list may show. */
@@ -70,15 +87,28 @@ export interface ChosenMap {
   info: MapInfo;
 }
 
-/** Read a map's w3i (cached across screens and across visits to a screen). */
-export async function readMapInfo(maps: Map<string, File>, path: string): Promise<MapInfo | null> {
+/** Read a map's w3i (cached across screens and across visits to a screen). With the install
+ *  door, the row also wears the map's own Chinese name when a language file sits beside it
+ *  (`i18n/mapLanguage.ts`) — the cache keeps the w3i's own text and the copy is made on the way
+ *  out, so switching the UI back to English restores the original name. */
+export async function readMapInfo(maps: Map<string, File>, path: string, vfs?: DataSource): Promise<MapInfo | null> {
   const cached = mapCache.get(path);
-  if (cached) return cached;
+  if (cached) return vfs ? localizedMapInfo(cached, await mapLanguageFor(vfs, path)) : cached;
   const file = maps.get(path);
   if (!file) return null;
   const info = parseMapInfo(new Uint8Array(await file.arrayBuffer()), baseName(path));
   mapCache.set(path, info);
-  return info;
+  return vfs ? localizedMapInfo(info, await mapLanguageFor(vfs, path)) : info;
+}
+
+/** The sidecar beside one map, read once per install door (see `languageCache`). */
+async function mapLanguageFor(vfs: DataSource, path: string): Promise<MapLanguage | null> {
+  let seen = languageCache.get(vfs);
+  if (!seen) { seen = new Map(); languageCache.set(vfs, seen); }
+  if (seen.has(path)) return seen.get(path) ?? null;
+  const lang = await loadMapLanguage(installReader(vfs), path);
+  seen.set(path, lang);
+  return lang;
 }
 
 /**
@@ -288,7 +318,7 @@ export class MapBrowser {
   /** Pick a map: reads its w3i and kicks off its minimap preview. */
   async choose(path: string): Promise<void> {
     const file = this.maps.get(path);
-    const info = await readMapInfo(this.maps, path);
+    const info = await readMapInfo(this.maps, path, this.vfs);
     if (!file || !info || !this.alive) return;
     this.cursor = path;
     this.selected = { path, file, info };
@@ -441,7 +471,7 @@ export class MapBrowser {
       // at all, and one that declares no slot anybody could be seated in. Each was a row that
       // did nothing when picked — `choose` never gets an info to show.
       try {
-        const info = await readMapInfo(this.maps, e.path);
+        const info = await readMapInfo(this.maps, e.path, this.vfs);
         if (!info || info.slots.length === 0) { e.invalid = true; continue; }
         e.label = info.name || e.label;
         e.melee = info.isMelee;
@@ -681,8 +711,10 @@ export function fillMapInfo(
   s.setText("SuggestedPlayersValue", info.recommendedPlayers || t("mapsites.players", { count: info.maxPlayers }));
   // "Map Size" is a WORD, not a measurement: the game buckets a map by its player count
   // (UI\MiscData.txt [BattleNetCustomFilter]), which is how a 1v1 reads "Small".
-  s.setText("MapSizeValue", mapSizeLabel(info.maxPlayers));
-  s.setText("MapTilesetValue", TILESETS[info.tileset] ?? info.tileset ?? "—");
+  const size = mapSizeLabel(info.maxPlayers);
+  s.setText("MapSizeValue", MAP_SIZES[size] ? t(MAP_SIZES[size]) : size);
+  const tileset = TILESETS[info.tileset];
+  s.setText("MapTilesetValue", tileset ? t(tileset) : info.tileset || "—");
   setDescription(s, info.description || "");
   centreNameRow(s);
 

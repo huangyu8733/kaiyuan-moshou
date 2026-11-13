@@ -13,6 +13,7 @@ import { cloneNamespaced, FdfLibrary } from "./fdf/library";
 import { stretchBox, UI_HEIGHT } from "./fdf/layout";
 import type { FdfFrame } from "./fdf/parser";
 import { mountFdfScreen, type FdfScreen } from "./fdf/render";
+import { mapDisplayText } from "../i18n/mapLanguage";
 import type { MapPreview } from "../world/mapPreview";
 import type { MeleeConfig, SlotConfig } from "./lobby";
 import { playerLabels } from "./playerSlots";
@@ -559,18 +560,18 @@ function captions(
     // filled none of them. ONLY none of them: the Frozen Throne credits fill the subtitle and
     // the blurb and leave the title empty, and the real client shows it empty — its map name
     // ("The Frozen Throne Credits") stood in over "The Frozen Throne" as a line it never has.
-    const subtitle = opts.subtitle || info.loading.subtitle;
-    const untitled = subtitle || info.loading.text.trim() ? "" : info.name;
+    const subtitle = mapDisplayText(opts.subtitle || info.loading.subtitle);
+    const untitled = subtitle || info.loading.text.trim() ? "" : mapDisplayText(info.name);
     return {
       ...bar,
-      LoadingTitleText: opts.title || info.loading.title || untitled,
+      LoadingTitleText: mapDisplayText(opts.title || info.loading.title || untitled),
       LoadingSubtitleText: subtitle,
-      LoadingText: info.loading.text,
+      LoadingText: mapDisplayText(info.loading.text),
     };
   }
   const out: Record<string, string> = {
     ...bar,
-    LoadingMeleeMapName: config.mapName ?? info.name,
+    LoadingMeleeMapName: mapDisplayText(config.mapName ?? info.name),
     LoadingMeleeGameTypeValue: gameType(rows, text),
   };
   // The names the MATCH will use, letter for letter — a computer as its lobby row read

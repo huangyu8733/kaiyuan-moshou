@@ -165,7 +165,11 @@ const COMPLETE = ".ow3-download.json";
 const wanted = (path: string): boolean => {
   const p = path.toLowerCase();
   return p === ".build.info" || p === "customkeys.txt" || p === "customkeybindings/customkeys.txt" ||
-    p.startsWith("data/") || /^[^/]+\.mpq$/.test(p) || (p.startsWith("maps/") && /\.(w3m|w3x)$/.test(p));
+    p.startsWith("data/") || /^[^/]+\.mpq$/.test(p) ||
+    // A map's own Chinese dictionary travels WITH the map (`<map>.w3x.zhCN.json`,
+    // i18n/mapLanguage.ts). Dropped here it is dropped for good: the copy in OPFS is what every
+    // later boot mounts, so the map would play in its author's language for ever.
+    (p.startsWith("maps/") && (/\.(w3m|w3x)$/.test(p) || p.endsWith(".zhcn.json")));
 };
 
 async function rangeReader(url: string, signal?: AbortSignal): Promise<{ size: number; read: (a: number, b: number) => Promise<Uint8Array> }> {

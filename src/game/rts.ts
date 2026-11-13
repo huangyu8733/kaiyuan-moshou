@@ -5,6 +5,7 @@ import type { Command } from "./commands";
 import { PATHING_CELL, footprintCells, type PathingGrid } from "../sim/pathing";
 import { flyHeight } from "../sim/missile";
 import { footprintRadius, type PlacedFootprint, type Footprint } from "../sim/destructibles";
+import { displayHeroName } from "../i18n";
 import { GOLD_MINE_ID } from "../world/mapUnits";
 import { PlacedIndex, type PlacedRef } from "./placement";
 import { Authority } from "./authority";
@@ -64,6 +65,7 @@ import { CreepCaster } from "../ai/creeps";
 import { ComputerPlusAi, type ConcedeReading, type PlusHost, type PlusLogReading } from "../ai/plus";
 import { CandyWarAi, type CandyHost } from "../ai/plus/candy";
 import { WarChasersAi } from "../ai/plus/warchasers";
+import { DotaAi } from "../ai/plus/dota";
 import { type TechRegistry } from "../data/techtree";
 import { type UpgradeRegistry } from "../data/upgrades";
 import type { SoundBoard, SoundCategory } from "../audio/sounds";
@@ -1175,6 +1177,7 @@ export class RtsController {
     this.plusHost = host;
     this.candyWar = null;
     this.warChasers = null;
+    this.dota = null;
   }
 
   /** The lobby's answer for each computer seat — where it starts, how hard it plays, and which
@@ -1273,6 +1276,8 @@ export class RtsController {
   private candyWar: CandyWarAi | null = null;
   /** Computer+ on WarChasers (src/ai/plus/warchasers/) — null on every other map. */
   private warChasers: WarChasersAi | null = null;
+  /** Computer+ on DotA v6.83d (src/ai/plus/dota/) — null on every other map. */
+  private dota: DotaAi | null = null;
   /** Selections a COMPUTER made this step (`selectForAi`), raised with the local player's own in
    *  `drainSelectionEvents`. */
   private aiSelections: SelectionEvent[] = [];
@@ -1313,6 +1318,19 @@ export class RtsController {
   startWarChasersAI(seats: ReadonlyArray<{ player: number; difficulty: number }>): void {
     if (!this.plusHost || !seats.length) return;
     const ai = (this.warChasers ??= new WarChasersAi(this.plusHost));
+    for (const s of seats) ai.add(s.player, s.difficulty, this.meleeSeed);
+  }
+
+  /**
+   * Seat Computer+ on DotA v6.83d's hero seats (src/ai/plus/dota/).
+   *
+   * The same seam as `startCandyWarAI`: the map has no AI of its own, so a computer seat would
+   * otherwise stand in its base for the whole match. Only the map's own Circle of Power is used —
+   * the AI hires a hero off it, exactly as a person does, and the map hands the hero over.
+   */
+  startDotaAI(seats: ReadonlyArray<{ player: number; difficulty: number }>): void {
+    if (!this.plusHost || !seats.length) return;
+    const ai = (this.dota ??= new DotaAi(this.plusHost));
     for (const s of seats) ai.add(s.player, s.difficulty, this.meleeSeed);
   }
 
@@ -2727,6 +2745,12 @@ export class RtsController {
       this.corpses.splice(i, 1);
     }
     const facing = (MELEE.UNIT_FACING * Math.PI) / 180; // Blizzard.j's bj_UNIT_FACING
+    // The native never stands a hero up INSIDE impassable pathing — it moves it to the nearest
+    // spot the body fits — and one map depends on that: DotA 6.90G revives at the centre of its
+    // fountain rect, where a `NOfp` fire pit (`PathTextures\4x4Default.tga`, every cell blocked)
+    // stands 16 units away. Revived in place, the hero was stuck in the doodad for the rest of
+    // the game (and the fire burned under his feet). See spawnSpot.
+    [x, y] = this.spawnSpot(def, x, y);
     this.addSimUnit(def, x, y, facing, f.owner, f.team, 0, heroId); // under the id it died with
     this.sim.reviveFallenHero(heroId, heroId, "altar", eyeCandy);
     this.scriptSpawns.push({ typeId: f.typeId, x, y, facing, player: f.owner, team: f.team, simId: heroId }); // …a body later
@@ -2742,22 +2766,9 @@ export class RtsController {
     if (fp) [x, y] = grid.snapForBuildingRect(x, y, fp.w, fp.h);
     // A ground unit created ON a blocked cell — the classic "spawn a creep out of a building"
     // trigger passes the building's own centre — is displaced by WC3 to the nearest free spot,
-    // so it emerges beside the structure rather than stuck inside it. Snap it to the nearest
-    // cell its footprint fits, exactly as a freshly-trained unit leaves its factory. Flyers and
-    // buildings are exempt (buildings snap above).
-    if (!def.isBuilding && def.moveType !== MoveType.Fly) {
-      // …in the medium the unit actually moves through. A transport ship is created ON the
-      // sea (Rise of the Naga's harbour fills its docks with `CreateUnit(p, 'etrs', …)` at
-      // water coordinates), and asked the GROUND question every one of those was "displaced"
-      // onto the nearest beach — a fleet of boats standing on the sand.
-      const domain = def.moveType === MoveType.Float ? "water" : "ground";
-      const n = footprintCells(def.collision || 16);
-      const [cx, cy] = grid.worldToCell(x, y);
-      if (!grid.footprintFits(cx, cy, n, domain)) {
-        const fit = grid.nearestFit(cx, cy, n, undefined, undefined, domain) ?? grid.nearestWalkable(cx, cy, undefined, domain);
-        if (fit) [x, y] = grid.cellToWorld(fit[0], fit[1]);
-      }
-    }
+    // so it emerges beside the structure rather than stuck inside it. Flyers and buildings are
+    // exempt (buildings snap above).
+    [x, y] = this.spawnSpot(def, x, y);
     const facing = (facingDeg * Math.PI) / 180;
     // `Player(PLAYER_NEUTRAL_AGGRESSIVE)` is not a thirteenth PLAYER — it is the creep slot,
     // and a unit created on it must come out as a creep, not as a coloured player's unit on a
@@ -2801,6 +2812,35 @@ export class RtsController {
     }
     this.scriptSpawns.push({ typeId, x, y, facing, player: owner, team, simId }); // …gets a body later
     return simId;
+  }
+
+  /**
+   * Where a ground unit of this type actually comes to stand when a script puts it at (x, y).
+   *
+   * WC3 displaces a unit created on impassable pathing to the nearest cell its body fits, so a
+   * creep spawned at its building's own centre emerges beside the structure. A REVIVAL obeys the
+   * same rule and used to skip it (reviveHeroByScript), which one map depends on: DotA 6.90G
+   * revives at the centre of its fountain rect, where a `NOfp` fire pit stands 16 units away,
+   * and that doodad's `PathTextures\4x4Default.tga` blocks every cell it covers. The hero came
+   * back inside the fire pit, unable to path out, with the fire burning under his feet.
+   *
+   * Buildings are exempt (they snap to the build grid before this runs) and so are flyers; a
+   * FLOAT unit asks the WATER question, or every boat a harbour creates would be "displaced"
+   * onto the nearest beach. See createScriptUnit.
+   */
+  private spawnSpot(def: UnitDef, x: number, y: number): [number, number] {
+    if (def.isBuilding || def.moveType === MoveType.Fly) return [x, y];
+    const grid = this.sim.grid;
+    const domain = def.moveType === MoveType.Float ? "water" : "ground";
+    const n = footprintCells(def.collision || 16);
+    // ANCHOR space both ways: footprintFits/nearestFit index an even footprint by its high-corner
+    // cell and place it on that cell's CORNER, so going through worldToCell/cellToWorld would put
+    // a 2×2 body half a cell off — one Math.round away from the blocked cell it was moved out of
+    // (see PathingGrid.footprintCenter).
+    const [cx, cy] = grid.footprintAnchor(x, y, n);
+    if (grid.footprintFits(cx, cy, n, domain)) return [x, y];
+    const fit = grid.nearestFit(cx, cy, n, undefined, undefined, domain) ?? grid.nearestWalkable(cx, cy, undefined, domain);
+    return fit ? grid.footprintCenter(fit[0], fit[1], n) : [x, y];
   }
 
   /**
@@ -5052,6 +5092,7 @@ export class RtsController {
       if (this.computerPlus?.active && this.seeded) this.computerPlus.tick(dt);
       if (this.candyWar?.active && this.seeded) this.candyWar.tick(dt);
       if (this.warChasers?.active && this.seeded) this.warChasers.tick(dt);
+      if (this.dota?.active && this.seeded) this.dota.tick(dt);
       // …and the map's own creeps think here too (src/ai/creeps.ts): Neutral Hostile is a
       // player with no seat, and its casting is the same authority-only pass as a computer's.
       if (this.seeded) (this.creepCaster ??= new CreepCaster(this.sim, this.abilities)).tick(dt);
@@ -11218,14 +11259,14 @@ export class RtsController {
         // Your own units wear no owner line; only a hero (name + level) and a covered gold
         // mine (name + gold) are worth a slab.
         if (!u.isHero && gold === null) return null;
-        lines.push({ text: u.properName || e.name, color: HOVER_TEXT });
+        lines.push({ text: displayHeroName(u.properName, e.name), color: HOVER_TEXT });
         if (u.isHero) lines.push({ text: `Level ${u.level}`, color: HOVER_TEXT });
       } else {
         // Another player's unit: the owner's name, coloured by diplomacy to us.
         const ally = this.localAlly(u.owner);
         lines.push({ text: this.playerLabel(u.owner), color: ally ? HOVER_OWNER_ALLY : HOVER_OWNER_ENEMY });
         if (u.isHero) {
-          lines.push({ text: u.properName || e.name, color: HOVER_TEXT });
+          lines.push({ text: displayHeroName(u.properName, e.name), color: HOVER_TEXT });
           lines.push({ text: `Level ${u.level}`, color: HOVER_TEXT });
         }
       }

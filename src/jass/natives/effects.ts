@@ -32,7 +32,9 @@
 // TalkToMe over a cart until it turns around. So the lifetime is the SCRIPT's, not a TTL.
 
 import type { JassPlayer, JassUnit, NativeCtx, Runtime } from "../runtime";
+import { intToRawcode } from "../lexer";
 import { asInt, asNum, asStr, jHandle, jReal, JNULL, type JassValue } from "../values";
+import { dbg } from "../../dev/dbg";
 
 type NativeFn = (ctx: NativeCtx, args: JassValue[]) => JassValue;
 const def = (rt: Runtime, name: string, fn: NativeFn): void => void rt.natives.set(name, fn);
@@ -85,9 +87,10 @@ const channel255 = (v: JassValue | undefined): number | null => {
 };
 
 export function registerEffectNatives(rt: Runtime): void {
-  def(rt, "AddSpecialEffect", (c, a) =>
-    effectHandle(c, c.rt.hooks?.addSpecialEffect?.(asStr(a[0]), asNum(a[1]), asNum(a[2])) ?? -1),
-  );
+  def(rt, "AddSpecialEffect", (c, a) => {
+    dbg("AddSpecialEffect", asStr(a[0]), Math.round(asNum(a[1])), Math.round(asNum(a[2])));
+    return effectHandle(c, c.rt.hooks?.addSpecialEffect?.(asStr(a[0]), asNum(a[1]), asNum(a[2])) ?? -1);
+  });
   def(rt, "AddSpecialEffectLoc", (c, a) => {
     const loc = c.rt.data<{ x: number; y: number }>(a[1]);
     if (!loc) return JNULL; // a null location — the BJ layer hands these over unchecked
@@ -98,12 +101,23 @@ export function registerEffectNatives(rt: Runtime): void {
   // itself has AddSpecialEffectTargetDestructableBJ/…ItemBJ COMMENTED OUT, and no map
   // reaches for either). Anything that isn't a unit we hold gets a null handle.
   def(rt, "AddSpecialEffectTarget", (c, a) => {
+    dbg("AddSpecialEffectTarget", asStr(a[0]), asStr(a[2]));
     const u = c.rt.data<JassUnit>(a[1]);
     if (!u || u.simId < 0) return JNULL;
     return effectHandle(c, c.rt.hooks?.addSpecialEffectTarget?.(asStr(a[0]), u.simId, attachTokens(asStr(a[2]))) ?? -1);
   });
+  // AddSpellEffectById(abilcode, t, x, y) — the same persistent model, but chosen by SKILL
+  // rather than by path: its "Effect Art" from the ability data (see SimWorld.abilityEffectArt).
+  // `t` is the effecttype (EFFECT_TYPE_CASTER/…), which picks an attachment in the real engine
+  // and means nothing for a ground-standing model; DotA AI v6.90G's one call passes 0.
+  def(rt, "AddSpellEffectById", (c, a) => {
+    const art = c.rt.hooks?.abilityEffectArt?.(intToRawcode(asInt(a[0]))) ?? "";
+    if (!art) return JNULL;
+    return effectHandle(c, c.rt.hooks?.addSpecialEffect?.(art, asNum(a[2]), asNum(a[3])) ?? -1);
+  });
   def(rt, "DestroyEffect", (c, a) => {
     const e = c.rt.data<EffectObj>(a[0]);
+    dbg("DestroyEffect", e?.engineId ?? -1);
     if (!e) return JNULL; // destroying a null effect is legal JASS and common in the corpus
     c.rt.hooks?.destroyEffect?.(e.engineId);
     c.rt.handles.free(e.handleId);

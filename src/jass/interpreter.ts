@@ -17,6 +17,7 @@
 
 import type { Expr, FunctionDecl, JassProgram, Stmt, VarDecl } from "./ast";
 import { rawcodeToInt } from "./lexer";
+import { dbg } from "../dev/dbg";
 import { Runtime, JassArray, compareLimit, playerStateHolds, ThreadAbort, unitStateHolds, type BoolExpr, type HostFunction, type JassPlayer, type JassUnit, type NativeCtx, type RectObj, type RegionObj, type SoundObj, type TimerObj, type TriggerObj, type TriggerReg, type UnitSnapshot } from "./runtime";
 import {
   asInt, asNum, asStr, defaultForType, jassEquals, jBool, jHandle, jInt, jReal, jStr, JNULL, truthy, type JassValue,
@@ -80,6 +81,12 @@ export interface TrainEvent {
   building: UnitSnapshot;
   unitTypeId: string;
   trained: UnitSnapshot | null;
+  phase: "start" | "cancel" | "finish";
+}
+/** A research milestone (7.17): the building researching, the upgrade rawcode, and phase. */
+export interface ResearchEvent {
+  building: UnitSnapshot;
+  upgradeId: string;
   phase: "start" | "cancel" | "finish";
 }
 /** A unit BOUGHT from a shop — EVENT_(PLAYER_)UNIT_SELL. `shop` is GetSellingUnit (and the
@@ -199,6 +206,12 @@ const EVENT_PLAYER_UNIT_TRAIN_FINISH = 34;
 const EVENT_UNIT_TRAIN_START = 69;
 const EVENT_UNIT_TRAIN_CANCEL = 70;
 const EVENT_UNIT_TRAIN_FINISH = 71;
+const EVENT_PLAYER_UNIT_RESEARCH_START = 35;
+const EVENT_PLAYER_UNIT_RESEARCH_CANCEL = 36;
+const EVENT_PLAYER_UNIT_RESEARCH_FINISH = 37;
+const EVENT_UNIT_RESEARCH_START = 72;
+const EVENT_UNIT_RESEARCH_CANCEL = 73;
+const EVENT_UNIT_RESEARCH_FINISH = 74;
 const EVENT_PLAYER_HERO_LEVEL = 41;
 const EVENT_PLAYER_HERO_SKILL = 42;
 const EVENT_UNIT_HERO_LEVEL = 78;
@@ -580,18 +593,39 @@ export class Interpreter {
         // body's business, and a later branch's condition that was never reached is genuinely
         // unknown rather than assumed (stated because it is the honest limit of the probe).
         const audienceDependent = this.rt.localViewerReads !== before;
+        // The state the block is about to start from, kept only when this `if` is going to be
+        // re-run per viewer below — nothing is copied for the ordinary one, which is most of
+        // them. It is needed because those extra passes are the SAME block: every `set` in it
+        // runs again, and a block that rebuilds a value out of itself compounds instead of
+        // repeating. DotA's respawn board is exactly that shape —
+        //
+        //     if PQO > 0 then
+        //         if IsPlayerAlly( GetLocalPlayer(), BO[0] ) then set PTO = SF0+"["+…+" |r"+PTO+… ]
+        //
+        // — so its title came out "[[[[[ 12 | 08 ]]]]]", one bracket pair per seated viewer.
+        // That is the row of stray `]` the scoreboard grew past the revive countdown. Each
+        // extra pass now starts from this snapshot and throws its result away: the host's own
+        // pass is the one the script keeps, which is what a client running it alone would get.
+        const preVars = audienceDependent ? new Map(frame.vars) : null;
         if (taken >= 0) yield* this.execBlockG(s.branches[taken].body, frame);
         else if (s.elseBody) yield* this.execBlockG(s.elseBody, frame);
         // Only the OUTERMOST such statement fans out. Inside a `forAudience` the runtime has
         // already resolved who is watching, so `GetLocalPlayer` is answering correctly and a
         // second fan-out would be N² passes of the same block for the same person.
         if (!audienceDependent || this.rt.audience !== null) return JNULL;
+        // What the LOCAL player's pass left behind, which is the state this statement really
+        // ends in (see `preVars`).
+        const hostVars = new Map(frame.vars);
         for (const p of this.rt.viewers()) {
           if (p === this.rt.localPlayer) continue; // already ran, as itself, with writes allowed
           const prevAudience: number | null = this.rt.audience;
           const prevGuard = this.rt.presentationOnly;
           this.rt.audience = p;
           this.rt.presentationOnly = true; // world writes refused for the extra passes only
+          if (preVars) {
+            frame.vars.clear();
+            for (const [k, v] of preVars) frame.vars.set(k, v);
+          }
           try {
             let t = -1;
             for (let i = 0; i < s.branches.length; i++) {
@@ -606,6 +640,10 @@ export class Interpreter {
             this.rt.presentationOnly = prevGuard;
           }
         }
+        // …and the locals go back to the local player's own answer, which the passes above
+        // must not be able to overwrite.
+        frame.vars.clear();
+        for (const [k, v] of hostVars) frame.vars.set(k, v);
         return JNULL;
       }
       case "loop": {
@@ -1472,6 +1510,7 @@ export class Interpreter {
       ]);
       const phase = SPELL_PHASES.indexOf(e.phase);
       if (phase < 0) continue;
+      if (/^(A0D[HLSJ]|A1A[A-Z0-9])$/.test(e.abilityId)) dbg("spell-ev", e.phase, e.abilityId, e.caster);
       const playerEvt = EVENT_PLAYER_UNIT_SPELL_CHANNEL + phase;
       const unitEvt = EVENT_UNIT_SPELL_CHANNEL + phase;
       this.dispatchToRegs(responses, (reg) =>
@@ -1521,6 +1560,25 @@ export class Interpreter {
       const filterSubject = e.trained ? (responses.get("TrainedUnit") as JassValue) : b;
       this.dispatchToRegs(responses, (reg) =>
         (reg.kind === "playerUnitEvent" && this.playerUnitEventMatches(reg, playerEvt, e.building.owner, b, filterSubject)) ||
+        (reg.kind === "unitEvent" && this.unitEventIs(reg, unitEvt) && this.paramUnitIs(reg, b)));
+    }
+  }
+
+  /** Pump research events (7.17) — an upgrade queued / cancelled / finished at a building.
+   *  Responses: GetResearched (the tech rawcode; DotA v6.83d's "-fastbuild" reads it) and
+   *  GetTriggerUnit = the researching structure. */
+  pumpResearchEvents(events: ReadonlyArray<ResearchEvent>): void {
+    for (const e of events) {
+      const b = this.rt.unitForSim(e.building);
+      const responses = new Map<string, JassValue>([
+        ["TriggerUnit", b],
+        ["ResearchingUnit", b],
+        ["Researched", jInt(rawcodeToInt(e.upgradeId))],
+      ]);
+      const playerEvt = e.phase === "start" ? EVENT_PLAYER_UNIT_RESEARCH_START : e.phase === "cancel" ? EVENT_PLAYER_UNIT_RESEARCH_CANCEL : EVENT_PLAYER_UNIT_RESEARCH_FINISH;
+      const unitEvt = e.phase === "start" ? EVENT_UNIT_RESEARCH_START : e.phase === "cancel" ? EVENT_UNIT_RESEARCH_CANCEL : EVENT_UNIT_RESEARCH_FINISH;
+      this.dispatchToRegs(responses, (reg) =>
+        (reg.kind === "playerUnitEvent" && this.playerUnitEventMatches(reg, playerEvt, e.building.owner, b)) ||
         (reg.kind === "unitEvent" && this.unitEventIs(reg, unitEvt) && this.paramUnitIs(reg, b)));
     }
   }

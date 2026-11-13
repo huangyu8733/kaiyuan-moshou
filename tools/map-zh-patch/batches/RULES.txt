@@ -1,0 +1,36 @@
+本地化翻译任务规则（Warcraft III DotA 地图 tooltip 汉化）
+
+输入：batches/<F>，格式 { "原文键": "原文（供参考）" }。
+输出：batches/done-<F>，格式 { "原文键": "简体中文译文" }。
+用 Write 工具写合法 UTF-8 JSON（无 BOM、无 markdown 代码块）。键必须与输入逐字符一致、数量相同。
+逐个文件处理：读一个、译一个、立刻写出一个，再处理下一个。不要把所有译文攒到最后一次性输出。
+
+原文键有两种：
+- 含 {N} 的「骨架」：真实数字已被占位，引擎稍后回填。
+- 完整原文（单位标题 / 英雄背景故事 / 单位描述）。
+
+硬规则（有自动校验，违反会打回）：
+1. {N} 数量与键完全相同，按原相对顺序出现；不能删、改、新增。
+2. <...> 引用（<ANbr,DataA1>、<AHav,DataC1,%> 等）原样保留，一个字符都不能改。
+3. |c 加 8 位十六进制颜色码、|r、|n 全部原样保留，数量一致。
+4. 原文里的数字、%、+、- 号保留。
+5. 只译自然语言文字；标识符、rawcode、文件名、按键字母（Q/W/E/R/D/F 等）保持原样。
+6. 葡语(PT-BR) 与英语一律译成简体中文。长文本（英雄背景故事、物品说明）必须完整译完，不要摘要、不要省略后半段。
+7. 不要输出解释、注释或校验报告到 JSON 里。
+
+术语统一：
+Dano/damage=伤害；Duração/Dura/Lasts=持续时间；Recarga/cooldown=冷却时间；Alcance/range=施法距离；
+Área/AOE=范围；Vida/HP=生命值；Mana=魔法值；Velocidade de movimento/movement speed=移动速度；
+Atordoar/stun=眩晕；Aliado/friendly=友方；Inimigo/enemy=敌方；Nível/level=等级；Segundos/seconds=秒；
+Causando/dealing=造成；Bônus/bonus=额外；Unidades/units=单位；Herói/hero=英雄；Habilidade/ability=技能；
+Atributos/attributes=属性；Força/Strength=力量；Agilidade/Agility=敏捷；Inteligência/Intelligence=智力；
+Imunidade a magia/spell immunity=魔法免疫；Dano mágico/magic damage=魔法伤害；Ataque/attack=攻击；
+Armadura/armor=护甲；Silenciar/silence=沉默；Lento/slow=减速；Alvo/target=目标；Por segundo/per second=每秒；
+Chance=几率；Raio/radius=半径；Cura/heal=治疗；Custo de mana/mana cost=魔法消耗；Atributos=属性；
+Duração=持续时间；Dano por segundo=每秒伤害；Imune=免疫；Visão=视野；Ouro=gold=金币。
+
+DotA 专有名词用中文 DotA 1 通行译名：Crystal Maiden=水晶室女、Rylai=莉莱、Zeus=宙斯、
+Scourge=天灾、Sentinel=近卫、Roshan=肉山、Purist=普瑞斯特、Alleria=奥蕾莉亚、Kael=凯尔。
+拿不准的保留原文，不要硬凑音译。
+
+文件类型：unitTip=短悬停标题；unitBody=英雄背景/物品与单位描述；ability=技能说明。

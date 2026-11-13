@@ -16,6 +16,7 @@ import type { EngineHooks, LobbySlot, MapSetup } from "./runtime";
 import { COMPAT_PRELUDE } from "../compat/prelude";
 import { createLuaMapScript, type LuaMapScript } from "../compat/lua/index";
 import { localizeWts } from "../i18n/campaignZh";
+import { localizeMapWtsText } from "../i18n/mapLanguage";
 
 // war3map.wts is UTF-8 (with a BOM); decode it as such so authored text isn't mojibake.
 const decodeUtf8 = (b: Uint8Array): string => new TextDecoder("utf-8").decode(b);
@@ -146,7 +147,9 @@ export function loadMapScript(
   const wtsText = readUtf8(map, "war3map.wts", "scripts\\war3map.wts");
   // The campaign's own lines, said in Chinese when the UI is (i18n/campaignZh.ts). The wts is
   // where a chapter keeps its dialogue, and every store ships it in the store's language.
-  const wts = wtsText ? localizeWts(wtsText) : undefined;
+  // A custom map can answer for its own wts the same way, from the language file beside it
+  // (i18n/mapLanguage.ts) — the campaign dictionary first, then the map's, if either applies.
+  const wts = wtsText ? localizeMapWtsText(localizeWts(wtsText)) : undefined;
   // The compatibility prelude goes BETWEEN them (src/compat/prelude.ts): it declares only what
   // a 1.31+ map refers to and this install's common.j has never heard of, so a 2003 map never
   // touches a line of it, and blizzard.j — which is the install's — still loads last of the two.

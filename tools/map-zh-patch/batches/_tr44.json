@@ -1,0 +1,21 @@
+[
+  "|cffffcc00属性:|r|n+100 移动速度|n|cffff8000Teleporte|r (主动)|n|n|cffffcc00需要:|r|nBoots of Speed - 400|n卷轴 - 2000|n|n|c00838B8B总价: 2400/4400|r|n|n|c00fffc01可用卷轴升级（共 2 等级）|r|n|n|c00ff0303移动速度额外加成不与其他靴子叠加|r",
+  "|cffffcc00属性:|r|n+11 每秒生命回复|n+30% 魔法抗性|n|cffff8000Isolamento|r (主动)|n|n|cffffcc00需要:|r|nHood of Defiance - 1725 (Protectorate)|nHeaddress of Rejuvenation - 575 (Supportive Vestments)|n卷轴 - 800|n|n|c00838b8b总价: 3100|r",
+  "|cffffcc00属性:|r|n+15 伤害|n+6 智力|n+75% 魔法回复|n+10 攻击速度|n|n|cffffcc00需要:|r|nQuarterstaff - 875|nRobe of the Magi - 450|nSobi Mask - 325|n|n|c00838B8B总价: 1650|r",
+  "|cffffcc00属性:|r|n+15 力量|n+15 敏捷|n+140 攻击距离 (仅远程英雄，不叠加)|n|n|cffffcc00需要:|r|nOgre Axe - 1000 |nBoots of Elvenskin*2 - 900|n|n|c00838B8B总价: 1900|r",
+  "|cffffcc00属性:|r|n+15 攻击速度|n+10 全属性|n+16 敏捷|n+10% 移动速度|n|cffff8000Imagem espelhada|r (主动)|n|n|cffffcc00需要:|r|nYasha - 2050 (Enchanted Artifacts)|nUltimate Orb - 2100|n卷轴 - 800|n|n|c00838b8b总价: 4950|r|n|n|cfffffc01可拆分|r",
+  "|cffffcc00属性:|r|n+15 全属性|n+15 伤害|n+6 每秒生命回复|n+150% 魔法回复|n|n|cff0033ccBloqueio de Magia:|r (被动)|n|cffff8000Transferir bloqueio: (主动)|r|n|n|cffffcc00需要:|r|nPerseverance - 1700 (Gateway Relics)|nUltimate Orb - 2100|n卷轴 - 1000|n|n|c00838B8B总价: 4800",
+  "|cffffcc00属性:|r|n+16 敏捷|n+15 攻击速度|n+10% 移动速度|n|n|cffffcc00需要:|r|nBlade of Alacrity - 1000|nBoots of Elvenskin - 450|n卷轴 - 600|n|n|c00838b8b总价: 2050|r|n|n|cffff0303Yasha 的移动速度额外加成不与其他 Yasha 或 Sange and Yasha 叠加|r",
+  "|cffffcc00属性:|r|n+16 伤害|n+16 力量|n+16 敏捷|n+16% 移动速度|n+16 攻击速度|n|cff0033ccMaim|r (被动)|n|n|cffffcc00需要:|r|nSange - 2050 (Enchanted Artifacts)|nYasha - 2050 (Enchanted Artifacts)|n|n|c00838b8b总价: 4100|r |n|n|c00fffc01可拆分|r",
+  "|cffffcc00属性:|r|n+2 每秒生命回复|n|cff0033ccAura de Ataque|r (被动)|n|c000042ffAura Vampírica|r (被动)|n|cff0033ccAura de Brilho|r (被动)|n|cff0033ccAura de Devoção|r (被动)|n|n|cffffcc00需要:|r|nRing of Basilius - 500 (Supportive Vestments)|nMask of Death - 900|nRing of Regeneration - 325|n卷轴 - 300|n|n|c00838b8b总价: 2050|r",
+  "|cffffcc00属性:|r|n+2 全属性|n+5 护甲|n|cffff8000Aumento de Defesa|r (主动)|n|n|cffffcc00需要:|r|nChainmail - 550|nIronwood Branch - 50|n卷轴 - 200|n|n|c00838B8B总价: 800|r",
+  "|cffffcc00属性:|r|n+2 全属性|n|cff0033ccAura de Regeneração|r (被动)|n|n|cffffcc00需要:|r|nRing of Regeneration - 325|nIronwood Branch - 50|n卷轴 - 200|n|n|c00838B8B总价: 575|r",
+  "|cffffcc00属性:|r|n+20 伤害|n+12 每秒生命回复|n+250% 魔法回复|n|cffff8000Recarregar|r (主动)|n|n|cffffcc00需要:|r|nPerseverance*2 - 3400 (Gateway Relics)|n卷轴 - 1800|n|n|c00838b8b总价: 5200|r|n|n|cffff0303Tinker 无法刷新此物品|r",
+  "|cffffcc00属性:|r|n+20 伤害|n+5 护甲|n+15% 吸血|n+3 每秒生命回复|n|cffff8000Dominar|r (主动)|n|n|cffffcc00需要:|r|nHelm of Iron Will - 900|nMask of Death - 900|n|n|c00838B8B总价: 1800|r|n|n|cffff0303法球效果不叠加|r|n|n|cffff0303Tinker 无法刷新此物品|r|n|n|c00fffc01可拆分|r",
+  "|cffffcc00属性:|r|n+20 力量|n+25 伤害|n+25% 闪避|n|cff0033ccMaim|r (被动)|n|cffff8000Desarmar|r (主动)|n|n|cffffcc00需要:|r|nSange - 2050 (Enchanted Artifacts)|nTalisman of Evasion - 1700|n|n|c00838B8B总价: 3750|r",
+  "|cffffcc00属性:|r|n+20 攻击速度 |n+15% 魔法抗性|n|cffff8000Cintilar|r (主动)|n|n|cffffcc00需要:|r|nShadow Amulet - 1300 |nPlaneswalker's Cloak - 550 |n|n|c00838B8B总价: 1850|r",
+  "|cffffcc00属性:|r|n+20% 吸血|n|cffff8000Frenesi|r (主动)|n|n|cffffcc00需要:|r|nMask of Death - 900|n卷轴 - 900|n|n|c00838B8B总价: 1800|r|n|n|cffff0303法球效果不叠加|r",
+  "|cffffcc00属性:|r|n+20/35 敏捷|n+10/15 智力|n|cff0033ccFeedback|r (被动)|n|cffff8000Purgar|r (主动)|n|n|cffffcc00需要:|r|nBlade of Alacrity x2 - 2000|nRobe of the Magi - 450|n卷轴 - 700|n|n|c00838B8B总价: 3150/3850|r|n|n|c00fffc01可用卷轴升级（共 2 等级）或刷新|r|n|n|c00838B8B一柄直斩敌人灵魂的魔法利刃|r",
+  "|cffffcc00属性:|r|n+22 伤害|n+10 智力|n+5 护甲|n|cffff8000Espinhos|r (主动)|n|n|cffffcc00需要:|r|nBroadsword - 1200|nChainmail - 550|nRobe of the Magi - 450|n|n|c00838B8B总价: 2200|r",
+  "|cffffcc00属性:|r|n+24 伤害|n+10 力量|n|cffff8000Avatar|r (主动)|n|n|cffffcc00需要:|r|nOgre Axe - 1000|nMithril Hammer - 1600|n卷轴 - 1375|n|n|c00838b8b总价: 3975|r|n|n|cffff0303Tinker 无法刷新此物品|r"
+]

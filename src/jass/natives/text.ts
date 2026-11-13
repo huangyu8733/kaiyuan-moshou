@@ -19,6 +19,7 @@
 import { intToRawcode } from "../lexer";
 import type { JassPlayer, JassUnit, NativeCtx, Runtime, TextTagObj } from "../runtime";
 import { asInt, asNum, asStr, jHandle, jInt, JNULL, jStr, truthy, type JassValue } from "../values";
+import { mapDisplayText } from "../../i18n/mapLanguage";
 
 type NativeFn = (ctx: NativeCtx, args: JassValue[]) => JassValue;
 const def = (rt: Runtime, name: string, fn: NativeFn): void => void rt.natives.set(name, fn);
@@ -50,7 +51,7 @@ export function registerTextNatives(rt: Runtime): void {
   def(rt, "SetTextTagText", (c, a) => {
     const tt = tag(c, a[0]);
     if (tt) {
-      tt.text = asStr(a[1]);
+      tt.text = mapDisplayText(asStr(a[1]));
       tt.size = asNum(a[2]);
     }
     return JNULL;
@@ -109,12 +110,12 @@ export function registerTextNatives(rt: Runtime): void {
   // --- on-screen messages (DisplayTextToPlayer family + ClearTextMessages) ---
   // DisplayTextToPlayer(player, x, y, message): untimed (duration < 0 = host default).
   def(rt, "DisplayTextToPlayer", (c, a) => {
-    c.rt.hooks?.displayText?.(c.rt.data<JassPlayer>(a[0])?.index ?? 0, asStr(a[3]), -1);
+    c.rt.hooks?.displayText?.(c.rt.data<JassPlayer>(a[0])?.index ?? 0, mapDisplayText(asStr(a[3])), -1);
     return JNULL;
   });
   // DisplayTimedTextToPlayer(player, x, y, duration, message).
   def(rt, "DisplayTimedTextToPlayer", (c, a) => {
-    c.rt.hooks?.displayText?.(c.rt.data<JassPlayer>(a[0])?.index ?? 0, asStr(a[4]), asNum(a[3]));
+    c.rt.hooks?.displayText?.(c.rt.data<JassPlayer>(a[0])?.index ?? 0, mapDisplayText(asStr(a[4])), asNum(a[3]));
     return JNULL;
   });
   // DisplayTimedTextFromPlayer(player, x, y, duration, message) — despite common.j naming
@@ -124,7 +125,7 @@ export function registerTextNatives(rt: Runtime): void {
   // passes the raw format string GetLocalizedString("PLAYER_VICTORIOUS") = "%s was victorious."
   def(rt, "DisplayTimedTextFromPlayer", (c, a) => {
     const idx = c.rt.data<JassPlayer>(a[0])?.index ?? 0;
-    const msg = asStr(a[4]).replace(/%s/g, c.rt.playerName(idx));
+    const msg = mapDisplayText(asStr(a[4])).replace(/%s/g, c.rt.playerName(idx));
     // A BROADCAST (see above): "Player 1 was victorious." is for the whole game, not for the
     // machine that happened to run the script. It used to resolve `localViewer` ONCE — right
     // while one client simulated its own match, and wrong the moment a host answers for N

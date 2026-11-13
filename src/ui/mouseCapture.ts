@@ -7,8 +7,11 @@
 // way. Pointer Lock is the one API that confines it: the OS pointer is hidden and parked, and
 // the page is handed the raw movement of the physical mouse instead — for as long as the lock
 // is held. The browser takes it back on its own the moment Esc is pressed (that key is never
-// delivered to the page: it IS the exit gesture), so a release is seen here as a
-// `pointerlockchange`, never as a key.
+// delivered to the page: it IS the exit gesture, and no page can change that), so a release is
+// seen here as a `pointerlockchange`, never as a key. Because maps bind Esc of their own, the
+// page ALSO offers the release combo Alt+Q / Ctrl+Q, and after ANY exit — Esc or combo — keys
+// no longer re-take the lock on their own: a map's Esc handler is usually WHY the player let
+// the pointer go, so the mouse comes back only on a click on the game.
 //
 // Hiding the OS pointer is only half of a mouse, so the other half is the game's own drawn
 // cursor: ui/virtualCursor.ts, the SAME pointer the gamepad drives. That module owns the
@@ -46,6 +49,12 @@ let installed = false;
 let captured = false;
 /** An exit is in flight: `pointerlockchange` will follow. Blocks an immediate re-lock. */
 let stopping = false;
+/** The lock ended without a wish to re-take it — Esc (the browser's own exit), the release
+ *  combo (Alt+Q / Ctrl+Q) or a menu taking the pointer away. Until the next CLICK on the game,
+ *  keys and wheel NOTCHES must not silently re-take the lock: maps bind Esc and other keys as
+ *  game functions (Spellcraft's ESC menu, hotkey groups), and an auto-take on the next keypress
+ *  would swallow exactly those. A click is an unambiguous "I want the mouse back in". */
+let keyTakeSuppressed = false;
 /** The drawn point, in viewport (client) coordinates. */
 let px = 0;
 let py = 0;
@@ -110,10 +119,29 @@ export function installMouseCapture(): void {
     virtualCursor.wheel(w.deltaY, w.deltaX, w.deltaMode);
   });
 
+  // THE RELEASE COMBO — Alt+Q or Ctrl+Q. The browser reserves Esc for leaving the lock (that
+  // key never reaches the page while held), and maps bind Esc of their own, so a keyboard
+  // combo is the deliberate way out. Registered ahead of the keydown auto-take below and
+  // stopping it: a release must never be followed by an immediate re-take.
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (!e.isTrusted) return;
+      if (e.code === "KeyQ" && (e.altKey || (e.ctrlKey && !e.metaKey))) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        keyTakeSuppressed = true;
+        stopMouseCapture();
+      }
+    },
+    { capture: true },
+  );
+
   // The next click on the game takes the pointer again — after Esc has given it back, or before
   // it has ever been taken. On `pointerup`, not `pointerdown`: the press that starts the lock
   // must finish normally first, or the game never sees its release (a command button would stay
-  // lit, a drag box would stay open) because the lock engages before the button comes up.
+  // lit, a drag box would stay open) because the lock engages before the button comes up. A
+  // click also clears the key-take suppression: it IS the player asking for the lock back.
   window.addEventListener(
     "pointerup",
     (e) => {
@@ -123,16 +151,18 @@ export function installMouseCapture(): void {
         return;
       }
       if (!canCapture(e.target)) return;
+      keyTakeSuppressed = false;
       startMouseCapture();
     },
     { capture: true },
   );
 
-  // A click is not the only way into the lock, and waiting for one leaves the pointer loose for
-  // however long the player only looks around. A key or a wheel notch is the same gesture as far
-  // as the browser is concerned, so the first hotkey pressed or zoom scrolled ALSO takes it.
+  // A key or a wheel notch is the same gesture as far as the browser is concerned, so the first
+  // hotkey pressed or zoom scrolled ALSO takes it — but only when the pointer's freedom isn't
+  // deliberate (see `keyTakeSuppressed`): after an Esc exit or the release combo, keys belong to
+  // the map, and only a click brings the mouse back in.
   const alsoTake = (e: Event): void => {
-    if (!e.isTrusted || captured || stopping) return;
+    if (!e.isTrusted || captured || stopping || keyTakeSuppressed) return;
     if (!canCapture(e.target)) return;
     startMouseCapture();
   };
@@ -205,6 +235,9 @@ function end(): void {
   virtualCursor.locked = false;
   virtualCursor.hide();
   stopping = false;
+  // Whatever ended the lock — the browser's Esc, the release combo, a menu taking the pointer —
+  // keys must not sneak it back (a map's own Esc handler is usually WHY the player exited).
+  keyTakeSuppressed = true;
 }
 
 /**

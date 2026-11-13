@@ -30,7 +30,7 @@ import { OBSERVER_MAX_HEROES } from "../game/observerView";
 import { setGameTip } from "./gameTip";
 import { wc3ToHtml, escapeHtml } from "./wc3Text";
 import { UI_HEIGHT } from "./fdf/layout";
-import { t } from "../i18n";
+import { t, displayHeroName } from "../i18n";
 
 /** One seat as the observer HUD shows it: the world's reading plus who the seat is. */
 export interface ObserverSeat extends ObserverPlayerView {
@@ -771,7 +771,7 @@ export class ObserverHud {
     const s = this.sel;
     s.panel.classList.toggle("empty", !sel);
     if (!sel) return;
-    const title = sel.properName || sel.name;
+    const title = displayHeroName(sel.properName, sel.name);
     if (s.name.textContent !== title) s.name.textContent = title;
     const sub = sel.isHero ? this.levelClass(sel.level, sel.name) : "";
     if (s.sub.textContent !== sub) s.sub.textContent = sub;

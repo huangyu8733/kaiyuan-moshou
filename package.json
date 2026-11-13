@@ -44,7 +44,8 @@
     "relay": "node server/relay.mjs",
     "relay-kill": "node server/relay-kill.mjs",
     "relay:test": "node tools/relay-test.mjs && node tools/loopback-test.mjs",
-    "loopback:test": "node tools/loopback-test.mjs"
+    "loopback:test": "node tools/loopback-test.mjs",
+    "map:i18n": "node tools/map-lang-test.cjs && node tools/map-i18n-lint.cjs \"Warcraft III zhCN/Maps/hhkj/DotA v6.83d.w3x\" \"Warcraft III zhCN/Maps/hhkj/DotA AI v6.90G PT-BR v4.1.w3x\""
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.1",
@@ -78,6 +79,7 @@
   },
   "main": "electron/main.mjs",
   "author": "elevchyt",
+  "license": "MIT",
   "build": {
     "appId": "dev.elevchyt.openwar3",
     "productName": "开源魔兽争霸",
@@ -95,11 +97,15 @@
     },
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb",
+        "tar.gz"
       ],
+      "artifactName": "OpenWar3-${version}-${arch}.${ext}",
       "category": "Game",
       "icon": "build/icons",
       "synopsis": "Browser-first re-creation of the Warcraft III engine",
+      "maintainer": "OpenWar3 contributors <openwar3@users.noreply.github.com>",
       "syncDesktopName": true,
       "executableName": "openwar3",
       "desktop": {

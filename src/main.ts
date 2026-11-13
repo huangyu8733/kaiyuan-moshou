@@ -8,6 +8,7 @@ import "./ui/fullscreen";
 // …and before any button exists: a press is the left button's (`ow3-alt-press`).
 import "./ui/primaryPress";
 import { AssetResolver } from "./assets/resolver";
+import { setDbgEnabled } from "./dev/dbg";
 import { decodeBlp } from "./assets/blp";
 import { mountMainMenu } from "./ui/mainMenu";
 import { mountFdfMainMenu } from "./ui/fdfMainMenu";
@@ -77,6 +78,7 @@ import { setGameTipSkin } from "./ui/gameTip";
 import { tooltipSkinVars } from "./ui/hud";
 import { blpToCanvas } from "./render/blputil";
 import { initI18n, t } from "./i18n";
+import { findMapLanguageByName, installReader, loadMapLanguage, localizedMapInfo, setMapLanguage } from "./i18n/mapLanguage";
 
 // The engine's own UI language (?lang= → remembered → browser), stamped on <html> before the
 // first screen exists — the load gate and the menus translate through it (src/i18n/).
@@ -109,6 +111,9 @@ const ui = document.getElementById("ui") as HTMLElement;
 // miss everything that viewer had already loaded.
 const bootOptions = loadOptions();
 applyVideoOptions(bootOptions);
+// The [dbg] console milestones (src/dev/dbg.ts) — debug builds only. Vite folds this to
+// `setDbgEnabled(false)` in a build, so the deployed site and the desktop app stay silent.
+setDbgEnabled(import.meta.env.DEV);
 // …and the Gameplay panel's two health-bar rows (issue #141), which the world overlays read
 // live. Here beside the video half so a match started straight off a deep link is already
 // wearing the player's committed settings.
@@ -356,7 +361,7 @@ async function offerReconnect(vfs: DataSource): Promise<void> {
     }
     // Where the map is HERE — the host's path, or the copy a download left in Maps\Download\.
     const path = localMapPath(installMaps, start.mapPath);
-    const info = path ? await readMapInfo(editionMaps(), path) : null;
+    const info = path ? await readMapInfo(editionMaps(), path, resolver.installSource ?? undefined) : null;
     if (!info) {
       lobby.abandonSeat(); // the map is not in this install any more: there is no way back in
       lobby.close();
@@ -364,7 +369,7 @@ async function offerReconnect(vfs: DataSource): Promise<void> {
     }
     lobby.handOff();
     const link = matchLinkFrom(lobby, false, start.slots, peer, hostPeer, observerSeats(start));
-    void startGame(mapFileFor(path!), info, toConfig(start, peer, startsExplored(info.classification.flags)), link, lobby);
+    void startGame(mapFileFor(path!), info, toConfig(start, peer, startsExplored(info.classification.flags)), link, lobby, path!);
   } finally {
     reconnectAsking = false;
   }
@@ -549,7 +554,7 @@ function lanLobbyScreen(
     chrome: "MultiplayerPreGameChat",
     mount: () => mountLanLobbyScreen(ui, vfs, editionMaps(), lanSession().lobby, map, {
       onCancel: () => void glue.goTo(lanScreen(vfs)),
-      onStart: (path, info, config, link) => void startGame(mapFileFor(path), info, config, link),
+      onStart: (path, info, config, link) => void startGame(mapFileFor(path), info, config, link, undefined, path),
       onCountdownTick: () => glueAudio?.countdownTick(),
     }, advanced),
   };
@@ -561,6 +566,19 @@ function mapFileFor(path: string): File {
   const file = installMaps.get(path);
   if (!file) throw new Error(t("error.noSuchMap", { path }));
   return file;
+}
+
+/** The install path behind a `File` a menu handed back. The skirmish screen's `onStart` has
+ *  the file and its info but not the path, and a map's Chinese language file is found BY path
+ *  (`i18n/mapLanguage.ts`) — so the path is looked back up in the table the file came from. */
+function pathOfMapFile(file: File): string | undefined {
+  for (const [path, candidate] of installMaps) if (candidate === file) return path;
+  // A screen may hand back the same MAP as a different `File` (a re-wrap, a re-read). Its name
+  // is still the key the install's map table was built from, so ask that before giving up —
+  // `undefined` here means the map's own language file is never even looked for.
+  const name = file?.name?.toLowerCase();
+  if (name) for (const path of installMaps.keys()) if ((path.split(/[\\/]/).pop() ?? "").toLowerCase() === name) return path;
+  return undefined;
 }
 
 function singlePlayerScreen(vfs: DataSource): GlueScreenDef {
@@ -790,11 +808,11 @@ async function restartMatch(difficulty: number): Promise<void> {
     difficulty,
     defaultDifficulty: m.config.defaultDifficulty ?? m.config.difficulty,
     seed: 1 + Math.floor(Math.random() * 2147483645),
-  });
+  }, undefined, undefined, m.mapPath);
 }
 
 /** The match on screen, kept so `RestartGame` can play it again. */
-let lastMatch: { bytes: Uint8Array; info: MapInfo; config: MeleeConfig } | null = null;
+let lastMatch: { bytes: Uint8Array; info: MapInfo; config: MeleeConfig; mapPath?: string } | null = null;
 
 /** Which campaign row a `Maps\…\Foo.w3x` path is, if the index names it. Compared on the
  *  path the index itself carries — case- and separator-insensitively, because a script types
@@ -918,7 +936,7 @@ function skirmishScreen(vfs: DataSource): { chrome: "SinglePlayerSkirmish"; moun
     chrome: "SinglePlayerSkirmish",
     mount: () => mountSkirmish(ui, vfs, editionMaps(), {
       onCancel: () => void glue.goTo(singlePlayerScreen(vfs)),
-      onStart: (file, info, config) => void startGame(file, info, config),
+      onStart: (file, info, config) => void startGame(file, info, config, undefined, undefined, pathOfMapFile(file)),
     }),
   };
 }
@@ -936,6 +954,9 @@ async function startGame(
   /** Coming BACK into a match already under way, from the main menu's "Reconnect?" — the lobby
    *  whose seat is reclaimed once the map is loaded (`reconnectFromMenu`). */
   rejoin?: LanLobby,
+  /** The map's install path, when it has one — where its Chinese language file would sit
+   *  (`i18n/mapLanguage.ts`). Absent for a campaign chapter, which comes out of an archive. */
+  mapPath?: string,
 ): Promise<void> {
   meleeConfig = config;
   matchLink = link ?? null;
@@ -946,6 +967,32 @@ async function startGame(
   // set frozen where the game shipped. It is what gives a Reign of Chaos campaign Grunt its 680
   // hit points instead of a melee game's 700.
   setMapDataSet(info.isMelee ? "melee" : "custom");
+  // A MAP'S OWN CHINESE FILE (i18n/mapLanguage.ts): `<map file name>.zhCN.json` in the map's
+  // folder, read before anything shows the map's text — the loading screen already prints its
+  // name. Cleared when the map has none, so one map's dictionary never speaks for the next.
+  const install = resolver.installSource;
+  const reader = install ? installReader(install) : null;
+  let language = reader && mapPath ? await loadMapLanguage(reader, mapPath) : null;
+  // …and if that path does not answer, ask the install for the file BY NAME. A host that hands
+  // the map over with a path spelled differently (`Maps\hhkj` / `maps\hhkj`), or with none at
+  // all, otherwise loses the sidecar in silence and the match plays in the author's language.
+  if (!language && reader && install) {
+    const name = map instanceof File ? map.name : info.name;
+    if (name) language = await findMapLanguageByName(reader, () => install.list(), name);
+  }
+  setMapLanguage(language);
+  // A one-line answer for the question "why is this map still in its author's language?": type
+  // `openwar3.mapLanguage` in the console. `live:false` means no dictionary for this map at all
+  // (nothing beside it, or the install cannot see it) — which is what the `[i18n]` lines above
+  // say in full, and what an empty list of matches means when it says live:true.
+  ((window as unknown as { openwar3: Record<string, unknown> }).openwar3 ??= {}).mapLanguage = language
+    ? {
+        live: true, wts: language.wts.size, text: language.text.size,
+        abilities: language.objects.abilities.size, items: language.objects.items.size,
+        units: language.objects.units.size, upgrades: language.objects.upgrades.size,
+      }
+    : { live: false };
+  if (language) info = localizedMapInfo(info, language);
   // The menus LEAVE the way they always leave (issue #78): the panel's contents fade out and
   // the chrome slides up on its own "<Screen> Death" clip, whooshes and all, and only then
   // does the loading screen appear. Awaited, so the two never overlap — and awaited BEFORE the
@@ -969,6 +1016,11 @@ async function startGame(
   // The map's bytes, read ONCE: the loading screen reads its art out of them first (a map may
   // import its own), and a `File` a browser handed us may not be readable a second time.
   const mapBytes = map instanceof Uint8Array ? map : new Uint8Array(await map.arrayBuffer());
+  // The loading screen prints the map's own w3i text, and its TRIGSTR fields resolve through
+  // war3map.wts (`world/mapInfo.ts`). `info` above was parsed BEFORE `setMapLanguage` went live,
+  // so read the w3i once more now that it has — the loading blurb is the first place a player
+  // meets the map's own words, and without this it stayed in the author's language.
+  if (language) info = localizedMapInfo(parseMapInfo(mapBytes, info.name), language);
   const loading = await showLoadingScreen(info, config, mapBytes);
   if (gate && loading) {
     gate.onReady = (peer) => loading.setPeerReady(peer);
@@ -992,7 +1044,7 @@ async function startGame(
     // …kept, so the match can be PLAYED AGAIN without going back to the menu: `RestartGame`,
     // the defeat dialog's first button (see restartMatch). The bytes rather than the `File`,
     // because a file handle a browser handed us once may not be readable a second time.
-    lastMatch = { bytes, info, config };
+    lastMatch = { bytes, info, config, mapPath };
     // The minimap's markers are read out of the map itself (its terrain header and its placed
     // units), so they can only be stamped once its bytes are in hand — which is why the loading
     // screen takes them afterwards rather than at mount. Never at the cost of the match: a map
@@ -1508,7 +1560,7 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has("dev")) {
       m.devBoot({
         mountInstall,
         showMenu,
-        startGame,
+        startGame: (file, info, config, link, mapPath) => startGame(file, info, config, link, undefined, mapPath),
         startChapter,
         startCredits: () => startCredits(resolver.installSource!),
       }),

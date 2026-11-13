@@ -11,6 +11,7 @@ import { neutralSlot, PlayerSlot } from "../../data/enums";
 import { intToRawcode, rawcodeToInt } from "../lexer";
 import { orderIdOf, orderIdToString, orderStringToId } from "../orders";
 import type { BuffFilter, EngineHooks, JassPlayer, JassUnit, NativeCtx, Runtime, UnitTypeDefault } from "../runtime";
+import { dbg } from "../../dev/dbg";
 import { asInt, asNum, asStr, jBool, jHandle, jInt, JNULL, jReal, jStr, type JassValue } from "../values";
 
 type NativeFn = (ctx: NativeCtx, args: JassValue[]) => JassValue;
@@ -23,6 +24,7 @@ function createUnit(ctx: NativeCtx, playerV: JassValue, typeInt: number, x: numb
   const rt = ctx.rt;
   const playerIdx = rt.data<JassPlayer>(playerV)?.index ?? asInt(playerV);
   const typeId = intToRawcode(typeInt);
+  if (/^(e00H|h046|h07Z|e00E|h07U|o02D)$/i.test(typeId)) dbg("CreateUnit", typeId, Math.round(x), Math.round(y));
   // Inside CreateAllUnits the row is recorded but NOT spawned: those units are the map's
   // pre-placed ones, already on the map from war3mapUnits.doo (Runtime.recordOnlySpawnFns).
   // But we still BIND the handle to the unit standing there (7.22) — the script keeps
@@ -68,7 +70,9 @@ export function mintUnitHandle(
 
 export function registerWorldNatives(rt: Runtime): void {
   // --- unit creation ---
-  def(rt, "CreateUnit", (c, a) => createUnit(c, a[0], asInt(a[1]), asNum(a[2]), asNum(a[3]), asNum(a[4])));
+  def(rt, "CreateUnit", (c, a) => {
+    return createUnit(c, a[0], asInt(a[1]), asNum(a[2]), asNum(a[3]), asNum(a[4]));
+  });
   // 1.31's CreateUnit with a Reforged HD SKIN id on the end (declared in our own compat
   // prelude — src/compat/prelude.ts). We draw SD out of an SD install, so the skin is read
   // and dropped: the unit is created exactly as CreateUnit would, which is what the map
@@ -314,7 +318,9 @@ export function registerWorldNatives(rt: Runtime): void {
     const u = unit(c, unitV);
     if (!u || u.simId < 0) return jBool(false);
     const t = kind === "target" ? unit(c, targetV) : undefined;
-    return jBool(c.rt.hooks?.issueUnitOrder?.(u.simId, orderId, order, kind, x, y, t?.simId ?? 0) ?? false);
+    const ok = c.rt.hooks?.issueUnitOrder?.(u.simId, orderId, order, kind, x, y, t?.simId ?? 0) ?? false;
+    if (/^(stomp|charm|slow|thunderclap|fanofknives|roar|channel|creepthunderbolt)$/i.test(order) || /^(h07Z|e00E|h07U|o02D|h07P|e00H|h046)$/i.test(u.typeId)) dbg("order", u.typeId, kind, order, ok);
+    return jBool(ok);
   };
   const byName = (c: NativeCtx, unitV: JassValue, orderV: JassValue, kind: "immediate" | "point" | "target", x: number, y: number, targetV: JassValue): JassValue => {
     const order = orderStr(orderV);
@@ -408,6 +414,15 @@ export function registerWorldNatives(rt: Runtime): void {
     const [x, y] = u ? posOf(c, u) : [0, 0];
     return location(c, x, y);
   });
+  // GetUnitRallyPoint — a building's rally destination; its own position when none is set,
+  // or the unit's own position for anything that cannot rally (SimWorld.unitRallyPoint).
+  def(rt, "GetUnitRallyPoint", (c, a) => {
+    const u = unit(c, a[0]);
+    if (!u) return location(c, 0, 0);
+    const p = c.rt.hooks?.unitRallyPoint?.(u.simId) ?? null;
+    const [x, y] = p ? [p.x, p.y] : posOf(c, u);
+    return location(c, x, y);
+  });
 
   // Alliance — the other half of a group filter ("matching unit belongs to an enemy of
   // Player 1"). Team-based: the sim's unit team vs the player's, so neutral hostile
@@ -443,6 +458,31 @@ export function registerWorldNatives(rt: Runtime): void {
   def(rt, "SetUnitPathing", (c, a) => {
     const u = unit(c, a[0]);
     if (u && u.simId >= 0) c.rt.hooks?.setUnitPathing?.(u.simId, a[1]?.k === "bool" && a[1].b);
+    return JNULL;
+  });
+  // UnitSetConstructionProgress / UnitSetUpgradeProgress — a script driving a building's own
+  // clock: `percent` is of the BUILD/UPGRADE time (100 = finished). DotA v6.83d's "-fastbuild"
+  // manager calls both on the units its construction/upgrade-cancel triggers name.
+  const unitPercent = (u: JassUnit | undefined, v: JassValue): number =>
+    u && u.simId >= 0 ? asInt(v) : -1;
+  def(rt, "UnitSetConstructionProgress", (c, a) => {
+    const u = unit(c, a[0]);
+    const p = unitPercent(u, a[1]);
+    if (u && p >= 0) c.rt.hooks?.setConstructionProgress?.(u.simId, p);
+    return JNULL;
+  });
+  def(rt, "UnitSetUpgradeProgress", (c, a) => {
+    const u = unit(c, a[0]);
+    const p = unitPercent(u, a[1]);
+    if (u && p >= 0) c.rt.hooks?.setUpgradeProgress?.(u.simId, p);
+    return JNULL;
+  });
+  // SetUnitUseFood — whether the body is counted against its owner's supply. False is the
+  // charmed/possessed flag (`SimUnit.foodFree`): the unit still stands and fights, it just
+  // eats nothing. A headless run has no supply to charge, so the call is a plain no-op there.
+  def(rt, "SetUnitUseFood", (c, a) => {
+    const u = unit(c, a[0]);
+    if (u && u.simId >= 0) c.rt.hooks?.setUnitUseFood?.(u.simId, a[1]?.k === "bool" && a[1].b);
     return JNULL;
   });
   // SetUnitAnimation plays a named clip ("attack", "stand victory", "birth"); the name

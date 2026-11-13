@@ -97,6 +97,59 @@ console.log("\nthe XP handicap");
   check("the same kill pays the halved player half", [full.xp > 0, half.xp * 2], [true, full.xp]);
 }
 
+console.log("\nthe lobby handicap, supply, and a building's own clock");
+{
+  check("handicap starts at 100 %", world.playerHandicap(4), 1);
+  const grunt = unit({ owner: 4, team: 4, baseMaxHp: 1000, maxHp: 1000, hp: 1000 });
+  world.setPlayerHandicap(4, 0.9);
+  check("…and reads back what a script wrote", world.playerHandicap(4), 0.9);
+  check("…scaling that player's units' hit points", [grunt.maxHp, grunt.hp], [900, 900]);
+  check("…and their weapon damage at the roll", world.rollDamage({ damage: 10, dice: 0, sides: 0 }, 4), 9);
+  check("…on that seat alone", world.playerHandicap(5), 1);
+
+  const eater = unit({ foodFree: false });
+  world.setUnitUseFood(eater.id, false);
+  check("SetUnitUseFood(false) stops the body eating", eater.foodFree, true);
+  world.setUnitUseFood(eater.id, true);
+  check("…and true makes it eat again", eater.foodFree, false);
+
+  const site = unit({ typeId: "htow", isBuilding: true, building: {
+    constructionLeft: 10, buildTimeTotal: 10, builderIds: [], goldCost: 0, lumberCost: 0,
+    queue: [], rallyX: 0, rallyY: 0, rallyKind: "point", rallyTargetId: 0, producesUnits: false } });
+  world.setConstructionProgress(site.id, 40);
+  check("UnitSetConstructionProgress(40) leaves 60 % of the build", site.building.constructionLeft, 6);
+  world.setConstructionProgress(site.id, 100);
+  check("…and 100 finishes the site", site.building.constructionLeft, 0);
+
+  const hall = unit({ typeId: "htow", isBuilding: true, building: {
+    constructionLeft: 0, buildTimeTotal: 1, builderIds: [], goldCost: 0, lumberCost: 0,
+    queue: [{ kind: "research", unitId: "hfoo", level: 1, timeLeft: 20, buildTime: 20 }],
+    rallyX: 0, rallyY: 0, rallyKind: "point", rallyTargetId: 0, producesUnits: false } });
+  world.setUpgradeProgress(hall.id, 75);
+  check("UnitSetUpgradeProgress(75) leaves a quarter of the research", hall.building.queue[0].timeLeft, 5);
+  const training = unit({ typeId: "htow", isBuilding: true, building: {
+    constructionLeft: 0, buildTimeTotal: 1, builderIds: [], goldCost: 0, lumberCost: 0,
+    queue: [{ kind: "unit", unitId: "hfoo", timeLeft: 20, buildTime: 20 }],
+    rallyX: 0, rallyY: 0, rallyKind: "point", rallyTargetId: 0, producesUnits: false } });
+  world.setUpgradeProgress(training.id, 100);
+  check("…but a TRAINING job is not an upgrade: untouched", training.building.queue[0].timeLeft, 20);
+}
+
+console.log("\nthe research events");
+{
+  const lab = unit({ typeId: "htow", isBuilding: true, building: {
+    constructionLeft: 0, buildTimeTotal: 1, builderIds: [], goldCost: 0, lumberCost: 0,
+    queue: [], rallyX: 0, rallyY: 0, rallyKind: "point", rallyTargetId: 0, producesUnits: false } });
+  world.captureResearch = true;
+  world.enqueueResearch(lab.id, "hdef", 1, 10);
+  check("queuing a research raises START with its rawcode",
+    world.drainResearchEvents().map((e) => [e.phase, e.upgradeId]), [["start", "hdef"]]);
+  world.cancelTrainAt(lab.id, 0);
+  check("…and cancelling it raises CANCEL",
+    world.drainResearchEvents().map((e) => [e.phase, e.upgradeId]), [["cancel", "hdef"]]);
+  world.captureResearch = false;
+}
+
 console.log("\nUnitPauseTimedLife");
 {
   const s = unit({ summonLeft: 5, summonMax: 5 });

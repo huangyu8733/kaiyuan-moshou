@@ -234,9 +234,12 @@ export function registerMeleeNatives(rt: Runtime): void {
   // StartCampaignAI stays a no-op: a chapter's computers are the mission's, and what this
   // would load is a per-campaign .ai file we do not run.
   for (const name of [
-    "StartCampaignAI", "CommandAI", "SetPlayerHandicap",
+    "StartCampaignAI", "CommandAI",
     "RecycleGuardPosition", "RemoveGuardPosition", "SetUnitCreepGuard", "Preloader", "Preload",
     "PreloadStart", "PreloadEnd", "PreloadEndEx", "PreloadRefresh", "PreloadGenClear", "PreloadGenStart",
+    // TriggerSyncStart/Ready bracket a multiplayer sync block in the script. There is no
+    // second client to wait for here, so the block is simply local code.
+    "TriggerSyncStart", "TriggerSyncReady",
   ]) {
     def(rt, name, () => JNULL);
   }
@@ -245,6 +248,22 @@ export function registerMeleeNatives(rt: Runtime): void {
   // has to answer what the setter wrote, and the default is the engine's full rate.
   def(rt, "SetPlayerHandicapXP", (c, a) => (c.rt.hooks?.setXpHandicap?.(playerIndex(c, a[0]), asNum(a[1])), JNULL));
   def(rt, "GetPlayerHandicapXP", (c, a) => jReal(c.rt.hooks?.xpHandicap?.(playerIndex(c, a[0])) ?? 1));
+  // …and the LOBBY handicap, a different number (hit points and damage, not experience): the
+  // one the Custom Game screen's Handicap dropdown writes. DotA v6.83d reads it once at init,
+  // `R2I(100*GetPlayerHandicap(Player(i)))`, and ignores the standard 100 %; a map that WRITES
+  // it gets its value back (SimWorld.playerHandicap says what is and is not modelled).
+  def(rt, "SetPlayerHandicap", (c, a) => (c.rt.hooks?.setPlayerHandicap?.(playerIndex(c, a[0]), asNum(a[1])), JNULL));
+  def(rt, "GetPlayerHandicap", (c, a) => jReal(c.rt.hooks?.playerHandicap?.(playerIndex(c, a[0])) ?? 1));
+  // Resource taxes on a shared-control economy. The sim has no shared control to tax, so the
+  // pair keeps its value in the Runtime and GetPlayerTaxRate answers exactly what Set wrote
+  // (0 = untaxed, the engine default). The resource argument is the PLAYER_STATE_RESOURCE_*
+  // index; the two player arguments are (taxed seat, beneficiary).
+  def(rt, "SetPlayerTaxRate", (c, a) => {
+    c.rt.playerTaxRates.set(`${playerIndex(c, a[0])}:${playerIndex(c, a[1])}:${asInt(a[2])}`, asInt(a[3]));
+    return JNULL;
+  });
+  def(rt, "GetPlayerTaxRate", (c, a) =>
+    jInt(c.rt.playerTaxRates.get(`${playerIndex(c, a[0])}:${playerIndex(c, a[1])}:${asInt(a[2])}`) ?? 0));
   // PauseCompAI — a computer player's AI stops deciding (blizzard.j's PauseAllCompAI, which a
   // cinematic calls to freeze every computer while it plays).
   def(rt, "PauseCompAI", (c, a) => (c.rt.hooks?.pauseCompAi?.(playerIndex(c, a[0]), truthy(a[1])), JNULL));

@@ -1,4 +1,5 @@
 import { BUILD_CELL, BUILD_CELL_CELLS, PATHING_CELL, footprintCells, type PathDomain, type PathingGrid } from "./pathing";
+import { dbg } from "../dev/dbg";
 import { findPath, smoothPath, pathExpansionsSpent, pathArrived, pathGoal, PATH_FLOOR_EXPANSIONS, beginPath, PathScratch, type PathSearch } from "./pathfind";
 import { targsKindError } from "./targeting";
 import { targetRulesOf } from "./targetRules";
@@ -1526,6 +1527,14 @@ export interface TrainEvent {
   building: EventUnitInfo;
   unitTypeId: string; // the trained unit's type rawcode (GetTrainedUnitType)
   trained: EventUnitInfo | null;
+  phase: "start" | "cancel" | "finish";
+}
+
+/** A research queue milestone (EVENT_(PLAYER_)UNIT_RESEARCH_*): the building doing it and
+ *  the upgrade's rawcode (GetResearched). */
+export interface ResearchEvent {
+  building: EventUnitInfo;
+  upgradeId: string;
   phase: "start" | "cancel" | "finish";
 }
 
@@ -3983,6 +3992,7 @@ export class SimWorld {
   tileset = "";
   captureConstruct = false; // EVENT_(PLAYER_)UNIT_CONSTRUCT_* (7.17)
   captureTrain = false; // EVENT_(PLAYER_)UNIT_TRAIN_* (7.17)
+  captureResearch = false; // EVENT_(PLAYER_)UNIT_RESEARCH_* (7.17)
   captureHeroEvents = false; // EVENT_PLAYER_HERO_LEVEL / _SKILL (7.17)
   captureItems = false; // EVENT_(PLAYER_)UNIT_PICKUP/DROP/USE/SELL_ITEM (7.18)
   captureSellUnits = false; // EVENT_(PLAYER_)UNIT_SELL — a unit bought from a shop (269/286)
@@ -3999,6 +4009,7 @@ export class SimWorld {
   private spellEvents: SpellEvent[] = [];
   private constructEvents: ConstructEvent[] = [];
   private trainEvents: TrainEvent[] = [];
+  private researchEvents: ResearchEvent[] = [];
   private sellUnitEvents: SellUnitEvent[] = [];
   private summonEvents: SummonEvent[] = [];
   private heroEvents: HeroEvent[] = [];
@@ -4277,6 +4288,13 @@ export class SimWorld {
    *  registry loaded. */
   canMake(player: number, unitId: string, owned = 0): boolean {
     return !this.tech || this.tech.canMake(player, unitId, owned);
+  }
+
+  /** AddSpellEffectById's model — the ability's own Effect Art, falling back to Target Art
+   *  and Caster Art (the same preference the sim follows when it spawns cast art). */
+  abilityEffectArt(abilityId: string): string {
+    const d = this.abilities?.get(abilityId);
+    return d ? d.effectArt || d.targetArt || d.casterArt : "";
   }
 
   /** Whether `player` meets the prerequisites for ANY tech id — a unit, an upgrade, a shop
@@ -5947,6 +5965,7 @@ export class SimWorld {
     const b = this.units.get(buildingId)?.building;
     if (!b || b.queue.length >= MAX_BUILD_QUEUE) return false;
     b.queue.push({ kind: "research", unitId: upgradeId, level, timeLeft: time, buildTime: time });
+    this.noteResearch(buildingId, upgradeId, "start");
     return true;
   }
 
@@ -6034,6 +6053,7 @@ export class SimWorld {
       this.noteTrain(buildingId, job.unitId, "cancel");
       this.returnStock(buildingId, job.unitId);
     }
+    if (job.kind === "research") this.noteResearch(buildingId, job.unitId, "cancel");
     return job;
   }
 
@@ -6056,6 +6076,16 @@ export class SimWorld {
       b.rallyKind = kind;
       b.rallyTargetId = targetId;
     }
+  }
+
+  /** GetUnitRallyPoint — a building's rally destination, or its own position when no flag
+   *  has been placed (`rallyKind` "none"); a non-building has no rally, so its position. */
+  unitRallyPoint(unitId: number): { x: number; y: number } | null {
+    const u = this.units.get(unitId);
+    if (!u) return null;
+    const b = u.building;
+    const has = b && b.rallyKind !== "none";
+    return { x: has ? b.rallyX : u.x, y: has ? b.rallyY : u.y };
   }
 
   /** Assign a worker to construct a building (walk there; progress advances
@@ -7987,6 +8017,7 @@ export class SimWorld {
             this.researchCompletions.push({ buildingId: u.id, upgradeId: job.unitId, level: job.level, owner: u.owner });
             this.noticeWire?.researched.push({ buildingId: u.id, upgradeId: job.unitId, level: job.level, owner: u.owner });
             this.applyUnitSwap(u.owner, job.unitId); // rtma: morph existing units (Headhunter→Berserker)
+            this.noteResearch(u.id, job.unitId, "finish");
           } else if (job.kind === "upgrade") {
             this.morphUnit(u, job.unitId);
             this.stats.upgraded(u.owner, this.scoreValue(job.unitId)); // the score screen (matchStats.ts)
@@ -10518,6 +10549,16 @@ export class SimWorld {
     const t = pc.targetId ? this.units.get(pc.targetId) : undefined;
     this.spellEvents.push({ caster: eventInfo(u), abilityId: pc.abilityId, phase, target: t ? eventInfo(t) : null, x: pc.x, y: pc.y });
   }
+  /** The same news for an ITEM's active. Item abilities are not SimAbility rows and never
+   *  travel through PendingCast, so `noteSpell` has no timeline to read; the phase is
+   *  EFFECT — "the spell went off" — which is the one WC3 raises when an item is pressed.
+   *  `abilityId` is the item ability's own alias (the rawcode `GetSpellAbilityId()` hands the
+   *  script back), not the base code it borrows its behaviour from. See useItem. */
+  private noteItemSpell(u: SimUnit, abilityId: string, targetId: number, x: number, y: number): void {
+    if (!this.captureSpells) return;
+    const t = targetId ? this.units.get(targetId) : undefined;
+    this.spellEvents.push({ caster: eventInfo(u), abilityId, phase: "effect", target: t ? eventInfo(t) : null, x, y });
+  }
   /** Spell events since the last drain (`captureSpells`). */
   drainSpellEvents(): SpellEvent[] {
     if (!this.spellEvents.length) return this.spellEvents;
@@ -10636,6 +10677,22 @@ export class SimWorld {
     if (!this.trainEvents.length) return this.trainEvents;
     const out = this.trainEvents;
     this.trainEvents = [];
+    return out;
+  }
+
+  /** Record a research milestone (`captureResearch`) — start at enqueue, cancel from the
+   *  queue, finish where the level lands in tickBuildings. */
+  private noteResearch(buildingId: number, upgradeId: string, phase: ResearchEvent["phase"]): void {
+    if (!this.captureResearch) return;
+    const b = this.units.get(buildingId);
+    if (b) this.researchEvents.push({ building: eventInfo(b), upgradeId, phase });
+  }
+
+  /** Research events since the last drain (`captureResearch`). */
+  drainResearchEvents(): ResearchEvent[] {
+    if (!this.researchEvents.length) return this.researchEvents;
+    const out = this.researchEvents;
+    this.researchEvents = [];
     return out;
   }
 
@@ -10966,7 +11023,7 @@ export class SimWorld {
     if (!tree) return; // somebody else felled it first — the swing whiffs
     this.breakInvisibility(u); // attacking reveals, whatever was struck
     this.chops.push(u.id); // the axe on wood (the unit's `weap2` material against "Wood")
-    tree.hp -= this.rollDamage(w);
+    tree.hp -= this.rollDamage(w, u.owner);
     if (tree.hp > 0) {
       this.treeHits.push({ x: tree.x, y: tree.y }); // still standing → "stand hit" wobble
       return;
@@ -11100,9 +11157,9 @@ export class SimWorld {
       this.spawnItemMissile(u, it, w);
     } else if (w.ranged) {
       if (w.missileArt) this.spellEffects.push({ art: w.missileArt, x: it.x, y: it.y, targetId: 0, z: w.impactZ });
-      this.damageItem(it.id, this.rollDamage(w));
+      this.damageItem(it.id, this.rollDamage(w, u.owner));
     } else if (Math.hypot(it.x - u.x, it.y - u.y) - u.radius <= w.range + w.rangeBuffer) {
-      this.damageItem(it.id, this.rollDamage(w)); // melee connects out to the Range Motion Buffer, as on a unit
+      this.damageItem(it.id, this.rollDamage(w, u.owner)); // melee connects out to the Range Motion Buffer, as on a unit
     }
   }
 
@@ -13668,7 +13725,15 @@ export class SimWorld {
     // Masonry'd building stood a whole point above its own maximum at EVERY health it had
     // ("1651 / 1650"). Six decimals clears the noise and leaves a real fraction (the Arcane
     // Vault's 485 x 1.1 = 533.5) exactly where the data puts it.
-    const newMaxHp = snapPool((u.baseMaxHp + HP_PER_STR() * dStr) * (1 + upg.hpPct) + upg.hp + item.maxHp + maxHpBonus);
+    // The lobby handicap (setPlayerHandicap) scales the pool; 1 = 100 % and leaves it alone.
+    //
+    // FLOORED AT 1, because WC3 has no unit with a pool below 1 and a ceiling of 0 or less is
+    // not a small unit — it is a dead one: the next `tick` sees `hp >= maxHp` and kills it, and
+    // a hero that dies that way revives at a maxHp that is still not above zero, forever. The
+    // one thing that used to reach here was DotA's `AImi` with -2000 (see applyItemAbility),
+    // closed at the source too; this floor is what keeps any future ceiling arithmetic from
+    // turning a data quirk into a corpse.
+    const newMaxHp = Math.max(1, snapPool(((u.baseMaxHp + HP_PER_STR() * dStr) * (1 + upg.hpPct) + upg.hp + item.maxHp + maxHpBonus) * this.playerHandicap(u.owner)));
     const newMaxMana = snapPool(u.baseMaxMana + MANA_PER_INT() * dInt + upg.mana + item.maxMana);
     // Moving the ceiling keeps the unit's RELATIVE pool, in both directions: "Increasing the
     // maximum amount of Hit Points of a unit does not change its relative Hit Points"
@@ -15797,20 +15862,23 @@ export class SimWorld {
    *  (unit) / x,y (point) depend on the ability's target type. Returns false if
    *  the cast can't be started (unknown/unlearned ability, wrong target, dead). */
   issueCast(unitId: number, code: string, targetId = 0, x = 0, y = 0, auto = false): boolean {
+    const u0 = this.units.get(unitId);
+    const DBG4 = /^(A0DH|A0DL|A0SK|A0DJ|A1AA|A1A8|A1CD|A1A1|ANcl|AEev|AEfk|Aroa|AOws)$/i.test(code);
+    if (DBG4) dbg("issueCast", u0?.typeId, unitId, code, targetId, Math.round(x), Math.round(y), auto);
     const u = this.units.get(unitId);
-    if (!u || u.stunned || u.silenced || !this.abilities) return false;
+    if (!u || u.stunned || u.silenced || !this.abilities) { if (DBG4) dbg("refuse", "dead/stun/silence/noab", u?.stunned, u?.silenced); return false; }
     // An illusion is a picture of a caster, not a caster: it has the abilities on its sheet
     // (it is an exact copy) but may not use them. The command card hides them too — this is
     // the backstop for every other route in (a trigger, a hotkey, autocast).
-    if (u.isIllusion) return false;
+    if (u.isIllusion) { if (DBG4) dbg("refuse", "illusion"); return false; }
     const ab = this.findAbility(u, code);
-    if (!ab) return false;
+    if (!ab) { if (DBG4) dbg("refuse", "no-ability", u.typeId, code); return false; }
     code = ab.code; // an ability ID names the row; everything below keys on its base code
     // The upgrade gate, at the one door every route in shares — a player's click, an
     // autocast, a JASS `IssueTargetOrder`, a networked command. The command card already
     // refuses the press (the button is drawn unavailable), but a gate that only the UI keeps
     // is not a gate: `[Aweb] Requires=Ruwb` has to mean the same thing to a trigger.
-    if (!this.unitMeets(u, ab.id)) return false;
+    if (!this.unitMeets(u, ab.id)) { if (DBG4) dbg("refuse", "unitMeets", ab.id); return false; }
     // …and so does `SetPlayerAbilityAvailable`, at the same door and for the same reason — a
     // trigger's order and an autocast included. That a disabled ability cannot be cast even
     // by a trigger is INFERRED rather than stated: the whole "disabled spellbook" idiom exists
@@ -15819,14 +15887,14 @@ export class SimWorld {
     // be pointless if disabling the ability itself left it castable. What is NOT refused here is
     // anything already in flight — this is an order gate, so a cast underway finishes, as the
     // tutorial says it does.
-    if (this.tech && !this.tech.abilityAvailable(u.owner, ab.id)) return false;
-    if (this.scriptDisabled(ab)) return false; // per UNIT, the same door (see SimAbility.disableCount)
+    if (this.tech && !this.tech.abilityAvailable(u.owner, ab.id)) { if (DBG4) dbg("refuse", "unavailable", ab.id); return false; }
+    if (this.scriptDisabled(ab)) { if (DBG4) dbg("refuse", "scriptDisabled", ab.id); return false; } // per UNIT, the same door (see SimAbility.disableCount)
     const def = this.abilityDefOf(ab);
-    if (!def || def.target === "passive") return false;
+    if (!def || def.target === "passive") { if (DBG4) dbg("refuse", "passive/nodef", ab.id, def?.target); return false; }
     // Already hidden by this ability: the press restarts nothing and pays for it (see
     // alreadyHidden). Refused at this door as well as at the button, so a trigger, a hotkey
     // and a command off the wire all mean the same thing the card shows.
-    if (this.alreadyHidden(u, code)) return false;
+    if (this.alreadyHidden(u, code)) { if (DBG4) dbg("refuse", "alreadyHidden", code); return false; }
     // …and a second Devour with a meal still inside (bellyFull) — the button is off the card.
     if (this.bellyFull(u, code)) return false;
     // …and a night ability by day (barredByDay): the card's grey button, kept at the door.
@@ -15857,7 +15925,7 @@ export class SimWorld {
     // They take no order and touch none of the unit's state below, so they neither need
     // the castLocked gate nor interrupt a swing, a walk, or another spell's wind-up.
     if (IMMEDIATE.has(code)) return this.castImmediate(u, ab, def, lvl);
-    if (this.castLocked(u)) return false; // already committed to a spell — see castLocked
+    if (this.castLocked(u)) { if (DBG4) dbg("refuse", "castLocked", code); return false; } // already committed to a spell — see castLocked
     // Root / Unroot (`Aroo`) is immediate too, and for the same two reasons the three above
     // are: AbilityData `Cast1` = 0, and `[Aroo]` in NightElfAbilityFunc carries no `Animnames`
     // at all — an order pair (`Order=root` / `Unorder=unroot`) and nothing else. There is
@@ -15965,6 +16033,7 @@ export class SimWorld {
       auto,
       resume,
     };
+    if (DBG4) dbg("pending", u.typeId, ab.id, def.target, u.mana, lvl.cost, ab.cooldownLeft);
     return true;
   }
 
@@ -16197,6 +16266,7 @@ export class SimWorld {
       // can't pay for. Mana/cooldown are only COMMITTED at the effect (below), so
       // interrupting the wind-up cancels the spell for free.
       if (ab.cooldownLeft > 0 || u.mana < lvl.cost) {
+        if (/^(A1AA|A1A8|A1CD|A1A1)$/i.test(pc.abilityId)) dbg("stop-unaffordable", pc.abilityId, u.mana, lvl.cost, ab.cooldownLeft);
         this.stop(u.id);
         return;
       }
@@ -16293,6 +16363,7 @@ export class SimWorld {
     this.breakInvisibility(u); // no backstab: only a blow earns that
     // The effect fires NOW (cast point) — cue its cast sound here so it lands with
     // the visible clap/bolt, not 0.4s early at the wind-up (issue #23).
+    if (/^(A0D[HLSJ]|A1A[A-Z0-9])$/.test(pc.abilityId)) dbg("cast", pc.abilityId, pc.code, u.id);
     this.castFires.push({ casterId: u.id, code: pc.code, abilityId: pc.abilityId });
     this.noteSpell(u, pc, "effect"); // EVENT_(PLAYER_)UNIT_SPELL_EFFECT — the spell goes off
     this.resolveCast(u, def, pc);
@@ -16405,7 +16476,11 @@ export class SimWorld {
     // one item dispatcher answers (applyItemAbility), as it does for the three item doors; a
     // code with a spell handler of its own still goes the spell way.
     if (!SPELL_HANDLERS[pc.code] && def.code.startsWith("AI")) this.applyItemAbility(u, def, null, pc.targetId, pc.x, pc.y);
-    else this.applySpellEffect(pc.code, pc.rank, u, { targetId: pc.targetId, x: pc.x, y: pc.y }, def);
+    else {
+      const played = this.spellEffects.length;
+      this.applySpellEffect(pc.code, pc.rank, u, { targetId: pc.targetId, x: pc.x, y: pc.y }, def);
+      this.playCastArt(u, def, pc.targetId, played);
+    }
     // A self-invisibility ends the caster's fight as it lands — see dropAggression. Here
     // rather than in the handler because it is an ORDER change and not an effect, and here
     // rather than at each caller because every route into a cast (a click, an autocast, a
@@ -16413,6 +16488,26 @@ export class SimWorld {
     // …and only if the fade actually went on: `[Ashm]` refuses to meld by day and the press
     // is then nothing at all, which is not a reason to end a fight.
     if (SELF_INVIS_GROUP[pc.code] && this.alreadyHidden(u, pc.code)) this.dropAggression(u);
+  }
+
+  /** `Casterart` and `Targetart` — the two art fields that EVERY ability row carries but only
+   *  some handlers play for themselves (Thunder Clap's ring, Fan of Knives' burst). The game
+   *  plays them whatever the ability's own semantics are: put a model in "Art - Caster" and it
+   *  appears on the caster when the spell is cast; put one in "Art - Target" and it appears on
+   *  the unit that was clicked. Maps lean on this — DotA keeps Guardian Angel's golden ring in
+   *  `[A0ER] Casterart` and Fireblast's burst in `[A04W] Targetart`, and neither has anywhere
+   *  else to come from — so a handler that reads only one art field must not be the only door.
+   *  Runs AFTER the handler (`played` = how many effects the sim held when the handler
+   *  started), so a handler that already played the same model is not doubled up. */
+  private playCastArt(caster: SimUnit, def: AbilityDef, targetId: number, played: number): void {
+    const done = new Set(this.spellEffects.slice(played).map((e) => e.art));
+    if (def.casterArt && !done.has(def.casterArt)) {
+      this.spellEffects.push({ art: def.casterArt, x: caster.x, y: caster.y, targetId: caster.id, z: 0, life: 0 });
+    }
+    const target = targetId ? this.units.get(targetId) : undefined;
+    if (target && def.targetArt && !done.has(def.targetArt)) {
+      this.spellEffects.push({ art: def.targetArt, x: target.x, y: target.y, targetId: target.id, z: 0, life: 0 });
+    }
   }
 
   /** Idle autocast: a unit with a toggled-on autocast ability picks a valid
@@ -18187,10 +18282,71 @@ export class SimWorld {
     this.xpRates.set(player, Math.max(0, rate));
   }
 
+  /** `SetPlayerHandicap` / `GetPlayerHandicap` — the LOBBY handicap, 1 = 100 %. It is the
+   *  number the Custom Game screen's Handicap dropdown writes and the game multiplies a
+   *  player's unit hit points and damage by; the EXPERIENCE rate above is its twin and a
+   *  different number. Hit points are scaled here through `recomputeStats` (which keeps each
+   *  unit's RELATIVE health), and damage where a blow is rolled (`rollDamage`). DotA v6.83d
+   *  also reads it at init — `R2I(100*GetPlayerHandicap(Player(i)))` — to tell a standard
+   *  100 % seat from a host-adjusted one. */
+  private handicaps = new Map<number, number>();
+  playerHandicap(player: number): number {
+    return this.handicaps.get(player) ?? 1;
+  }
+  setPlayerHandicap(player: number, handicap: number): void {
+    const h = Math.max(0, handicap);
+    if ((this.handicaps.get(player) ?? 1) === h) return;
+    this.handicaps.set(player, h);
+    // Re-derive every unit the player owns: recomputeStats moves maxHp and scales hp with
+    // it, so a half-health Footman becomes half of its half-health pool.
+    for (const u of this.units.values()) if (u.owner === player) this.recomputeStats(u);
+  }
+
   /** `UnitPauseTimedLife` — stop (or restart) a unit's timed-life clock. */
   pauseTimedLife(unitId: number, flag: boolean): void {
     const u = this.units.get(unitId);
     if (u) u.timedLifePaused = flag;
+  }
+
+  /**
+   * `UnitSetConstructionProgress` — jump a structure's scaffolding to `percent` of its build
+   * time (100 finishes it). The HP ramp moves with it (`addConstructionHp`), so the same work
+   * that would have been done by hand appears to have been done: a site pushed to 100 opens
+   * hurt exactly as a hard-built one does.
+   *
+   * Nothing happens to a building that is not going up (a finished one, or one upgrading in
+   * place — an upgrade is a queue job and belongs to `setUpgradeProgress`).
+   */
+  setConstructionProgress(unitId: number, percent: number): void {
+    const u = this.units.get(unitId);
+    const b = u?.building;
+    if (!u || !b || b.constructionLeft <= 0) return;
+    const prevLeft = b.constructionLeft;
+    const p = Math.min(100, Math.max(0, percent));
+    b.constructionLeft = Math.max(0, b.buildTimeTotal * (1 - p / 100));
+    this.addConstructionHp(u, b, prevLeft);
+    if (b.constructionLeft === 0) this.finishConstruction(u, b);
+  }
+
+  /**
+   * `UnitSetUpgradeProgress` — jump the upgrade or research at the HEAD of a building's queue
+   * to `percent` (100 = done). The job is not completed here: the queue's own tick sees a
+   * zero clock on the next frame and finishes it the ordinary way (morph, research level,
+   * score, notice), so this stays a progress write and not a second completion path.
+   */
+  setUpgradeProgress(unitId: number, percent: number): void {
+    const job = this.units.get(unitId)?.building?.queue[0];
+    if (!job || (job.kind !== "research" && job.kind !== "upgrade")) return;
+    const p = Math.min(100, Math.max(0, percent));
+    job.timeLeft = Math.max(0, job.buildTime * (1 - p / 100));
+  }
+
+  /** `SetUnitUseFood` — whether the unit counts against its owner's supply. False is the
+   *  `SimUnit.foodFree` flag (a charmed/possessed/reborn body), so the unit still stands and
+   *  still fights, it just eats nothing. */
+  setUnitUseFood(unitId: number, useFood: boolean): void {
+    const u = this.units.get(unitId);
+    if (u) u.foodFree = !useFood;
   }
 
   /**
@@ -20395,12 +20551,16 @@ export class SimWorld {
    *  `anim` names the clip to open on when the model's own Birth is the wrong one — see
    *  EffectAnim. Left off, the renderer opens on Birth as it always has. */
   emitEffectAt(art: string, x: number, y: number, sound = false, anim?: EffectAnim): void {
-    if (art) this.spellEffects.push({ art, x, y, targetId: 0, z: 0, sound, ...(anim ? { anim } : {}) });
+    if (art) {
+      dbg("fx", art, Math.round(x), Math.round(y));
+      this.spellEffects.push({ art, x, y, targetId: 0, z: 0, sound, ...(anim ? { anim } : {}) });
+    }
   }
 
   /** Spell/effect models to play this frame (targetId>0 = follow that unit). */
   drainSpellEffects(): SimSpellEffect[] {
     if (!this.spellEffects.length) return this.spellEffects;
+    if (this.spellEffects.length && this.spellEffects.some((e) => /volcano|explosion|war3mapimported|naturalorder|greatstomp/i.test(e.art))) dbg("fxq", this.spellEffects.map((e) => e.art).join("|"));
     const out = this.spellEffects;
     this.spellEffects = [];
     return out;
@@ -22780,7 +22940,7 @@ export class SimWorld {
       sourceId: u.id,
       targetId: t.id,
       speed: w.missileSpeed > 0 ? w.missileSpeed : 900,
-      damage: this.rollDamage(w) + bonus, // + Backstab Damage if this shot broke a fade
+      damage: this.rollDamage(w, u.owner) + bonus, // + Backstab Damage if this shot broke a fade
       art: this.orbMissileArt(orb) || w.missileArt,
       attackType: w.attackType,
       weaponSound: w.weaponSound,
@@ -22851,7 +23011,7 @@ export class SimWorld {
       sourceId: u.id,
       targetId: 0, // aimed at nobody — a client's copy flies at the snapshot's tx/ty
       speed: w.missileSpeed > 0 ? w.missileSpeed : 900,
-      damage: this.rollDamage(w),
+      damage: this.rollDamage(w, u.owner),
       art: w.missileArt,
       attackType: w.attackType,
       weaponSound: w.weaponSound,
@@ -22886,7 +23046,7 @@ export class SimWorld {
       sourceId: u.id,
       targetId: 0, // a spot, not a unit — a client's copy flies at the snapshot's tx/ty
       speed: w.missileSpeed > 0 ? w.missileSpeed : 900,
-      damage: this.rollDamage(w),
+      damage: this.rollDamage(w, u.owner),
       art: w.missileArt,
       attackType: w.attackType,
       weaponSound: w.weaponSound,
@@ -23947,11 +24107,12 @@ export class SimWorld {
     }
   }
 
-  /** Roll a weapon's pre-armor damage: base + dice×(1..sides). */
-  private rollDamage(w: SimWeapon): number {
+  /** Roll a weapon's pre-armor damage: base + dice×(1..sides). `owner`, when given, applies
+   *  that player's lobby handicap — the damage half of what the number scales. */
+  private rollDamage(w: SimWeapon, owner?: number): number {
     let dmg = w.damage;
     for (let i = 0; i < w.dice; i++) dmg += 1 + Math.floor(this.rng() * w.sides);
-    return dmg;
+    return owner === undefined ? dmg : dmg * this.playerHandicap(owner);
   }
 
   /** Land a melee strike. `w` is the slot it was swung with — a Gargoyle's ground claws and
@@ -23964,7 +24125,7 @@ export class SimWorld {
     // Bash's Damage Bonus rides this swing. Added AFTER the crit multiply, alongside the
     // backstab: it is a flat bonus on the strike, not something a crit doubles.
     const bashBonus = attacker.swingBash ? this.bashDamageBonus(attacker) : 0;
-    const raw = this.applyCriticalStrike(attacker, this.rollDamage(w)) + bonus + bashBonus;
+    const raw = this.applyCriticalStrike(attacker, this.rollDamage(w, attacker.owner)) + bonus + bashBonus;
     // A melee strike is delivered and lands in the same instant, so its orb is resolved here
     // rather than at a launch — but the ordering inside the blow is the same (see above).
     const orb = this.resolveOrb(attacker, target);
@@ -26518,6 +26679,16 @@ export class SimWorld {
       // own Divine Shield does. Nothing else pushes for a press, so nothing can double it —
       // a POWERUP walked over is a different path with a sound of its own (drainPowerupPickups).
       this.castFires.push({ casterId: u.id, code: ad.code, abilityId: abilId });
+      // …and the script sees it as a SPELL, not merely as an item. An item's active is an
+      // ability, and WC3 raises EVENT_(PLAYER_)UNIT_SPELL_EFFECT for it with
+      // `GetSpellAbilityId()` naming the ITEM ability and `GetSpellTargetLoc()` the click —
+      // the same event a hero's own cast raises. Whole systems hang off that event: DotA's
+      // Scroll of Town Portal (`I05I`) is not a native spell at all, it grants `A1R5` — a
+      // Tornado-derived dummy `ANto` — and every part of the teleport (destination search,
+      // the three-second timer, the channel, the interrupt) is a `war3map.j` trigger hanging
+      // off SPELL_EFFECT. Without this the scroll was spent and the dummy went up in silence
+      // and nothing else happened.
+      this.noteItemSpell(u, abilId, targetId, x, y);
       // USE_ITEM is raised AFTER the charge is spent: GetItemCharges inside a use trigger
       // reports what's left, which is what the classic "give the item its charge back to
       // make it infinite" JASS idiom relies on (SetItemCharges(GetManipulatedItem(), n+1)).
@@ -26574,7 +26745,21 @@ export class SimWorld {
           this.recomputeStats(u);
           fired = true;
           break;
-        case "AImi": u.baseMaxHp += d(0); this.recomputeStats(u); fired = true; break; // Manual of Health
+        // Manual of Health (`AImi`) — permanent `DataA` hit points. A NEGATIVE one changes
+        // NOTHING: the engine has no way to lower a ceiling with this ability, and that is
+        // exactly what DotA leans on. Its hidden `I00E` ("Morphling BUG Reparar", powerup, one
+        // use) casts an `AImi` whose `DataA1` is -2000 — a no-op the map hands a freshly hired
+        // Morphling to paper over some other bug. Taken at face value it drove that hero's
+        // `baseMaxHp` from 480 to -1520, and a hero whose ceiling is under 1 dies on the spot
+        // (tickBuffs → kill), then revives at `heroReviveVitals`' idea of maxHp — never above
+        // zero again, which is the "hero with no health bar" it looked like. The charge is
+        // still spent either way: the item IS used, it simply has nothing to add.
+        case "AImi": {
+          const hp = d(0);
+          if (hp > 0) { u.baseMaxHp += hp; this.recomputeStats(u); }
+          fired = true;
+          break;
+        }
         case "AIem": if (u.isHero) { this.gainXp(u, d(0)); fired = true; } break; // Tome of Experience
         // Gold Coins / Bundle of Lumber — paid to the PLAYER, and SEEN being paid: the same
         // "+250" in the credit's own colour that a worker's drop-off floats, over whoever picked

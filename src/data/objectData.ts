@@ -729,6 +729,48 @@ export function applyMapUnitData(registry: UnitRegistry, w3uBytes: Uint8Array, w
   return count;
 }
 
+// --- custom DESTRUCTABLES (war3map.w3b) ---------------------------------------
+/** The object-editor codes the pathing pass can change, mapped to the SLK column they stand for. */
+const DESTRUCTABLE_PATCH_COLUMNS: Record<string, string> = { bptx: "pathTex", bptd: "pathTexDeath" };
+
+/**
+ * The map's destructable object data (`war3map.w3b`), reduced to the two columns the PATHING
+ * pass reads. Everything else about a destructible (life, `targType`, the model) still comes
+ * from the stock tables; only the footprint is overridden here.
+ *
+ * DotA v6.83d gives its base hedges — `YTlb`, a decorative tree wall — a `bptx` of the EMPTY
+ * STRING, i.e. "does not block". Reading `DestructableData.slk` alone stamps all 193 of them
+ * with their stock 2×2 footprint and walls every fountain plaza in, so a hero bought at the
+ * Circle of Power could not leave the base (the ring of trees closed at one corner tree).
+ *
+ * An ORIGINAL-table row is keyed by `oldId` (the .doo still names the stock type); a CUSTOM
+ * row is keyed by `newId`, which is the id the .doo uses for it.
+ */
+export function mapDestructablePathing(w3bBytes?: Uint8Array): Map<string, Map<string, string>> {
+  const out = new Map<string, Map<string, string>>();
+  if (!w3bBytes) return out;
+  const w3b = new War3MapW3u();
+  try {
+    w3b.load(w3bBytes);
+  } catch (err) {
+    console.warn("[jass] destructable object data (war3map.w3b) failed (non-fatal):", err);
+    return out;
+  }
+  const fold = (objects: Array<{ oldId: string; newId: string; modifications: Array<{ id: string; value: Val }> }>, key: (o: { oldId: string; newId: string }) => string) => {
+    for (const obj of objects) {
+      const cols = new Map<string, string>();
+      for (const mod of obj.modifications) {
+        const col = DESTRUCTABLE_PATCH_COLUMNS[mod.id];
+        if (col) cols.set(col, s(mod.value));
+      }
+      if (cols.size) out.set(key(obj), cols);
+    }
+  };
+  fold(w3b.originalTable.objects, (o) => o.oldId);
+  fold(w3b.customTable.objects, (o) => o.newId);
+  return out;
+}
+
 // --- custom abilities (war3map.w3a) --------------------------------------------
 //
 // Abilities are level-indexed (a field has a value per rank) and their DataA..DataI
@@ -1168,6 +1210,7 @@ export function applyMapItemData(registry: ItemRegistry, w3tBytes: Uint8Array, w
   const applyItemMods = (def: ItemDef, mods: AbilMod[]): void => {
     for (const m of mods) {
       if (m.id === "unam") { def.name = trigStr(s(m.value)); continue; }
+      if (m.id === "utip") { def.tip = trigStr(s(m.value)); continue; } // Tooltip - Basic (shop title)
       if (m.id === "utub") { def.description = trigStr(s(m.value)); continue; } // Ubertip
       if (m.id === "ides") { def.summary = trigStr(s(m.value)); continue; } // Description (the info panel's line)
       ITEM_SETTERS[m.id]?.(def, m.value);

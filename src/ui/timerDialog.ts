@@ -28,6 +28,7 @@ import type { Arg, FdfFrame } from "./fdf/parser";
 import { numProp, type FdfLibrary } from "./fdf/library";
 import { mountFdfScreen, type FdfScreen } from "./fdf/render";
 import { fitLine } from "./fdf/widgets";
+import { mapDisplayText } from "../i18n/mapLanguage";
 
 const TIMER_FDF = "UI\\FrameDef\\UI\\TimerDialog.fdf";
 
@@ -108,7 +109,7 @@ export class TimerDialogOverlay {
     try {
       const overrides: Record<string, string> = {};
       shown.forEach((d, i) => {
-        overrides[`TimerDialogTitle${i}`] = d.title;
+        overrides[`TimerDialogTitle${i}`] = mapDisplayText(d.title);
         overrides[`TimerDialogValue${i}`] = formatTimerValue(0); // re-stamped immediately below
       });
       const prev = this.screen;

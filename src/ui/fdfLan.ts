@@ -111,7 +111,7 @@ export async function mountLanScreen(
     if (!room?.mapPath) { render(screen, lobby.snapshot); return; }
     // The host's path, or a copy an earlier game left in Maps\Download\.
     const path = localMapPath(maps, room.mapPath);
-    const info = path ? await readMapInfo(maps, path) : null;
+    const info = path ? await readMapInfo(maps, path, vfs) : null;
     if (info) shown = info;
     else missing = room.mapName || baseName(room.mapPath);
     render(screen, lobby.snapshot);
@@ -191,7 +191,7 @@ export async function mountLanScreen(
       alive = false;
       const path = localMapPath(maps, room.mapPath);
       if (path) {
-        void readMapInfo(maps, path).then((info) => {
+        void readMapInfo(maps, path, vfs).then((info) => {
           if (info) h.onJoined(path, info);
         });
         return;
@@ -226,7 +226,7 @@ export async function mountLanScreen(
       return null;
     });
     if (got) maps.set(got.key, got.file);
-    const info = got ? await readMapInfo(maps, got.key).catch(() => null) : null;
+    const info = got ? await readMapInfo(maps, got.key, vfs).catch(() => null) : null;
     if (got && info) {
       h.onMapDownloaded(got.key, got.file);
       h.onJoined(got.key, info);

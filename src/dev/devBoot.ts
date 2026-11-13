@@ -72,7 +72,7 @@ export interface DevBootHooks {
   mountInstall(load: GateLoad): void;
   /** Show the main menu over its 3D scene — skipped when a map was asked for. */
   showMenu(load: GateLoad): void;
-  startGame(file: File, info: MapInfo, config: MeleeConfig, link?: MatchLinkSetup): Promise<void>;
+  startGame(file: File, info: MapInfo, config: MeleeConfig, link?: MatchLinkSetup, mapPath?: string): Promise<void>;
   /** Start a CAMPAIGN chapter by the name in its map path (`?chapter=`, see devBoot).
    *  Separate from `startGame` because a chapter is a different start: its map comes out of
    *  the ARCHIVES rather than the install's Maps\ folder, and it runs on the campaign's own
@@ -273,6 +273,19 @@ export async function devBoot(hooks: DevBootHooks): Promise<void> {
   for (const name of archives) files.set(name.toLowerCase(), await fetchFile(name));
   if (mapPath) files.set(mapPath, await fetchFile(mapPath));
   for (const name of listed) files.set(name, await fetchFile(name));
+  // The maps' own Chinese dictionaries beside them, when the served install has any
+  // (i18n/mapLanguage.ts): the same two names `candidates` asks the VFS for, so what is fetched
+  // here is exactly what the loader will look for. Only for the maps this boot mounts — the
+  // install's whole `Maps\` folder is not read.
+  const sidecars = new Set(manifest.languageFiles ?? []);
+  for (const name of [mapPath, ...listed].filter((p): p is string => !!p)) {
+    const cut = name.lastIndexOf("\\");
+    const dir = cut >= 0 ? name.slice(0, cut + 1) : "";
+    const base = name.slice(cut + 1).replace(/\.w3[mx]$/i, "");
+    for (const candidate of [`${name}.zhCN.json`, `${dir}${base}.zhCN.json`]) {
+      if (sidecars.has(candidate) && !files.has(candidate)) files.set(candidate, await fetchFile(candidate));
+    }
+  }
   const casc = manifest.casc ? await fetchCasc(fileUrl, manifest.casc) : null;
   // The developer's own CustomKeys.txt, when the served install has one (issue #142) — so the
   // Custom rung of Options → Gameplay → "Hotkeys:" can be exercised from a scripted boot.
@@ -314,7 +327,7 @@ export async function devBoot(hooks: DevBootHooks): Promise<void> {
     const mapFile = path ? load.maps.get(path) : undefined;
     if (!mapFile) throw new Error(`no mounted map matching "${name}" — mount it with ?maps=`);
     const info = parseMapInfo(new Uint8Array(await mapFile.arrayBuffer()), path!);
-    await hooks.startGame(mapFile, info, devConfig(info));
+    await hooks.startGame(mapFile, info, devConfig(info), undefined, path);
   };
 
   // A campaign chapter comes out of the archives we just mounted, so it needs no map file and
@@ -351,7 +364,7 @@ export async function devBoot(hooks: DevBootHooks): Promise<void> {
   }
 
   log(`starting ${info.name} as player ${player}, seed ${seed}`);
-  await hooks.startGame(file, info, devConfig(info));
+  await hooks.startGame(file, info, devConfig(info), undefined, mapPath);
 }
 
 /** Resolve once the lobby's state satisfies `ready`, or reject after `timeoutMs`. */
@@ -443,5 +456,5 @@ async function devLanBoot(
   const link = matchLinkFrom(lobby, lobby.isHost, start.slots, me, hostPeer, observerSeats(start));
   if (!lobby.isHost) lobby.rememberMatch(start, hostPeer); // as fdfLanLobby does — the menu's Reconnect
   const config = { ...toConfig(start, me, startsExplored(info.classification.flags)), fog };
-  await hooks.startGame(file, info, config, link);
+  await hooks.startGame(file, info, config, link, mapPath);
 }

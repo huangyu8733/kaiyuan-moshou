@@ -1,0 +1,14 @@
+const { readFileSync } = require("node:fs");
+const { join } = require("node:path");
+const REPO = __dirname;
+const B = (...p) => require(join(REPO, ".sim-build", "src", ...p));
+const { MpqDataSource } = B("vfs", "mpq.js");
+const { readW3i } = B("compat", "w3i.js");
+const p = "Warcraft III zhCN/Maps/hhkj/Spellcraft_Open_Remastered_8.0.5.w3x";
+const mpq = new MpqDataSource("map", new Uint8Array(readFileSync(p)));
+const { info } = readW3i(mpq.rawBytes("war3map.w3i"));
+console.log("name:", JSON.stringify(info.name));
+console.log("desc:", JSON.stringify(info.description));
+console.log("recom:", JSON.stringify(info.recommendedPlayers));
+console.log("forces:", JSON.stringify(info.forces.map(f=>f.name)));
+console.log("slots:", JSON.stringify(info.slots.slice(0,12).map(s=>[s.id,s.name])));

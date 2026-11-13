@@ -7,6 +7,8 @@ dist/
 Warcraft III
 Warcraft III enUS/
 Warcraft III zhCN/
+Warcraft III enUS.zip
+Warcraft III zhCN.zip
 # Any other local game install dropped next to the project (War3_1.31, etc.)
 War3_*/
 *.mpq

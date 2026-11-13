@@ -1,6 +1,7 @@
 import { MappedData } from "mdx-m3-viewer/dist/cjs/utils/mappeddata";
 import type { DataSource } from "../vfs/types";
 import { layCustomKeys } from "./customKeys";
+import { mapErrorString } from "./mapSkin";
 import { decodeGameText } from "./text";
 import type { PlayableRace } from "./races";
 
@@ -88,14 +89,26 @@ export class CommandStrings {
   }
 
   /** One error string by its commandstrings.txt key ("Nogold"). Keys are matched
-   *  case-insensitively — the data's own casing is inconsistent ("Targgetmine"). */
+   *  case-insensitively — the data's own casing is inconsistent ("Targgetmine").
+   *
+   *  The running MAP gets the first word: a custom map ships `[Errors]` in its
+   *  `war3mapSkin.txt` to take an engine refusal over and re-word it for its own rules
+   *  (DotA's `Nolumber` is "You do not need a recipe for this item…", not "not enough
+   *  lumber"), and the install's Chinese copy of that key would otherwise speak the wrong
+   *  sentence in a Chinese game. See `mapErrorString` (data/mapSkin.ts). */
   get(key: string): string {
-    return this.errors.get(key.toLowerCase()) ?? "";
+    return mapErrorString(key) ?? this.errors.get(key.toLowerCase()) ?? "";
   }
 
   /** A race-indexed error ("Nofood" → the caller's own supply building). Entries that
-   *  aren't race-indexed just come back whole, so this is safe on any key. */
+   *  aren't race-indexed just come back whole, so this is safe on any key.
+   *
+   *  A line the MAP re-worded is never race-indexed, and must not be run through the comma
+   *  split: the stock file's convention is four comma-separated buildings, so a map sentence
+   *  that happens to carry three commas would come back as its first clause. */
   forRace(key: string, race: PlayableRace): string {
+    const own = mapErrorString(key);
+    if (own !== undefined) return own;
     const parts = this.get(key).split(",");
     if (parts.length < RACE_ORDER.length) return parts[0] ?? "";
     return parts[RACE_ORDER.indexOf(race)] ?? parts[0];

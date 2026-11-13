@@ -1,0 +1,11 @@
+const { readFileSync } = require("node:fs");
+const mpq = require("mdx-m3-viewer/dist/cjs/parsers/mpq");
+const Archive = (mpq.default ?? mpq).Archive;
+const P = "Warcraft III zhCN/Maps/hhkj/Spellcraft_Open_Remastered_8.0.5.w3x";
+const a = new Archive();
+a.load(new Uint8Array(readFileSync(P)), true);
+const read = (...n) => { for (const x of n) { try { const f = a.get(x); if (f) return Buffer.from(f.bytes()); } catch {} } return null; };
+console.log("=== war3mapSkin.txt");
+console.log(read("war3mapSkin.txt").toString("utf8"));
+console.log("=== war3mapMisc.txt (head)");
+console.log(read("war3mapMisc.txt").toString("utf8").slice(0, 600));

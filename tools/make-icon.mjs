@@ -3,8 +3,10 @@
 //   node tools/make-icon.mjs        → build/icon.png, build/icon.ico, build/icon.icns,
 //                                     build/icons/<N>x<N>.png, and the web icons in public/
 //
-// The source is `art/openwar3-logo.png` — OpenWar3's own wordmark, the one image the project
-// carries that no install can supply (it ships zero Blizzard assets, so the icon cannot be one).
+// The source is `logo.png` at the project root — the 魔獸爭霸·开源版 wordmark, the one image the
+// project carries that no install can supply (it ships zero Blizzard assets, so the icon cannot
+// be one). Its surroundings are transparent, and `tightBox` below crops them off, so every icon
+// is the mark itself with `FILL` of the square, not the mark plus its empty margin.
 // Everything below is DERIVED from it, because the alternative is a hand-made .ico that quietly
 // stops matching the .icns: each platform wants its own container and its own set of sizes, and
 // only a generated set can be trusted to be the same picture at all of them.
@@ -31,19 +33,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SOURCE = join(root, "art", "openwar3-logo.png");
+const SOURCE = join(root, "logo.png");
 
 /** How much of the square the wordmark spans. It is WIDE (16:9-ish), so width is what fills and
  *  the padding that matters is the pair of hairlines left and right: at 16 px a single pixel of
  *  margin is 6 % of the icon, and losing the outline into the panel edge costs more than it. */
 const FILL = 0.96;
-
-/** How much of each edge is cut off the source before anything is scaled, as a fraction of the
- *  source's own width. The emblem is drawn inside a stone frame, and that frame is dead weight
- *  in an icon: it shrinks the emblem itself by the same amount on every edge, which is exactly
- *  what makes a 16 px favicon read as a dark square. Trimmed here, once, so every platform gets
- *  the same crop rather than each one's own. */
-const CROP = 0.055;
 
 // ---------------------------------------------------------------------------- PNG in
 
@@ -295,15 +290,7 @@ const write = (path, bytes) => {
 };
 
 const source = decodePng(readFileSync(SOURCE));
-const box = band(tightBox(source), CROP);
-
-/** The same rectangle, inset by `fraction` of ITS OWN size on every edge — the frame crop above.
- *  Per axis, so a wide wordmark and a square emblem are both trimmed by the same proportion. */
-function band(rect, fraction) {
-  const dx = Math.round(rect.width * fraction);
-  const dy = Math.round(rect.height * fraction);
-  return { x: rect.x + dx, y: rect.y + dy, width: rect.width - dx * 2, height: rect.height - dy * 2 };
-}
+const box = tightBox(source);
 
 /** Every size any output asks for, rendered once. */
 const SIZES = [16, 24, 32, 48, 64, 128, 180, 192, 256, 512, 1024];

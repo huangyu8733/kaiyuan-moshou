@@ -3,7 +3,7 @@ import { LayeredDataSource } from "./layered";
 import { buildInfoVersion, CascDataSource, isCascInstall } from "./casc";
 import type { DataSource, LoadProgress } from "./types";
 import type { ContentProfile } from "./profiles";
-import { installMaps, type PickedInstall } from "../assets/opfs";
+import { installLooseFiles, installMaps, type PickedInstall } from "../assets/opfs";
 import { checkVersion } from "./version";
 import { setCustomKeys } from "../data/customKeys";
 import { setMapWriter } from "../assets/downloadedMaps";
@@ -58,6 +58,10 @@ export async function loadProfile(
   setMapWriter(install.saveMap ?? null, install.askMapWrite ?? null);
 
   const maps = installMaps(install.files);
+  // …and the maps' own `.zhCN.json` sidecars (i18n/mapLanguage.ts), which are loose files beside
+  // a map rather than archive entries — so they need the loose layer, not the map list.
+  const loose = installLooseFiles(install.files);
+  const hasSidecar = [...loose.keys()].some((key) => !/\.(w3m|w3x)$/i.test(key));
 
   // Both storages are handed out through the EDITION overlay (src/vfs/edition.ts): while the
   // client is on Reign of Chaos, an object table with a `Melee_V0\` twin reads the twin. Wrapped
@@ -83,7 +87,7 @@ export async function loadProfile(
     // store keeps each campaign chapter exploded and has no `Maps\Campaign\*.w3m` file, so
     // without this layer a chapter in the player's folder could never be reached: the Chinese
     // folder's campaign maps lost to the store's English ones and every subtitle stayed English.
-    const vfs = new LooseFilesDataSource(art, maps);
+    const vfs = new LooseFilesDataSource(art, loose);
     // A 1.31 store carries its maps INSIDE (vfs/casc.ts `storeMaps`) and its folder has no
     // `Maps\` — the Internet Archive's copy is just the store. A loose file of the same name
     // wins, as the player's own folder always does.
@@ -118,7 +122,12 @@ export async function loadProfile(
 
   // LayeredDataSource wants highest priority first, so reverse the mount order.
   // An MPQ-era install gets the derived icons too — the passive rule is the game's, not a patch's.
-  const vfs = new DerivedArtDataSource(new EditionDataSource(new LayeredDataSource(sources.slice().reverse())));
-  vfs.prepare();
+  const base = new DerivedArtDataSource(new EditionDataSource(new LayeredDataSource(sources.slice().reverse())));
+  base.prepare();
+  // A map's own `.zhCN.json` is on DISK, not in any archive, so an MPQ install needs the loose
+  // layer for it too — but only when such a file actually exists: adding the folder's `Maps\`
+  // over the archives changes which copy of a campaign map wins, and that is not this change's
+  // business.
+  const vfs: DataSource = hasSidecar ? new LooseFilesDataSource(base, loose) : base;
   return { vfs, mounted, missing, fileCount: vfs.list().length, maps };
 }

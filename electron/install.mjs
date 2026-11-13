@@ -23,6 +23,9 @@ import { Readable } from "node:stream";
 
 const MPQ = /\.mpq$/i;
 const MAP = /\.(w3m|w3x)$/i;
+// A map's own Chinese dictionary beside it (src/i18n/mapLanguage.ts): served like any loose
+// file, never listed as a map.
+const LANGUAGE_FILE = /\.zhCN\.json$/i;
 const IDX = /^[0-9a-f]{10}\.idx$/i;
 const DATA_FILE = /^data\.\d{3}$/i;
 const CONFIG_HASH = /^[0-9a-f]{32}$/i;
@@ -55,11 +58,12 @@ export function safeJoin(root, rel) {
   return full === root || full.startsWith(root + sep) ? full : null;
 }
 
-async function collectMaps(dir, prefix, into) {
+async function collectMaps(dir, prefix, into, language) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const rel = `${prefix}\\${entry.name}`;
-    if (entry.isDirectory()) await collectMaps(join(dir, entry.name), rel, into);
+    if (entry.isDirectory()) await collectMaps(join(dir, entry.name), rel, into, language);
     else if (MAP.test(entry.name)) into.push(rel);
+    else if (language && LANGUAGE_FILE.test(entry.name)) language.push(rel);
   }
 }
 
@@ -89,15 +93,16 @@ export async function enumerateInstall(root) {
   const entries = await readdir(root, { withFileTypes: true });
   const archives = entries.filter((e) => e.isFile() && MPQ.test(e.name)).map((e) => e.name);
   const maps = [];
+  const languageFiles = [];
   const mapsDir = entries.find((e) => e.isDirectory() && e.name.toLowerCase() === "maps");
-  if (mapsDir) await collectMaps(join(root, mapsDir.name), mapsDir.name, maps);
+  if (mapsDir) await collectMaps(join(root, mapsDir.name), mapsDir.name, maps, languageFiles);
   const casc = await collectCasc(root);
   // The player's own hotkeys/tooltips, a loose file in the folder (issue #142) — named here
   // rather than assumed, because most folders have none. See src/data/customKeys.ts.
   const customKeys = entries.some((e) => e.isFile() && e.name.toLowerCase() === "customkeys.txt")
     ? "CustomKeys.txt"
     : null;
-  return { archives, maps, casc, customKeys };
+  return { archives, maps, languageFiles, casc, customKeys };
 }
 
 /**

@@ -32,6 +32,9 @@ import type { Plugin } from "vite";
 
 const MPQ = /\.mpq$/i;
 const MAP = /\.(w3m|w3x)$/i;
+/** A map's own Chinese dictionary beside it (src/i18n/mapLanguage.ts). Not a map — it must never
+ *  reach the map list — but the boot has to be able to fetch it like any other install file. */
+const LANGUAGE_FILE = /\.zhCN\.json$/i;
 const IDX = /^[0-9a-f]{10}\.idx$/i;
 const DATA_FILE = /^data\.\d{3}$/i;
 const CONFIG_HASH = /^[0-9a-f]{32}$/i;
@@ -46,11 +49,12 @@ function safeJoin(root: string, rel: string): string | null {
   return full === root || full.startsWith(root + sep) ? full : null;
 }
 
-async function collectMaps(dir: string, prefix: string, into: string[]): Promise<void> {
+async function collectMaps(dir: string, prefix: string, into: string[], language?: string[]): Promise<void> {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const rel = `${prefix}\\${entry.name}`;
-    if (entry.isDirectory()) await collectMaps(join(dir, entry.name), rel, into);
+    if (entry.isDirectory()) await collectMaps(join(dir, entry.name), rel, into, language);
     else if (MAP.test(entry.name)) into.push(rel);
+    else if (language && LANGUAGE_FILE.test(entry.name)) language.push(rel);
   }
 }
 
@@ -103,12 +107,13 @@ export function devInstall(): Plugin {
             const entries = await readdir(root, { withFileTypes: true });
             const archives = entries.filter((e) => e.isFile() && MPQ.test(e.name)).map((e) => e.name);
             const maps: string[] = [];
+            const languageFiles: string[] = [];
             const mapsDir = entries.find((e) => e.isDirectory() && e.name.toLowerCase() === "maps");
-            if (mapsDir) await collectMaps(join(root, mapsDir.name), mapsDir.name, maps);
+            if (mapsDir) await collectMaps(join(root, mapsDir.name), mapsDir.name, maps, languageFiles);
             const casc = await collectCasc(root);
             const customKeys = existsSync(join(root, CUSTOM_KEYS)) ? CUSTOM_KEYS : null;
             res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ archives, maps, casc, customKeys }));
+            res.end(JSON.stringify({ archives, maps, languageFiles, casc, customKeys }));
           })();
           return;
         }

@@ -1022,12 +1022,14 @@ function summonMany(api: SpellApi, caster: SimUnit, def: AbilityDef, unitId: str
  *    [AOsf] Specialart = …\FeralSpirit\feralspirittarget.mdl   ← summon
  *    [BOsf] Effectart  = …\FeralSpirit\feralspiritdone.mdl     ← unsummon (on the BUFF)
  *  The Beastmaster's summons (ANsg/ANsq/ANsw) put their summon burst in `TargetArt`
- *  instead of `Specialart`, hence the fallback. Nothing here may default to Undead's
+ *  instead of `Specialart`, hence the fallback — and the Tinker's Pocket Factory (ANsy)
+ *  keeps it in `Missileart`, which is the missile the factory falls out of the sky as.
+ *  Nothing here may default to Undead's
  *  `Unsummon\UnsummonTarget.mdl` — that is the acolyte's *Unsummon Building* art and has
  *  nothing to do with a summon expiring (it was hardcoded here, and looked very wrong on
  *  a wolf). A summon with no art in the data simply leaves without one. */
 function summonArt(def: AbilityDef): { summon: string; unsummon: string } {
-  return { summon: def.specialArt || def.targetArt, unsummon: def.buffEffectArt };
+  return { summon: def.specialArt || def.targetArt || def.missileArt, unsummon: def.buffEffectArt };
 }
 
 /** Summoned-unit ids for abilities whose unit isn't in the SLK `unitid` column
@@ -1486,6 +1488,8 @@ export const SPELL_HANDLERS: Record<string, Handler> = {
   AHav: (api, caster, def, rank) => {
     const lvl = def.levelData[rank - 1];
     const t = lvl.heroDuration || lvl.duration || 60;
+    // The transformation flash is the row's `Casterart` — played by the cast-art channel, which
+    // covers every row (see World.playCastArt); the body swap below is a separate thing.
     api.applyBuff(caster, { kind: "armor", group: "avatar", timeLeft: t, sourceId: caster.id, value: d(lvl, 0, 5), ...fx(def) });
     api.applyBuff(caster, { kind: "maxHp", group: "avatar", timeLeft: t, sourceId: caster.id, value: d(lvl, 1, 500) });
     api.applyBuff(caster, { kind: "damage", group: "avatar", timeLeft: t, sourceId: caster.id, value: d(lvl, 2, 20) });
@@ -2184,9 +2188,15 @@ export const SPELL_HANDLERS: Record<string, Handler> = {
 
   // War Stomp (Tauren) — slam: dataA damage + a stun (dur/herodur) to ground
   // enemies within `area`.
+  //
+  // The slam's own crack is `Casterart` on the stock row (…\WarStomp\WarStompCaster.mdl) and
+  // `Effectart` on a map row that blanked the caster field — DotA's Aftershock dummy ability
+  // `[A0DI]` is exactly that: `Casterart=` empty, `Effectart=…\WarStompCaster.mdl`. Reaching for
+  // `casterArt` alone drew nothing for the whole spell.
   AOws: (api, caster, def, rank) => {
     const lvl = def.levelData[rank - 1];
-    if (def.casterArt) api.emitEffect(def.casterArt, caster.x, caster.y, caster.id);
+    const art = def.casterArt || def.effectArt;
+    if (art) api.emitEffect(art, caster.x, caster.y, caster.id);
     for (const t of enemiesInArea(api, caster, def, caster.x, caster.y, lvl.area || 250)) {
       if (t.flying) continue;
       api.spellDamage(t, d(lvl, 0, 25), caster.id);

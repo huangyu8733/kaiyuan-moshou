@@ -1,5 +1,6 @@
 import War3MapViewer from "mdx-m3-viewer/dist/cjs/viewer/handlers/w3x/viewer";
 import { dataSetFolder, isRoc } from "../data/edition";
+import { dbg } from "../dev/dbg";
 import { decodeGameText } from "../data/text";
 import ModelViewer from "mdx-m3-viewer/dist/cjs/viewer/viewer";
 import { unpackPlanes } from "mdx-m3-viewer/dist/cjs/common/gl-matrix-addon";
@@ -58,14 +59,17 @@ import { anyModalOpen } from "../ui/modal";
 import { makeVoiceHost } from "../game/voiceActions";
 import { Talkers, VOICE_HUD_MAX, VOICE_KEY_CODE, voiceFromBase64, voiceRecipients, voiceToBase64 } from "../game/voice";
 import { loadUnitRegistry, type UnitRegistry, type UnitDef } from "../data/units";
-import { applyMapUnitData, applyMapAbilityData, applyMapItemData, applyMapUpgradeData, applyMapTechData, heroFoldConstants, makeTrigStr, refoldHeroConstants } from "../data/objectData";
+import { applyMapUnitData, applyMapAbilityData, applyMapItemData, applyMapUpgradeData, applyMapTechData, mapDestructablePathing, heroFoldConstants, makeTrigStr, refoldHeroConstants } from "../data/objectData";
+import { applyMapObjectLanguage, localizeMapWtsText } from "../i18n/mapLanguage";
+import { localizeGlobalStrings } from "../i18n/fdfStrings";
+import { t as tr, displayHeroName } from "../i18n";
 import { readMapFormat, UNKNOWN_FORMAT, type MapFormatProfile } from "../compat/mapFormat";
 import { readW3i } from "../compat/w3i";
 import { preloadLuaHost } from "../compat/lua/index";
 import { MAP_MISC_FILE, NO_MAP_MISC, parseMapMisc, type MapMisc } from "../data/mapMisc";
 import { loadUberSplatRegistry, type UberSplatDef, type UberSplatRegistry } from "../data/ubersplats";
 import { loadLightningRegistry } from "../data/lightning";
-import { specialFxPhaseAt, type SpecialFxClips } from "./specialFxClock";
+import { specialFxDoomedOver, specialFxOwesItsClip, specialFxPhaseAt, type SpecialFxClips } from "./specialFxClock";
 import { pickEffectSequence, yawPitchRollQuat } from "./effectAnim";
 import { loadAbilityRegistry, mdlPath, type AbilityRegistry, type AbilityDef, type BuffFx, isRepairCode, KNOWN_ABILITIES, TREE_UPGRADE_ABILITY, requiredHeroLevel, morphFlags, MORPH_FLAG_PERMANENT, MORPH_FLAG_REQUIRES_PAYMENT, type AbilityLevel, iconAt, isStance } from "../data/abilities";
 import { loadCommandStrings, disabledIconPath, placeholderIcon, iconFileCandidates, type CommandStrings } from "../data/commandStrings";
@@ -92,6 +96,7 @@ import { patchLevel } from "../patches";
 import { AI_SCRIPT_FOR } from "../ai";
 import { HERO_SEATS as CANDY_HERO_SEATS, isCandyWarScript } from "../ai/plus/candy/map";
 import { HERO_SEATS as WARCHASERS_HERO_SEATS, isWarChasersScript } from "../ai/plus/warchasers/map";
+import { HERO_SEATS as DOTA_HERO_SEATS, isDotAScript } from "../ai/plus/dota/map";
 import { playerLabels } from "../ui/playerSlots";
 import { ModelViewerScene } from "./modelViewer";
 import { animPropsFor, buildAnimSet } from "./unitAnims";
@@ -233,7 +238,12 @@ function randomSeed(): number {
 // the instance initializers run. See MapViewerScene.ZOOM_MIN/ZOOM_MAX/MELEE_START, which alias
 // these and carry the reasoning.
 const ZOOM_MIN_DISTANCE = 1250;
-const ZOOM_MAX_DISTANCE = 2400;
+// The far end is where a match opens (MELEE_START) and how much of the map a player can take in
+// at once. Widened from 2400 at the developer's request — at the 32° lens this is ~2060 world
+// units across, about a DotA lane plus the jungle on either side; 2400 showed ~1375 and cut the
+// second treeline off. Anything a map's own script parks the camera at is unaffected (the ladder
+// only bounds the PLAYER's wheel).
+const ZOOM_MAX_DISTANCE = 3600;
 /** The distance a match OPENS on: the far end of the wheel (zoom stop 0). */
 const OPENING_DISTANCE = ZOOM_MAX_DISTANCE;
 
@@ -1018,7 +1028,9 @@ interface SpecialFx {
   /** Where a ground effect stands (a host's live position wins while unparented). */
   x: number;
   y: number;
-  /** DestroyEffect landed before the model did — drop it the moment it loads. */
+  /** DestroyEffect landed before the model did. The effect is still shown — WC3 plays an
+   *  effect destroyed in its creation frame — and it is released at the end of its own clip
+   *  instead of lingering (see updateSpecialFx). */
   doomed: boolean;
   // --- what the BlzSetSpecialEffect… natives set (docs/map-compatibility.md pass 10) ---
   /** An ABSOLUTE height the script put it at, or null to stand on the ground. */
@@ -2722,9 +2734,20 @@ export class MapViewerScene {
       // (An MPQ-era install has no such folder, and no RoC tables to be misled by: `destr` it is.)
       const expansionRows = isRoc() ? this.slkText("Custom_V1\\Units\\DestructableData.slk") : "";
       const selectableData = expansionRows ? new MappedData(expansionRows) : destr;
+      // The map's OWN destructable data (war3map.w3b) may change a type's footprint — DotA
+      // v6.83d sets its base hedges' `bptx` to "" (no pathing at all), and reading the stock
+      // table alone stamps them 2×2 and walls the fountain plaza in. See
+      // mapDestructablePathing.
+      const destrOverrides = mapDestructablePathing(archive.rawBytes("war3map.w3b") ?? undefined);
+      const destrRow = (id: string): { string(col: string): string | undefined } | undefined => {
+        const row = destr.getRow(id);
+        const cols = destrOverrides.get(id);
+        if (!row || !cols) return row ?? undefined;
+        return { string: (col: string) => (cols.has(col) ? cols.get(col) : row.string(col)) };
+      };
       this.destructibles = collectMapDestructibles(
         doodads,
-        (id) => destr.getRow(id) ?? undefined,
+        destrRow,
         (id) => selectableData.getRow(id)?.string("selectable") === "1",
       );
       // …and the ones it placed dead are drawn dead, once their models arrive (poseDeadPlaced).
@@ -2734,8 +2757,13 @@ export class MapViewerScene {
       // written with a life of 0 is not one of those — see collectMapDestructibles.
       const dead = new Map<number, string>(); // .doo index (1-based) → the texture that replaces pathTex
       for (const d of this.destructibles) if (d.life <= 0) dead.set(d.id, d.pathTexDeath);
-      const pathTexOf = (id: string): string | undefined =>
-        destr.getRow(id)?.string("pathTex") || dood.getRow(id)?.string("pathTex") || undefined;
+      const pathTexOf = (id: string): string | undefined => {
+        // A map override wins outright — including "" / "_" / "none", which mean "no pathing"
+        // and must NOT fall through to the stock row (see mapDestructablePathing).
+        const ov = destrOverrides.get(id)?.get("pathTex");
+        if (ov !== undefined) return !ov || ov === "_" || ov === "none" ? undefined : ov;
+        return destr.getRow(id)?.string("pathTex") || dood.getRow(id)?.string("pathTex") || undefined;
+      };
       // EVERY doodad the map draws also blocks — including the `scriptCreated` ones, whose
       // .doo record only looks non-solid because the editor handed the live copy to
       // war3map.j (see DoodadInstance). Skipping those was issue #85: WarChasers' gates
@@ -2839,6 +2867,15 @@ export class MapViewerScene {
    *
    *  `melee` says which of the two this is — the one thing `slotLabel` turns on. */
   private beginMatch(config: MeleeConfig, startGold: number, startLumber: number, melee = false): Map<number, PlayableRace> {
+    // THE MAP'S OWN CHINESE, once more — and this is the call that has to win. `loadMapObjectData`
+    // applies it when the archive is opened, which is the right moment for everything the map's
+    // data is read for; this is the right moment for everything a PLAYER reads. It costs one loop
+    // over the file's rows and it is idempotent (i18n/mapLanguage.ts), so a dictionary installed
+    // after the object data — or a load-time pass that ran against half-built registries — cannot
+    // leave a match whose skill buttons and item tooltips are in the author's language.
+    applyMapObjectLanguage({
+      registry: this.registry, abilities: this.abilities, items: this.items, upgrades: this.upgrades,
+    });
     // A melee opening is a tour of the bases for the observer's Auto Camera (game/autoCamera.ts).
     this.autoCam.meleeOpening = melee;
     // Seed the match's RNG before anything can roll. The world is built at map load, when
@@ -3536,6 +3573,15 @@ export class MapViewerScene {
         .filter((s) => s.controller === "computer" && WARCHASERS_HERO_SEATS.has(s.id))
         .map((s) => ({ player: s.id, difficulty: s.aiDifficulty ?? MELEE_AI_NORMAL })));
     }
+    // COMPUTER+ ON DOTA v6.83d (src/ai/plus/dota/) — the same seam again. The map's script has no
+    // AI of its own and its hero picker stocks only `MAP_CONTROL_USER` seats; `onBoot` below tells
+    // it these computers are players, so each of them owns the Circle of Power a person gets. The
+    // AI then hires off that shop, which the map's own sale handler turns into a hero.
+    if (scriptGlobals && isDotAScript(scriptGlobals)) {
+      this.rts.startDotaAI(config.slots
+        .filter((s) => s.controller === "computer" && DOTA_HERO_SEATS.has(s.id))
+        .map((s) => ({ player: s.id, difficulty: s.aiDifficulty ?? MELEE_AI_NORMAL })));
+    }
     this.rts.holdWorld(false); // the map has had its say — let the world run
     console.info(`[openwar3] Custom map: ${seeds.length} pre-placed player unit(s) seeded owned (issue #33)${dummies ? `, plus ${dummies} model-less dummy unit(s)` : ""}.`);
   }
@@ -3753,7 +3799,15 @@ export class MapViewerScene {
       // rawcode can name a unit, an ability ('AHhb' — what GetSpellAbilityId hands back)
       // or an item, so try each registry: "Paladin cast Holy Light on Peasant" needs all
       // three (the custom overlays are checked first inside each `get`).
-      objectName: (typeId) => this.registry.get(typeId)?.name ?? this.abilities.get(typeId)?.name ?? this.items.get(typeId)?.name,
+      objectName: (typeId) => {
+        const name = this.registry.get(typeId)?.name ?? this.abilities.get(typeId)?.name ?? this.items.get(typeId)?.name;
+        // DotA builds its multiboard title out of these two label units ("Enemy:" / "Allied:"),
+        // so a garbled title starts here. Dev-only: one line per lookup, nothing in a build.
+        if (import.meta.env.DEV && (typeId === "n0JR" || typeId === "n0JS")) {
+          console.debug(`[mb] objectName ${typeId} = ${JSON.stringify(name)}`);
+        }
+        return name;
+      },
       // --- destructibles (issue #85): a gate opens by dying ---
       // Presentation-side because the map's destructibles ARE renderer state: the .doo records
       // it drew, the footprints it stamped, and the stand-in instances that play their clips.
@@ -4108,7 +4162,15 @@ export class MapViewerScene {
       + (format.editorBuild ? `, editor build ${(format.editorBuild / 100).toFixed(2)}` : "")
       + (format.partialW3i ? ", w3i stops early (protected?)" : "")
       + (format.laterFormat ? " — saved by a later editor (docs/map-compatibility.md)" : ""));
-    const wts = this.mapArchive.rawBytes("war3map.wts") ?? this.mapArchive.rawBytes("war3map\\wts") ?? undefined;
+    let wts = this.mapArchive.rawBytes("war3map.wts") ?? this.mapArchive.rawBytes("war3map\\wts") ?? undefined;
+    // The map's Chinese file, if one sits beside it (i18n/mapLanguage.ts): rewritten ONCE, here,
+    // so every consumer below — TRIGSTR in units, abilities, items, upgrades and the tech tree —
+    // reads the localized table without each of them knowing this feature exists.
+    if (wts) {
+      const text = new TextDecoder("utf-8").decode(wts);
+      const zh = localizeMapWtsText(text);
+      if (zh !== text) wts = new TextEncoder().encode(zh);
+    }
     const w3u = this.mapArchive.rawBytes("war3map.w3u") ?? this.mapArchive.rawBytes("war3map\\w3u") ?? undefined;
     const w3a = this.mapArchive.rawBytes("war3map.w3a") ?? this.mapArchive.rawBytes("war3map\\w3a") ?? undefined;
     const w3t = this.mapArchive.rawBytes("war3map.w3t") ?? this.mapArchive.rawBytes("war3map\\w3t") ?? undefined;
@@ -4167,6 +4229,11 @@ export class MapViewerScene {
       const nodes = applyMapTechData(this.tech, { w3u, w3t, w3a, w3q }, wts);
       console.info(`[jass] custom object data: ${nodes} map tech-tree node(s) (Trains/Sell*/Researches/Builds/Requires).`);
     }
+    // …and LAST, the map's Chinese names and tooltips (i18n/mapLanguage.ts `objects`): after
+    // every parser above has built its rows, so the file beside the map wins over its own data.
+    applyMapObjectLanguage({
+      registry: this.registry, abilities: this.abilities, items: this.items, upgrades: this.upgrades,
+    });
   }
 
   /** The map's own GAMEPLAY CONSTANTS (`war3mapMisc.txt` — see src/data/mapMisc.ts). Read
@@ -4344,6 +4411,18 @@ export class MapViewerScene {
               if (s.controller === MAP_CONTROL_FOR.computer && CANDY_HERO_SEATS.has(s.index)) s.controller = MAP_CONTROL_FOR.user;
             }
           }
+          // DOTA v6.83d, the same reason one step further: `T3I` is `MAP_CONTROL_USER`, and the
+          // map's per-player init (gold, camera, leaderboard, and in Single Draft the Circle of
+          // Power's shelf) is written for players only. Told it is a player, a computer seat gets
+          // the same start a person does; the AI then buys its hero at the base's neutral picker
+          // taverns, which the map's own arrival handler turns into a hero at the fountain.
+          // Scripts with an AI of their own (6.80 AI, 6.90G) do not carry this build's markers,
+          // so they are untouched.
+          if (!opts.melee && isDotAScript(e.interp.rt.globals)) {
+            for (const s of lobby.slots) {
+              if (s.controller === MAP_CONTROL_FOR.computer && DOTA_HERO_SEATS.has(s.index)) s.controller = MAP_CONTROL_FOR.user;
+            }
+          }
         },
       });
       if (!engine) return null;
@@ -4394,6 +4473,7 @@ export class MapViewerScene {
     sw.captureOrders = any("playerUnitEvent", 38, 40) || any("unitEvent", 75, 77);
     sw.captureConstruct = any("playerUnitEvent", 26, 28) || any("unitEvent", 64, 65);
     sw.captureTrain = any("playerUnitEvent", 32, 34) || any("unitEvent", 69, 71);
+    sw.captureResearch = any("playerUnitEvent", 35, 37) || any("unitEvent", 72, 74);
     sw.captureHeroEvents = any("playerUnitEvent", 41, 42) || any("unitEvent", 78, 79);
     sw.captureSpells = any("playerUnitEvent", 272, 276) || any("unitEvent", 289, 293);
     // 7.18 — items: DROP/PICKUP/USE are contiguous (48–50 player / 85–87 unit); SELL_ITEM
@@ -4473,6 +4553,8 @@ export class MapViewerScene {
       if (construct.length) engine.interp.pumpConstructEvents(construct);
       const trains = sw.drainTrainEvents();
       if (trains.length) engine.interp.pumpTrainEvents(trains);
+      const research = sw.drainResearchEvents();
+      if (research.length) engine.interp.pumpResearchEvents(research);
       const sales = sw.drainSellUnitEvents();
       if (sales.length) engine.interp.pumpSellUnitEvents(sales);
       const summons = sw.drainSummonEvents();
@@ -4663,6 +4745,7 @@ export class MapViewerScene {
       // loading the leaderboard's file gives us the string table as a side effect.
       void lib.load("UI\\FrameDef\\UI\\LeaderBoard.fdf").then(() => {
         this.globalStrings = lib;
+        localizeGlobalStrings(lib.strings); // keys the install itself leaves English (观察者面板)
         primeQuestStrings(lib.strings); // the log's status captions, from the player's own table
       });
     }
@@ -7540,7 +7623,7 @@ export class MapViewerScene {
     const id = this.nextSpecialFxId++;
     const fx: SpecialFx = {
       inst: null, age: 0, spent: false, standing: false, standIdx: -1,
-      clips: { hasBirth: false, birthStart: 0, birthSecs: 0, hasStand: false },
+      clips: { hasBirth: false, birthStart: 0, birthSecs: 0, hasStand: false, standSecs: 0 },
       hidden: true, hostId, attach, parented: false, x, y, doomed: false,
       z: null, yaw: 0, pitch: 0, roll: 0, scale: 1, color: [1, 1, 1, 1], teamColor: -1, tags: [], played: null,
     };
@@ -7556,8 +7639,10 @@ export class MapViewerScene {
       this.effectModels.set(path, model);
     }
     const map = this.viewer.map;
-    // Destroyed (or the map torn down) while we were loading — never put it on screen.
-    if (!model || !map || fx.doomed || this.specialFx.get(id) !== fx) {
+    dbg("fxload", path.split(/[\\/]/).pop(), !!model, fx.doomed, !!map);
+    // Destroyed (or the map torn down) while we were loading. A destroyed one still shows —
+    // see destroySpecialFx and the doomed release in updateSpecialFx.
+    if (!model || !map || this.specialFx.get(id) !== fx) {
       this.specialFx.delete(id);
       return;
     }
@@ -7568,11 +7653,15 @@ export class MapViewerScene {
     const birth = this.seqIndex(inst, /birth/i);
     fx.standIdx = this.seqIndex(inst, /^stand/i);
     const iv = birth >= 0 ? inst.model.sequences[birth]?.interval : undefined;
+    // The single clip a Birth-less model plays — the life a one-shot of it is owed, and the
+    // loop a persistent one is kept alive by (see specialFxOwesItsClip).
+    const idle = birth < 0 ? inst.model.sequences[this.effectSequence(inst)]?.interval : undefined;
     fx.clips = {
       hasBirth: birth >= 0,
       birthStart: iv?.[0] ?? 0,
       birthSecs: iv && iv[1] > iv[0] ? (iv[1] - iv[0]) / 1000 : 0,
       hasStand: fx.standIdx >= 0,
+      standSecs: idle && idle[1] > idle[0] ? (idle[1] - idle[0]) / 1000 : 0,
     };
     if (birth >= 0) {
       inst.setSequence(birth);
@@ -7750,6 +7839,18 @@ export class MapViewerScene {
       }
       fx.age += dt;
       this.updateSpecialFxOne(fx);
+      // A DOOMED effect is one the script destroyed in the frame it made it — before its model
+      // arrived, or (a cached model has its instance immediately) in the middle of its Birth.
+      // WC3 shows it anyway, and maps lean on that: `call DestroyEffect(AddSpecialEffect(...))`
+      // is THE one-shot idiom, and DotA's whole spell-art layer is built from it (an
+      // earth-splitter or fissure is a dozen of those in a row). So it stays in the world for
+      // the life it is owed — its Birth, or one pass of the single clip a Birth-less model has
+      // — and then goes: nothing holds its handle any more.
+      if (fx.doomed && fx.inst && specialFxDoomedOver(fx.age, fx.clips)) {
+        fx.inst.setParent?.(null); // an attached one leaves its host's node with the host gone
+        fx.inst.detach();
+        this.specialFx.delete(id);
+      }
     }
   }
 
@@ -7828,9 +7929,17 @@ export class MapViewerScene {
   private destroySpecialFx(id: number): void {
     const fx = this.specialFx.get(id);
     if (!fx) return;
+    // Destroyed before its model arrived, or still inside the Birth WC3 would show anyway: it
+    // keeps the scene for the rest of its own clip and `updateSpecialFx` releases it then.
+    // The second half is what the one-shot idiom needs — a model already in the cache has its
+    // instance before the script's very next line runs (`loadSpecialFx` reaches its first
+    // `await` only on a cache MISS), so `DestroyEffect(AddSpecialEffect(…))` used to detach a
+    // Birth-only model on the spot and draw nothing at all (DotA's Fissure, 25 VolcanoDeath).
+    if (!fx.inst || specialFxOwesItsClip(fx.age, fx.clips, fx.played !== null)) {
+      fx.doomed = true;
+      return;
+    }
     this.specialFx.delete(id);
-    fx.doomed = true; // if it's still loading, loadSpecialFx drops it on arrival
-    if (!fx.inst) return;
     // Nobody is watching one that is fogged or already spent, and a hidden instance is not
     // animated by the scene — so its Death clip would only sit out its deadline unseen.
     if (fx.hidden) fx.inst.detach();
@@ -8918,7 +9027,7 @@ export class MapViewerScene {
   private static readonly HOVER_RING_DIM = 0.78;
   // Camera zoom limits (world units of camera distance). A distance means what it means in the
   // real game only because the lens does too (GAME_FOV, measured) — the two are one knob: what
-  // you see is distance × tan(fov/2). The wheel runs from a close 1250 out to 2400. (WC3's own
+  // you see is distance × tan(fov/2). The wheel runs from a close 1250 out to 3600. (WC3's own
   // wheel stops are not documented anywhere we trust, so the range is ours; the distance the real
   // client OPENS on is not — it is bj_CAMERA_DEFAULT_DISTANCE, 1650, which through the 32° lens
   // is exactly the real client's opening view. We deliberately open elsewhere: see MELEE_START.)
@@ -8940,8 +9049,8 @@ export class MapViewerScene {
   // distances and one notch is one rung. The rungs are geometric (each is the same RATIO
   // closer than the last), because what a distance is worth on screen is a ratio — the same
   // 150 units is a whole step zoomed in and barely a nudge zoomed out. Seven rungs across
-  // 2400 → 1250 puts the default the match opens on (1650) almost exactly on rung 4, so the
-  // player starts on a stop rather than between two.
+  // 3600 → 1250: the ladder is anchored at the far end because that is the stop a match OPENS
+  // on (MELEE_START), so the player still starts on a rung rather than between two.
   private static readonly ZOOM_STEPS = 7;
   /** Seconds a single notch takes to settle. Every camera move in WC3 is interpolated; a notch
    *  eases OUT (fast off the mark, gliding into the stop), which is what makes a run of notches
@@ -12023,11 +12132,11 @@ export class MapViewerScene {
       // 2nd hero" means — a dead 2nd hero keeps the second slot whether or not the 1st is
       // alive. Ids ascend with hire order, so the sort is the order.
       const index = this.heroRosterIndex(f.id);
-      const name = f.properName || d.name;
+      const name = displayHeroName(f.properName, d.name);
       out.push(this.cmd({
         id: `revive:${f.id}`,
         icon: this.blpIcon(d.icon),
-        name: `Revive ${name}`,
+        name: tr("hud.revive", { name }),
         hotkey: d.hotkey || (d.name[0]?.toUpperCase() ?? ""),
         // `Revivetip` is the game's own title for this button — "Revive |cffffcc00D|remon
         // Hunter" — and it is a different field from the hero's `Tip` ("Train …"), authored
@@ -13848,7 +13957,7 @@ export class MapViewerScene {
     const ally = !own && (this.rts?.playersAreCoAllied(a.player, this.localPlayer) ?? false);
     if (!own && !ally) return; // an enemy's troubles are their own
     const name = (typeId: string | undefined, proper: string | undefined): string =>
-      proper || this.registry.get(typeId ?? "")?.name || "";
+      displayHeroName(proper, this.registry.get(typeId ?? "")?.name ?? "");
     let key = "";
     let sound = "";
     const args: Array<string | number> = [];
@@ -14932,7 +15041,7 @@ export class MapViewerScene {
         // A hero hired at a TAVERN is not a revival: `reviveOf` is only set for one that fell.
         if (t.owner === this.localPlayer) {
           const revived = world.units.get(simId);
-          this.announceCompleted(revived?.properName || d.name);
+          this.announceCompleted(displayHeroName(revived?.properName, d.name));
         }
       }
       // …and walk it to the rally point, but ONLY if this building has one. A `Sellunits`
@@ -17955,6 +18064,14 @@ export class MapViewerScene {
       if (e.key === "F12") {
         e.preventDefault(); // and not the browser's devtools
         this.togglePanelByKey("chat");
+        return;
+      }
+      // F4 is the performance strip (ui/metrics.ts, the bottom-left "debug info"): OFF by
+      // default — the corner belongs to the player — and a DEV build's only door to it. A
+      // packaged build never draws the strip at all, so the key is swallowed and does nothing.
+      if (e.key === "F4") {
+        e.preventDefault(); // a browser with its own F4 use has no business here
+        if (import.meta.env.DEV) this.metrics.toggle();
         return;
       }
       // Same rule as the HUD's own hotkeys (ui/hud.ts isTyping): a keystroke aimed at a text

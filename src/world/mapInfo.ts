@@ -4,6 +4,7 @@ import { readMapFormat, UNKNOWN_FORMAT, type MapFormatProfile } from "../compat/
 import { raceFromW3i, type Race } from "../data/races";
 import { parseWts } from "../jass/wts";
 import { localizeWtsTable } from "../i18n/campaignZh";
+import { mapWtsString } from "../i18n/mapLanguage";
 import { classifyMap, type MapClassification } from "./mapKind";
 
 // Map metadata for the lobby (plan Phase 5.5), read from war3map.w3i: name,
@@ -33,6 +34,9 @@ export interface PlayerSlot {
    * the lobby's seating names the slot instead (`slotLabel`, ui/playerSlots.ts).
    */
   name: string;
+  /** The w3i's OWN spelling of `name` — `"TRIGSTR_50002"` or the literal — kept so a map's
+   *  Chinese sidecar can be asked by STRING id (see `MapInfo.sources`). */
+  nameSource: string;
   /** The slot's TEAM, and on a custom map it is the map's to decide, not the lobby's.
    *  A w3i carries FORCE definitions (a name + a bitmask of member players), and the
    *  "use custom forces" flag (0x0040) says they are authoritative — which is exactly what
@@ -119,6 +123,18 @@ export interface MapInfo {
   /** The author's blurb (w3i description) — the Custom Game screen's "Map Description". */
   description: string;
   recommendedPlayers: string;
+  /**
+   * The w3i's OWN spelling of the three fields above — `"TRIGSTR_50000"` when the map keeps its
+   * name in war3map.wts (every DotA does), the literal otherwise — before `resolveName` turned
+   * it into display text.
+   *
+   * Kept because a map's Chinese sidecar keys its `wts` table by STRING ID, and once the name
+   * has been resolved there is nothing left to ask by: the map LIST and the map-info pane read
+   * a map before any match exists, so no dictionary is live and `resolveName` answered from the
+   * install's own wts — which is English on the Chinese install's DotA. `localizedMapInfo`
+   * (i18n/mapLanguage.ts) reads this to ask the sidecar for the same id.
+   */
+  sources: { name: string; description: string; recommendedPlayers: string };
   tileset: string;
   width: number;
   height: number;
@@ -163,8 +179,12 @@ export interface MapInfo {
    *
    * A force is NOT automatically an alliance, and a team number is not shared sight. See
    * `ForceGrants`.
+   *
+   * `nameSource` is the w3i's own spelling (`"TRIGSTR_50002"`), which is what a DotA writes and
+   * what makes its sidecar able to answer: the two headings are "The Sentinel" and "The
+   * Scourge", and the file has them in Chinese under those ids.
    */
-  forces: Array<{ name: string; players: number[] } & ForceGrants>;
+  forces: Array<{ name: string; nameSource: string; players: number[] } & ForceGrants>;
   /** w3i flag 0x0020 ("fixed player settings", set by WarChasers) — the map, not the lobby,
    *  owns the setup. Measured against the real client on WarChasers, what it actually fixes is
    *  every slot BUT your own: the AI player's team and handicap are greyed while yours are
@@ -193,6 +213,7 @@ export function parseMapInfo(bytes: Uint8Array, fallbackName: string): MapInfo {
   const format = readMapFormat(mpq);
   const empty: MapInfo = {
     name: fallbackName, description: "", recommendedPlayers: "", tileset: "", width: 0, height: 0,
+    sources: { name: "", description: "", recommendedPlayers: "" },
     slots: [], neutralPlayers: [], maxPlayers: 0, minimap, previewImage, isMelee: classification.isMelee, forces: [], fixedPlayerSettings: false,
     loading: { screen: -1, model: "", title: "", subtitle: "", text: "" },
     classification,
@@ -228,6 +249,7 @@ export function parseMapInfo(bytes: Uint8Array, fallbackName: string): MapInfo {
     startY: p.startLocation[1],
     controller,
     name: resolveName(p.name, "", strings), // see PlayerSlot.name
+    nameSource: p.name, // …and the w3i's spelling of it: see MapInfo.sources
     team: customForces ? forceOf(info, p.id) : p.id, // see PlayerSlot.team
   });
   const playable = info.players.filter((p) => p.type === 1 || p.type === 2);
@@ -240,6 +262,13 @@ export function parseMapInfo(bytes: Uint8Array, fallbackName: string): MapInfo {
     name: resolveName(info.name, fallbackName, strings),
     description: resolveName(info.description, "", strings),
     recommendedPlayers: resolveName(info.recommendedPlayers, "", strings),
+    // …and the same three as the w3i spells them, for the sidecar's `wts` table. See
+    // `MapInfo.sources`.
+    sources: {
+      name: info.name,
+      description: info.description,
+      recommendedPlayers: info.recommendedPlayers,
+    },
     tileset: info.tileset,
     width: info.playableSize[0],
     height: info.playableSize[1],
@@ -254,6 +283,7 @@ export function parseMapInfo(bytes: Uint8Array, fallbackName: string): MapInfo {
     forces: customForces
       ? info.forces.map((f) => ({
           name: resolveName(f.name, "", strings),
+          nameSource: f.name, // "TRIGSTR_50002" on a DotA — see MapInfo.forces
           players: slots.filter((s) => (f.playerMasks & (1 << s.id)) !== 0).map((s) => s.id),
           allied: (f.flags & FORCE_ALLIED) !== 0, // see ForceGrants
           sharedVision: (f.flags & FORCE_SHARED_VISION) !== 0,
@@ -291,6 +321,10 @@ function resolveName(value: string, fallback: string, strings: Map<number, strin
   if (!value) return fallback;
   const m = /^TRIGSTR_(\d+)$/.exec(value.trim());
   if (!m) return value;
-  const s = strings.get(parseInt(m[1], 10)) ?? "";
+  const id = parseInt(m[1], 10);
+  // The map's own Chinese sidecar wins over the raw wts line (i18n/mapLanguage.ts). It is only
+  // live after `setMapLanguage`, so the map LIST still reads the install's dictionary, and a
+  // match (which matters for the loading screen and the description) re-parses with it applied.
+  const s = mapWtsString(id) ?? strings.get(id) ?? "";
   return (keepIndent ? s.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd() : s.trim()) || fallback;
 }
