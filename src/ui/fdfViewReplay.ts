@@ -2,10 +2,18 @@ import type { DataSource } from "../vfs/types";
 import type { FdfFrame } from "./fdf/parser";
 import type { FdfLibrary } from "./fdf/library";
 import { mountFdfScreen, type FdfScreen } from "./fdf/render";
+import type { ListItem } from "./fdf/widgets";
 import {
-  INFO_ROWS, adopt, clearMapInfo, findFrame, layoutInfoPane, nudgeX, paneRowsToHide, setProp,
+  INFO_ROWS, adopt, clearMapInfo, fillMapInfo, findFrame, layoutInfoPane, loadMinimapIcons, nudgeX,
+  paneRowsToHide, readMapInfo, readMapPreviewFor, setProp,
 } from "./mapBrowser";
 import { widescreen } from "./widescreen";
+import { showGlueDialog } from "./glueDialog";
+import { isRoc } from "../data/edition";
+import { replayWindowOptions } from "../data/options";
+import { blpToCanvas } from "../render/blputil";
+import { readReplayHeader, REPLAY_EXT, type ReplayHeader } from "../game/replay";
+import type { ReplayFileInfo, ReplaySink } from "../game/replaySink";
 
 // The View Replay screen, built from the game's own UI\FrameDef\Glue\ViewReplayScreen.fdf:
 // the replay list down the left, the map of the highlighted replay top-right, and
@@ -28,9 +36,14 @@ import { widescreen } from "./widescreen";
 // `MapInfoPaneContainer` as EMPTY containers the engine fills at runtime, so `buildRoot`
 // composes the game's own ListBoxWar3.fdf and MapInfoPane.fdf into them.
 //
-// THE LIST IS EMPTY, and that is not a stub — it is what the reference shows on an install
-// with no saved replays. Warcraft Open records none yet, so nothing can land in it; View Replay
-// stays greyed exactly as it does there with nothing picked.
+// THE LIST is the replay folder (game/replaySink.ts, docs/replays.md): `LastReplay` and the
+// replays the player saved at the top level, newest first, and the game's own `Autosaved`
+// folder as a FOLDER row, walked into and out of as the map list's folders are (the same
+// `icon-folder` art and `UP_ONE_LEVEL` row, ui/mapBrowser.ts). A row is the file's name without
+// its extension, as the game lists `LastReplay`. Highlighting one reads its HEADER and shows
+// its map in the summary pane, with the replay's own player count under it; View Replay (or a
+// double-click) watches it. A replay whose map is not in this install stays listed and says
+// so — its name is in the header — but cannot be watched.
 
 const LIST_FDF = "UI\\FrameDef\\Glue\\ListBoxWar3.fdf";
 const MAP_INFO_FDF = "UI\\FrameDef\\Glue\\MapInfoPane.fdf";
@@ -45,22 +58,61 @@ const SUMMARY_ROWS = INFO_ROWS.slice(0, 3);
  *  (ui/mapBrowser.ts `nudgeX`). */
 const MAP_INFO_NUDGE = 0.052;
 
+/** Warcraft Open's version, from package.json (vite.config.ts `define`). */
+declare const __OW3_VERSION__: string;
+declare const __OW3_SIM_FINGERPRINT__: string;
+
+const ICON_FOLDER = "UI\\Widgets\\Glues\\icon-folder.blp";
+const ICON_FOLDER_UP = "UI\\Widgets\\Glues\\icon-folder-up.blp";
+
+/** The game's own subfolder for "Automatically Save Replays" (electron/replayStore.mjs). */
+const AUTOSAVED = "Autosaved";
+const FOLDER = "folder:";
+
 export interface ViewReplayHandlers {
   onCancel: () => void;
+  /** Watch the named replay (a name `ReplaySink.read` takes). */
+  onView: (name: string) => void;
 }
 
 export function mountViewReplayScreen(
   container: HTMLElement,
   vfs: DataSource,
+  maps: Map<string, File>,
+  sink: ReplaySink | null,
   h: ViewReplayHandlers,
 ): Promise<FdfScreen> {
+  const minimapIcons = loadMinimapIcons(vfs);
+  const icon = (path: string): HTMLCanvasElement | null => {
+    const bytes = vfs.rawBytes(path);
+    return bytes ? blpToCanvas(bytes) : null;
+  };
+  const folderIcon = icon(ICON_FOLDER);
+  const upIcon = icon(ICON_FOLDER_UP);
+  let strings: FdfLibrary | null = null;
+  let files: ReplayFileInfo[] = [];
+  /** The folder shown: "" (the top) or `Autosaved`. */
+  let cwd = "";
+  let picked: string | null = null;
+  /** Headers read so far, by file name — a replay is read once per visit to the screen. */
+  const headers = new Map<string, ReplayHeader | null>();
+  let screen: FdfScreen | null = null;
+  /** A download is under way: the list still browses, but nothing else is started. */
+  let busy = false;
+  /** Which `readHeaders` pass is current — a folder change starts a new one. */
+  let reading = 0;
+  const bundles = new Map<string, Promise<{ size: number; usable: boolean } | null>>();
+
+  const leafName = (name: string): string => name.slice(name.lastIndexOf("/") + 1).replace(/\.o3r$/i, "");
+  const inFolder = (name: string): string => (name.includes("/") ? name.slice(0, name.lastIndexOf("/")) : "");
+
   return mountFdfScreen({
     container,
     vfs,
     fdfPath: "UI\\FrameDef\\Glue\\ViewReplayScreen.fdf",
     rootFrame: "ViewReplayScreen",
     includeFdf: [LIST_FDF, MAP_INFO_FDF],
-    buildRoot: (lib) => buildViewReplayRoot(lib),
+    buildRoot: (lib) => { strings = lib; return buildViewReplayRoot(lib); },
     buttonWidthScale: 1.35,
     hidden: paneRowsToHide(SUMMARY_ROWS),
     // The screen's panels, one per piece of chrome that carries them: the list under its
@@ -73,18 +125,263 @@ export function mountViewReplayScreen(
     latePanels: ["GameSettingsPanel", "MapInfoPaneContainer", "NumPlayersLabel", "NumPlayersValue"],
     handlers: {
       CancelButton: h.onCancel,
+      OKButton: () => watch(),
     },
-    onBuild: (s) => fill(s),
+    onBuild: (s) => {
+      screen = s;
+      paint();
+      void sink?.list().then((all) => {
+        files = all.filter((f) => f.name.toLowerCase().endsWith(REPLAY_EXT));
+        paint();
+      });
+    },
   });
 
-  function fill(s: FdfScreen): void {
-    const list = s.list("ListBoxWar3");
-    list?.setItems([]);
-    s.setText("NumPlayersValue", "");
-    clearMapInfo(s);
-    // Nothing to watch: no replay is picked, and none can be.
-    s.setEnabled("OKButton", false);
+  /** Does this build simulate the way the one that recorded `header` did? The same release does;
+   *  so does a different one with the same SIM FINGERPRINT (tools/sim-fingerprint.mjs) — most
+   *  releases change the menus or the renderer and leave the match alone. */
+  function sameSim(header: ReplayHeader): boolean {
+    return header.version === __OW3_VERSION__ || (!!header.fingerprint && header.fingerprint === __OW3_SIM_FINGERPRINT__);
   }
+
+  /** A string out of the screen's FDF library, or its English when the install lacks it. */
+  function str(key: string, fallback: string): string {
+    const v = strings?.string(key);
+    return v && v !== key ? v : fallback;
+  }
+
+  /** Why this replay cannot be watched on this machine as it stands, or null. Said when View
+   *  Replay is PRESSED, as the game does — the button stays live and the answer is a message box,
+   *  never a line squeezed into the map's name row. */
+  function blocked(header: ReplayHeader): string | null {
+    // The game's own words, naming the file it looked for (GlobalStrings.fdf) — by its file name
+    // alone, and without the blank line between its two sentences: DialogWar3's box is a fixed
+    // 0.35 × 0.2 and the folder or the gap takes the message down into its OK button. The file
+    // is looked for under any folder anyway (`replayMapPath`).
+    if (!mapPathOf(header)) {
+      return str(
+        "NETERROR_CANTFINDREPLAYMAP",
+        "The map file associated with the replay could not be found.|n|nPlease make sure the map file '%s' used by the recorded game exists and try again.",
+      ).replace("|n|n", "|n").replace("%s", header.map.path.split(/[\\/]/).pop() ?? header.map.path);
+    }
+    // The two games read different object tables (data/edition.ts); a replay is a match on one.
+    if ((header.edition === "roc") !== isRoc()) return `This replay was recorded on ${header.edition === "roc" ? "Reign of Chaos" : "The Frozen Throne"}.|n|nSwitch editions on the main menu to watch it.`;
+    return null;
+  }
+
+  /** That version's replay files, as the shell reports them (once per version, per visit). */
+  function bundleOf(version: string): Promise<{ size: number; usable: boolean } | null> {
+    let info = bundles.get(version);
+    if (!info) bundles.set(version, (info = sink?.bundleInfo ? sink.bundleInfo(version).catch(() => null) : Promise.resolve(null)));
+    return info;
+  }
+
+  function megabytes(bytes: number): string {
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  /** A line in the summary's name row, in place of the map's name. */
+  function note(text: string, colour = "ff8080"): void {
+    const s = screen;
+    const row = s?.frame("MapNameValue");
+    if (!s || !row) return;
+    row.style.display = "";
+    s.setText("MapNameValue", `|cff${colour}${text}|r`);
+  }
+
+  function watch(): void {
+    const name = picked;
+    const header = name && !name.startsWith(FOLDER) ? headers.get(name) : null;
+    if (!name || !header || busy) return;
+    const why = blocked(header);
+    if (why) {
+      void showGlueDialog({ container, vfs, text: why, buttons: "ok" });
+      return;
+    }
+    if (sameSim(header)) return h.onView(name);
+    void watchOther(name, header);
+  }
+
+  /**
+   * A replay this build may not play back exactly (issue #158, docs/replays.md "Versions"). The
+   * desktop app watches it IN THE VERSION THAT RECORDED IT: that version's replay files are
+   * downloaded (a few megabytes, deleted again when the replay is closed) and opened in a window
+   * of their own, with this player's options. Where that cannot be done — no desktop app, a
+   * version that published none, no connection — it is the game's own question instead: play it
+   * on this build, "ignoring recorded checksums", and let the state checks say how far it held.
+   */
+  async function watchOther(name: string, header: ReplayHeader): Promise<void> {
+    const info = await bundleOf(header.version);
+    if (picked !== name) return;
+    if (info && !info.usable) {
+      void showGlueDialog({ container, vfs, buttons: "ok", text: `This replay was recorded on Warcraft Open ${header.version}. Update Warcraft Open to watch it.` });
+      return;
+    }
+    if (info && sink?.watchVersion) {
+      const run = sink.watchVersion;
+      void showGlueDialog({
+        container,
+        vfs,
+        buttons: "yesno",
+        text: `This replay was recorded on Warcraft Open ${header.version}.|nDownload that version's replay files (${megabytes(info.size)}) to watch it exactly as it was played? They are removed again when the replay is closed.`,
+        onConfirm: () => {
+          busy = true;
+          screen?.setEnabled("OKButton", false);
+          // The wait, on the menus' own message box: its text is the progress, and its OK only
+          // puts the box away — the download carries on and the replay opens when it is in.
+          const text = (line: string): string => `Downloading the replay files of Warcraft Open ${header.version}…|n|n${line}`;
+          const box = showGlueDialog({ container, vfs, buttons: "ok", text: text("0%") });
+          const say = (line: string): void => void box.then((b) => {
+            const el = b.frame("DialogText");
+            if (el) el.innerText = text(line).replace(/\|n/g, "\n");
+          });
+          run({ name, version: header.version, options: replayWindowOptions() }, ({ received, total }) => {
+            say(`${Math.round((received / Math.max(1, total)) * 100)}% of ${megabytes(total)}`);
+          }).then(
+            () => {
+              busy = false;
+              void box.then((b) => b.close());
+              void show(picked);
+            },
+            (err: unknown) => {
+              busy = false;
+              say(String((err as Error)?.message ?? err));
+              void show(picked);
+            },
+          );
+        },
+      });
+      return;
+    }
+    // Recorded by another Warcraft Open, and no way to run that one: asked first, in the game's own
+    // words for its own case (GlobalStrings REPLAY_CONFIRM*). The game's two rows are NET
+    // VERSION and BUILD; ours has one number, the release, so the BUILD pair says it.
+    void showGlueDialog({
+      container,
+      vfs,
+      buttons: "yesno",
+      // Six lines are all the menus' message box has above its buttons — the question's four and
+      // the two builds — so the box goes without the REPLAY_CONFIRM heading the game's own
+      // dialog puts in its title bar, which this one does not have.
+      text: [
+        str("REPLAY_CONFIRM_DESC", "The replay was recorded by a different version of the game. Do you wish to attempt running the replay while ignoring recorded checksums?"),
+        `${str("REPLAY_CONFIRM_RE_BUILD", "Recorded build:")} ${header.version}`,
+        `${str("REPLAY_CONFIRM_GA_BUILD", "Game build:")} ${__OW3_VERSION__}`,
+      ].join("|n"),
+      onConfirm: () => h.onView(name),
+    });
+  }
+
+  function mapPathOf(header: ReplayHeader | null | undefined): string | null {
+    return header ? replayMapPath(maps, header.map.path) : null;
+  }
+
+  /** The list, the summary and the buttons, as they stand. */
+  function paint(): void {
+    paintRows();
+    void show(picked);
+    void readHeaders();
+  }
+
+  /** The list's rows alone — repainted as headers come in, keeping the scroll and the pick. */
+  function paintRows(): void {
+    const s = screen;
+    if (!s) return;
+    const list = s.list("ListBoxWar3");
+    const scroll = list?.scrollTop ?? 0;
+    const here = files.filter((f) => inFolder(f.name) === cwd);
+    const rows: ListItem[] = [];
+    if (cwd) rows.push({ value: FOLDER, label: strings?.string("UP_ONE_LEVEL") ?? "(up one level)", icon: upIcon });
+    else if (files.some((f) => inFolder(f.name) === AUTOSAVED)) rows.push({ value: FOLDER + AUTOSAVED, label: AUTOSAVED, icon: folderIcon });
+    for (const f of here) {
+      // A replay from an Warcraft Open that simulates differently says which, in grey after its
+      // name: it is the one that needs that version's files to be watched exactly.
+      const header = headers.get(f.name);
+      const other = header && !sameSim(header) ? `  |cff808080Warcraft Open ${header.version}|r` : "";
+      rows.push({ value: f.name, label: `${leafName(f.name)}${other}` });
+    }
+    if (list) {
+      list.setItems(rows);
+      list.onChange = (value) => {
+        picked = value;
+        void show(value);
+      };
+      list.onActivate = (value) => {
+        if (value.startsWith(FOLDER)) {
+          cwd = value.slice(FOLDER.length);
+          picked = null;
+          paint();
+        } else watch();
+      };
+      if (picked) list.select(picked);
+      list.scrollTop = scroll;
+    }
+  }
+
+  /** The highlighted replay's map and player count — or an empty pane for a folder or nothing. */
+  async function show(name: string | null): Promise<void> {
+    const s = screen;
+    if (!s) return;
+    if (!name || name.startsWith(FOLDER)) {
+      clearMapInfo(s);
+      s.setText("NumPlayersValue", "");
+      s.setEnabled("OKButton", false);
+      return;
+    }
+    if (!headers.has(name)) {
+      const bytes = await sink?.read(name).catch(() => null);
+      const header = bytes ? await readReplayHeader(bytes).then((r) => r.header).catch(() => null) : null;
+      headers.set(name, header);
+    }
+    if (picked !== name) return;
+    const header = headers.get(name) ?? null;
+    const path = mapPathOf(header);
+    // The players who PLAYED it — the seats, never the watchers.
+    s.setText("NumPlayersValue", header ? String(header.seats.length) : "");
+    s.setEnabled("OKButton", !!header && !busy);
+    const info = path ? await readMapInfo(maps, path).catch(() => null) : null;
+    if (picked !== name) return;
+    if (!info || !path) {
+      clearMapInfo(s);
+      // The map this machine does not have: its name, as the replay recorded it, and nothing
+      // else — View Replay says why when pressed (`blocked`).
+      if (header) note(header.map.name, "ffffff");
+      return;
+    }
+    fillMapInfo(s, info, null, minimapIcons);
+    const preview = await readMapPreviewFor(vfs, maps, path).catch(() => null);
+    if (picked === name && preview) fillMapInfo(s, info, preview, minimapIcons);
+  }
+
+  /** Read the headers of the folder on show, a few at a time, so the rows can say which replays
+   *  are another version's. Only the header is inflated (game/replay.ts `readReplayHeader`). */
+  async function readHeaders(): Promise<void> {
+    const mine = ++reading;
+    for (const f of files.filter((x) => inFolder(x.name) === cwd)) {
+      if (headers.has(f.name)) continue;
+      const bytes = await sink?.read(f.name).catch(() => null);
+      if (mine !== reading) return;
+      const header = bytes ? await readReplayHeader(bytes).then((r) => r.header).catch(() => null) : null;
+      headers.set(f.name, header);
+      if (header && !sameSim(header)) paintRows();
+    }
+  }
+}
+
+/** The install's copy of the map a replay was played on: the path it was recorded under, or the
+ *  same file name anywhere in the install (another machine keeps its maps elsewhere, and a map a
+ *  LAN game handed over lands in Maps\Download\). Which copy is RIGHT is the map hash's call
+ *  (main.ts `watchReplay`). */
+export function replayMapPath(maps: ReadonlyMap<string, File>, recorded: string): string | null {
+  if (maps.has(recorded)) return recorded;
+  const leaf = (p: string): string => p.split(/[\\/]/).pop()!.toLowerCase();
+  const found = [...maps.keys()].find((p) => leaf(p) === leaf(recorded));
+  if (found) return found;
+  // 0.3.84 named a skirmish map by its DISPLAY name ("Bandit Ridge" for `(2)BanditRidge.w3x`):
+  // the words alone, without the player count, the extension, spaces or case.
+  const words = (p: string): string => leaf(p).replace(/^\(\d+\)/, "").replace(/\.w3[mx]$/, "").replace(/[^a-z0-9]/g, "");
+  const want = words(recorded);
+  return want ? [...maps.keys()].find((p) => words(p) === want) ?? null : null;
 }
 
 /** ViewReplayScreen + the list box and the summary pane dropped into its two containers —

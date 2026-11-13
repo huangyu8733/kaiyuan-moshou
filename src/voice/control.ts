@@ -1,3 +1,4 @@
+import { withInputOverride } from "../ui/inputSource";
 import type { Options } from "../data/options";
 import { preloadVoiceModel, transcribe, voiceModelInstalled, WHISPER_RATE } from "./model";
 import { describe, Lexicon, parse, type LexEntry, type VoiceIntent } from "./parser";
@@ -367,7 +368,7 @@ function run(h: VoiceHost, heard: string, lexicon: Lexicon): string[] {
     const intents = parse(heard, { lexicon: new Lexicon([]) });
     if (intents.length && intents.every((i) => i.kind === "pause" || i.kind === "chat" || (i.kind === "panel" && i.open === true))) {
       console.info("[voice]", JSON.stringify(heard), "→", intents.map(describe).join(" · "));
-      host.perform(intents, heard);
+      withInputOverride("voice", () => host!.perform(intents, heard));
       return intents.map(describe);
     }
   }
@@ -382,7 +383,7 @@ function run(h: VoiceHost, heard: string, lexicon: Lexicon): string[] {
     return [];
   }
   console.info("[voice]", JSON.stringify(heard), "→", intents.map(describe).join(" · "));
-  h.perform(intents, heard);
+  withInputOverride("voice", () => h.perform(intents, heard));
   return intents.map(describe);
 }
 

@@ -21,7 +21,7 @@
 
 import { neutralSlot, PlayerSlot } from "../../data/enums";
 import { intToRawcode, rawcodeToInt } from "../lexer";
-import type { BoolExpr, ItemSnapshot, JassItem, JassUnit, NativeCtx, RectObj, Runtime } from "../runtime";
+import type { BoolExpr, ItemSnapshot, JassItem, JassPlayer, JassUnit, NativeCtx, RectObj, Runtime } from "../runtime";
 import { asInt, asNum, jBool, jHandle, jInt, JNULL, jReal, jStr, truthy, type JassValue } from "../values";
 
 type NativeFn = (ctx: NativeCtx, args: JassValue[]) => JassValue;
@@ -111,7 +111,14 @@ export function registerItemNatives(rt: Runtime): void {
   });
   // GetItemPlayer: the holder's slot; an item lying on the ground belongs to Neutral
   // Passive (player 15), which is what the sim's snapshot reports.
-  def(rt, "GetItemPlayer", (c, a) => c.rt.playerHandle(info(c, item(c, a[0]))?.owner ?? neutralSlot(PlayerSlot.NeutralPassive)));
+  // An item's PLAYER is the item's own: Neutral Passive from birth, changed by SetItemPlayer
+  // and by nothing else — not by who picks it up. An item system reads it as "who BOUGHT
+  // this": DotA stamps every purchase (`SetItemPlayer(it, buyer, true)`), tests
+  // `GetItemPlayer(it) != Player(15)` to tell a bought item from a dropped one, and its AI
+  // counts only items whose player is its own toward a recipe. Answered with the HOLDER's
+  // owner (and SetItemPlayer a no-op), a stamp never read back, an item handed to the stash
+  // changed owners, and no computer ever recognised a component it had already paid for.
+  def(rt, "GetItemPlayer", (c, a) => c.rt.playerHandle(item(c, a[0])?.player ?? neutralSlot(PlayerSlot.NeutralPassive)));
   def(rt, "IsItemOwned", (c, a) => jBool((info(c, item(c, a[0]))?.holder ?? 0) > 0));
 
   // --- item TYPE data (the ItemRegistry, not the instance) ---
@@ -177,18 +184,26 @@ export function registerItemNatives(rt: Runtime): void {
     if (it) it.userData = asInt(a[1]);
     return JNULL;
   });
-  // Drop-on-death / drop-id (which unit an item is bound to drop from) and item ownership
-  // colour have no counterpart in our engine yet — accept them rather than log a miss.
+  // Drop-on-death / drop-id (which unit an item is bound to drop from) have no counterpart
+  // in our engine yet — accept them rather than log a miss.
   def(rt, "SetItemDropOnDeath", () => JNULL);
   def(rt, "SetItemDropID", () => JNULL);
-  def(rt, "SetItemPlayer", () => JNULL);
+  // SetItemPlayer(item, player, changeColor) — see GetItemPlayer. The colour half is art.
+  def(rt, "SetItemPlayer", (c, a) => {
+    const it = item(c, a[0]);
+    const p = c.rt.data<JassPlayer>(a[1]);
+    if (it && p) it.player = p.index;
+    return JNULL;
+  });
 
   // --- a unit's inventory ---------------------------------------------------
   def(rt, "UnitAddItem", (c, a) => {
     const u = unitSim(c, a[0]);
     const it = item(c, a[1]);
     if (u === undefined || !it || it.simId < 0) return jBool(false);
-    return jBool(c.rt.hooks?.unitAddItem?.(u, it.simId, -1) ?? false);
+    const ok = c.rt.hooks?.unitAddItem?.(u, it.simId, -1) ?? false;
+    c.flushItemEvents?.(); // EVENT_UNIT_PICKUP_ITEM fires from inside the call (NativeCtx.flushItemEvents)
+    return jBool(ok);
   });
   // UnitAddItemById — create the item AT THE UNIT and hand it over. If the inventory is
   // full it simply stays on the ground at the hero's feet, which is exactly the behaviour
@@ -203,6 +218,7 @@ export function registerItemNatives(rt: Runtime): void {
     const handle = createItem(c, asInt(a[1]), x, y);
     const it = item(c, handle);
     if (simId !== undefined && it && it.simId >= 0) c.rt.hooks?.unitAddItem?.(simId, it.simId, -1);
+    c.flushItemEvents?.();
     return handle;
   });
   // UnitAddItemToSlotById — into ONE slot, or not at all: an occupied slot fails, and the
@@ -217,18 +233,22 @@ export function registerItemNatives(rt: Runtime): void {
     if (!it || it.simId < 0) return jBool(false);
     const ok = c.rt.hooks?.unitAddItem?.(simId, it.simId, asInt(a[2])) ?? false;
     if (!ok) c.rt.hooks?.removeItem?.(it.simId);
+    c.flushItemEvents?.();
     return jBool(ok);
   });
   def(rt, "UnitRemoveItem", (c, a) => {
     const u = unitSim(c, a[0]);
     const it = item(c, a[1]);
     if (u !== undefined && it && it.simId >= 0) c.rt.hooks?.unitRemoveItem?.(u, it.simId);
+    c.flushItemEvents?.(); // …and so does EVENT_UNIT_DROP_ITEM
     return JNULL;
   });
   def(rt, "UnitRemoveItemFromSlot", (c, a) => {
     const u = unitSim(c, a[0]);
     if (u === undefined) return JNULL;
-    return itemHandle(c, c.rt.hooks?.unitRemoveItemFromSlot?.(u, asInt(a[1])) ?? 0);
+    const dropped = c.rt.hooks?.unitRemoveItemFromSlot?.(u, asInt(a[1])) ?? 0;
+    c.flushItemEvents?.();
+    return itemHandle(c, dropped);
   });
   def(rt, "UnitHasItem", (c, a) => {
     const u = unitSim(c, a[0]);
@@ -253,18 +273,24 @@ export function registerItemNatives(rt: Runtime): void {
     const it = item(c, iv);
     return jBool(u !== undefined && !!it && it.simId >= 0 && fn(u, it.simId));
   };
-  def(rt, "UnitDropItemPoint", (c, a) =>
-    withUnitItem(c, a[0], a[1], (u, i) => c.rt.hooks?.unitDropItemPoint?.(u, i, asNum(a[2]), asNum(a[3])) ?? false));
+  def(rt, "UnitDropItemPoint", (c, a) => {
+    const r = withUnitItem(c, a[0], a[1], (u, i) => c.rt.hooks?.unitDropItemPoint?.(u, i, asNum(a[2]), asNum(a[3])) ?? false);
+    c.flushItemEvents?.();
+    return r;
+  });
   // UnitDropItemSlot MOVES the item within the unit's own inventory (the GUI's "Give item
   // to slot") — despite the name, nothing is dropped.
   def(rt, "UnitDropItemSlot", (c, a) =>
     withUnitItem(c, a[0], a[1], (u, i) => c.rt.hooks?.unitDropItemSlot?.(u, i, asInt(a[2])) ?? false));
   // UnitDropItemTarget hands the item to another unit (the GUI's "Give item to hero").
-  def(rt, "UnitDropItemTarget", (c, a) =>
-    withUnitItem(c, a[0], a[1], (u, i) => {
+  def(rt, "UnitDropItemTarget", (c, a) => {
+    const r = withUnitItem(c, a[0], a[1], (u, i) => {
       const t = unitSim(c, a[2]);
       return t === undefined ? false : c.rt.hooks?.unitDropItemTarget?.(u, i, t) ?? false;
-    }));
+    });
+    c.flushItemEvents?.();
+    return r;
+  });
   const useItem = (c: NativeCtx, uv: JassValue, iv: JassValue, targetV: JassValue | undefined, x: number, y: number): JassValue =>
     withUnitItem(c, uv, iv, (u, i) => c.rt.hooks?.unitUseItem?.(u, i, (targetV && unitSim(c, targetV)) || 0, x, y) ?? false);
   def(rt, "UnitUseItem", (c, a) => useItem(c, a[0], a[1], undefined, 0, 0));

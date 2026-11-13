@@ -1545,6 +1545,7 @@ export interface ResearchEvent {
 export interface SellUnitEvent {
   shop: EventUnitInfo; // GetSellingUnit (and GetTriggerUnit)
   sold: EventUnitInfo; // GetSoldUnit
+  buyer: EventUnitInfo | null; // GetBuyingUnit — whoever stood at the counter (unitSalePatron)
 }
 
 /** A unit spawned a summoned unit — EVENT_(PLAYER_)UNIT_SUMMON. The SUMMONER is the event's
@@ -3972,6 +3973,9 @@ export class SimWorld {
   /** Told of every death as it happens, with the killer if it is still a unit — the match log's
    *  (src/game/matchLog.ts). Null, and never called, in a world nobody is recording. */
   deathObserver: ((victim: SimUnit, killer: SimUnit | undefined) => void) | null = null;
+  /** The same news for the REPLAY's state track (src/game/replayState.ts) — a slot of its own,
+   *  because the match log opens and closes the one above on its own clock. */
+  deathTap: ((victim: SimUnit, killer: SimUnit | undefined) => void) | null = null;
   captureDamage = false;
   /**
    * The map's damage events, SYNCHRONOUSLY — set by the host only for a script that can change a
@@ -4005,7 +4009,7 @@ export class SimWorld {
   private heroKillSeq = 0;
   private damageEvents: Array<{ target: EventUnitInfo; source: EventUnitInfo | null; amount: number }> = [];
   private attackEvents: Array<{ attacked: EventUnitInfo; attacker: EventUnitInfo }> = [];
-  private orderEvents: Array<{ unit: EventUnitInfo; orderId: number; kind: "immediate" | "point" | "target"; x: number; y: number; target: EventUnitInfo | null }> = [];
+  private orderEvents: Array<{ unit: EventUnitInfo; orderId: number; kind: "immediate" | "point" | "target"; x: number; y: number; target: EventUnitInfo | null; item: { id: number; typeId: string; charges: number; x: number; y: number } | null }> = [];
   private spellEvents: SpellEvent[] = [];
   private constructEvents: ConstructEvent[] = [];
   private trainEvents: TrainEvent[] = [];
@@ -4269,7 +4273,7 @@ export class SimWorld {
     private upgradeReg?: UpgradeRegistry,
   ) {
     this.seed = seed;
-    this.rng = lcg(seed);
+    this.rng = this.countedRng(seed);
     this.tech =
       techReg && upgradeReg
         ? new TechState(techReg, upgradeReg, () =>
@@ -4806,8 +4810,8 @@ export class SimWorld {
    *  Aall is its own code `Aall` (verified in the SLK — the two neutral ones being siblings
    *  makes it tempting to assume all three are, and then every race shop silently falls
    *  back to the default radius with no button and no arrow). */
-  private shopInteract(typeId: string): { abilityId: string; radius: number; showButton: boolean; showArrow: boolean } {
-    const fallback = { abilityId: "", radius: DEFAULT_SHOP_RADIUS, showButton: false, showArrow: false };
+  private shopInteract(typeId: string): { abilityId: string; radius: number; needsInventory: boolean; showButton: boolean; showArrow: boolean } {
+    const fallback = { abilityId: "", radius: DEFAULT_SHOP_RADIUS, needsInventory: false, showButton: false, showArrow: false };
     const def = this.unitReg?.get(typeId);
     if (!def || !this.abilities) return fallback;
     for (const abilId of def.abilities) {
@@ -4819,6 +4823,10 @@ export class SimWorld {
       return {
         abilityId: abilId,
         radius: r && !Number.isNaN(r) ? r : DEFAULT_SHOP_RADIUS,
+        // DataB, "Interaction Type" (`Neu2`; UI\UnitEditorData.txt [interactionFlags]: bit 0
+        // is "inventory"). Aneu and Aall carry 1 — whoever stands at the counter must be able
+        // to CARRY — and Ane2 carries 16, which sets no bit the list names: anybody will do.
+        needsInventory: ((lvl.data[1] || 0) & 1) === 1,
         showButton: lvl.data[2] === 1,
         showArrow: lvl.data[3] === 1,
       };
@@ -4999,6 +5007,52 @@ export class SimWorld {
     }
     return out;
   }
+
+  /**
+   * Who stands at the counter for a UNIT sale — a Tavern's hero, a Mercenary Camp's ogre, or
+   * the wares of a map that sells its items as units.
+   *
+   * A shop is used through its interact ability and that ability has a REACH (`shopInteract`:
+   * 450 on the stock rows), whatever is on the shelf: "you need a unit near the Tavern" is
+   * this, and so is the Mercenary Camp nobody can hire from across the map. We enforced it for
+   * items and not for units, so a unit shelf sold to anyone, anywhere. A map leans on the rule
+   * as hard as melee does — DotA sells every item as a dummy unit and sizes each shop by this
+   * one number: 1300 for the base shops, 625 for the side shops, 700 for the secret shop.
+   *
+   * WHO counts is the ability's own Interaction Type. `Aneu`/`Aall` ask for an inventory, so
+   * the patron is the nominated buyer (Select Hero) or failing that the nearest unit that can
+   * carry. `Ane2` asks for nothing: any living unit of the player's will do — a worker, and a
+   * building too, which is what a map's hero-pick circle parked among its taverns is.
+   *
+   * `undefined` when the rule does not apply: the shop is the buyer's own (a building you own
+   * is commanded, not visited) or carries no interact ability at all. `null` when it applies
+   * and nobody is there — [Errors] `Neednearbypatron`.
+   */
+  unitSalePatron(shopId: number, player: number): SimUnit | null | undefined {
+    const shop = this.units.get(shopId);
+    if (!shop || shop.owner === player) return undefined;
+    const rule = this.shopInteract(shop.typeId);
+    if (!rule.abilityId) return undefined;
+    if (rule.needsInventory) {
+      const nominated = this.shopBuyer(shopId, player);
+      if (nominated) return nominated;
+    }
+    let best: SimUnit | null = null;
+    let bestD = Infinity;
+    for (const u of this.units.values()) {
+      if (u.owner !== player || u.hp <= 0 || u.isIllusion || isOffField(u)) continue;
+      if (rule.needsInventory && !this.isPatron(u)) continue;
+      if (!this.inShopRange(shop, u)) continue;
+      const d = Math.hypot(u.x - shop.x, u.y - shop.y);
+      if (d < bestD) (bestD = d), (best = u);
+    }
+    return best;
+  }
+
+  /** The patron of each unit sale still on its way out of the shop: `shop:buyer` → unit id.
+   *  A hire is instant but its body is not (it arrives through the trained drain), so the
+   *  patron is remembered from the purchase to the sale's event — GetBuyingUnit. */
+  private salePatrons = new Map<string, number>();
 
   /** Has `player` ANY unit of its own standing in `shop`'s reach — a building, a ward, a dead
    *  body and an illusion excepted? The question a Tavern's hire asks, which unlike an item
@@ -5305,8 +5359,9 @@ export class SimWorld {
     return "ok";
   }
 
-  /** Buy a UNIT from a shop (a Tavern's heroes, a Mercenary Camp's creeps). No patron is
-   *  needed — the unit is produced by the shop itself and walks out — but the stock still
+  /** Buy a UNIT from a shop (a Tavern's heroes, a Mercenary Camp's creeps). Nobody takes
+   *  delivery — the unit is produced by the shop itself and walks out — but one of the buyer's
+   *  units must be standing in the shop's reach (`unitSalePatron`), the stock still
    *  depletes, and on a melee map hiring is loud: creeps hear it (`UnitSaleAggroRange` 600 —
    *  and **0** on a custom map, where the transaction is silent; read through `miscGame` so the
    *  data set answers, docs/editions.md). The caller has already charged the cost and queues
@@ -5319,7 +5374,12 @@ export class SimWorld {
     if (this.shopStock(shopId, unitId) === 0) return "nostock"; // -1 = not stock-limited
     // Only a sold HERO is requirement-gated — see soldUnitNeedsTech.
     if (this.tech && this.soldUnitNeedsTech(unitId) && !this.tech.meets(player, unitId)) return "req";
+    // …and somebody has to be standing there (unitSalePatron).
+    const patron = this.unitSalePatron(shopId, player);
+    if (patron === null) return "nopatron";
     if (!this.takeStock(shop, unitId)) return "nostock";
+    if (patron) this.salePatrons.set(`${shopId}:${player}`, patron.id);
+    else this.salePatrons.delete(`${shopId}:${player}`);
     // Whoever of the buyer's units is nearest the shop takes the blame for the noise. NOT
     // shopPatrons(), which only returns inventory-holders — you don't need a hero to hire a
     // mercenary, so an army of Footmen parked outside the camp must still draw the aggro.
@@ -5581,6 +5641,67 @@ export class SimWorld {
     if (!mine) return;
     this.mines.delete(id);
     this.depleted.push(mine);
+  }
+
+  /**
+   * `RemoveUnit` on a gold mine's handle — the mine leaves the map outright: no collapse, no
+   * dust, no "A gold mine has collapsed.". A script that does this means it: Monolith's
+   * "Empty Player" trigger takes the gold mine off every unoccupied start and stands a random
+   * neutral building (a Tavern, a Fountain of Mana…) on the spot, and with the removal a no-op
+   * the building went up INSIDE the mine — the two models fused into one crooked thing.
+   *
+   * Blizzard.j's own Undead opening is the other caller and reads as the opposite:
+   * `BlightGoldMineForPlayerBJ` saves the mine's x/y/gold, `RemoveUnit`s it and then
+   * `CreateBlightedGoldmine`s at the SAME point. So a removed mine is kept aside
+   * (`removedMines`) rather than forgotten, and `restoreRemovedMine` hands that very record
+   * back — same id, same model, same footprint — to a blighted create standing on it. Both
+   * happen inside one script call, before the renderer drains anything, so the swap never
+   * flickers and the handle the script keeps names the mine it always did.
+   *
+   * A mine the renderer never gave a body (raised by a script earlier in the same init and
+   * still waiting in `addedMines`) is simply un-queued: there is nothing to take down.
+   */
+  removeMine(id: number): boolean {
+    const mine = this.mines.get(id);
+    if (!mine) return false;
+    this.mines.delete(id);
+    this.minesRunningLow.delete(id);
+    const queued = this.addedMines.indexOf(mine);
+    if (queued >= 0) this.addedMines.splice(queued, 1);
+    this.removedMines.push({ mine, bodied: queued < 0 });
+    // A worker down the shaft comes out (tickHarvest emerges it with no mine to pay it), and a
+    // building standing on the mine has nothing left to hold — it goes the way a cancelled one
+    // does, exactly as when the mine runs dry (tickHarvest's crew path).
+    const holder = mine.entangledBy > 0 ? this.units.get(mine.entangledBy) : undefined;
+    if (holder) {
+      this.unloadBurrow(holder.id);
+      this.removeUnit(holder.id);
+    }
+    return true;
+  }
+
+  /** The mine `removeMine` took off the map at (x, y), put back under its old id — see there.
+   *  Undefined when nothing was removed at that point. */
+  restoreRemovedMine(x: number, y: number): SimMine | undefined {
+    const i = this.removedMines.findIndex((r) => Math.abs(r.mine.x - x) < 1 && Math.abs(r.mine.y - y) < 1);
+    if (i < 0) return undefined;
+    const [{ mine, bodied }] = this.removedMines.splice(i, 1);
+    mine.busy = false;
+    mine.busyBy = 0;
+    mine.entangledBy = 0;
+    mine.waiters = undefined;
+    this.mines.set(mine.id, mine);
+    if (!bodied) this.addedMines.push(mine);
+    return mine;
+  }
+
+  private removedMines: Array<{ mine: SimMine; bodied: boolean }> = [];
+  /** Mines a script removed since the last drain that had a body to take down. */
+  drainRemovedMines(): SimMine[] {
+    if (!this.removedMines.length) return [];
+    const out = this.removedMines.filter((r) => r.bodied).map((r) => r.mine);
+    this.removedMines = [];
+    return out;
   }
 
   drainDepletedMines(): SimMine[] {
@@ -6296,8 +6417,8 @@ export class SimWorld {
   }
 
   /** The ability CODE of a unit type's cargo hold ("Abun" / "Aenc" / "Acar"), or "". The card
-   *  needs it: a burrow's buttons are Battle Stations / Stand Down and an Entangled Gold
-   *  Mine's are `Aenc`'s own Load / Unload All. */
+   *  needs it: a burrow's buttons are Battle Stations / Stand Down, while an Entangled Gold
+   *  Mine's are its `Slo2`/`Adri` rows, HIDDEN (not greyed) when they have nothing to do. */
   cargoHoldCode(typeId: string): string {
     return this.cargoHold(typeId)?.code ?? "";
   }
@@ -10526,16 +10647,21 @@ export class SimWorld {
    *  (trigger IssueXOrder + the player command router), never the internal-AI issue* calls,
    *  so auto-acquisition retargeting stays silent, matching WC3. `kind` picks the event
    *  family; `target` is the ordered unit (target orders) else null. */
-  noteOrder(unitId: number, orderId: number, kind: "immediate" | "point" | "target", x: number, y: number, targetId: number): void {
+  noteOrder(unitId: number, orderId: number, kind: "immediate" | "point" | "target", x: number, y: number, targetId: number, itemId = 0): void {
     if (!this.captureOrders) return;
     const u = this.units.get(unitId);
     if (!u) return;
     const t = targetId ? this.units.get(targetId) : undefined;
-    this.orderEvents.push({ unit: eventInfo(u), orderId, kind, x, y, target: t ? eventInfo(t) : null });
+    // An order aimed at an ITEM on the ground (a right-click to pick it up, an attack on it):
+    // `GetOrderTargetItem()`. Snapshotted now — the item may be in a pack by the time the event
+    // is pumped.
+    const it = itemId ? this.items.get(itemId) : undefined;
+    const item = it ? { id: it.id, typeId: it.itemId, charges: it.charges, x: it.x, y: it.y } : null;
+    this.orderEvents.push({ unit: eventInfo(u), orderId, kind, x, y, target: t ? eventInfo(t) : null, item });
   }
   /** Issued-order events since the last drain — only when a script registered one
    *  (`captureOrders`). Same shape/lifecycle as the death/damage/attack drains. */
-  drainOrderEvents(): Array<{ unit: EventUnitInfo; orderId: number; kind: "immediate" | "point" | "target"; x: number; y: number; target: EventUnitInfo | null }> {
+  drainOrderEvents(): Array<{ unit: EventUnitInfo; orderId: number; kind: "immediate" | "point" | "target"; x: number; y: number; target: EventUnitInfo | null; item: { id: number; typeId: string; charges: number; x: number; y: number } | null }> {
     if (!this.orderEvents.length) return this.orderEvents;
     const out = this.orderEvents;
     this.orderEvents = [];
@@ -10621,7 +10747,10 @@ export class SimWorld {
         this.stats.hired(t.owner);
         t.mercenary = true; // …and its abilities are its own, whatever the buyer has researched
       }
-      if (this.captureSellUnits) this.sellUnitEvents.push({ shop: eventInfo(b), sold: eventInfo(t) });
+      const key = `${buildingId}:${t.owner}`;
+      const patron = this.units.get(this.salePatrons.get(key) ?? -1);
+      this.salePatrons.delete(key);
+      if (this.captureSellUnits) this.sellUnitEvents.push({ shop: eventInfo(b), sold: eventInfo(t), buyer: patron ? eventInfo(patron) : null });
       return;
     }
     if (!this.captureTrain) return;
@@ -20529,6 +20658,10 @@ export class SimWorld {
   getUnitMoveSpeed(id: number): number | undefined {
     return this.units.get(id)?.speed;
   }
+  /** JASS GetUnitTurnSpeed — the 0..1 `turnRate` SetUnitTurnSpeed writes. */
+  getUnitTurnSpeed(id: number): number | undefined {
+    return this.units.get(id)?.turnRate;
+  }
   getUnitFlyHeight(id: number): number | undefined {
     return this.units.get(id)?.flyHeight;
   }
@@ -20638,7 +20771,22 @@ export class SimWorld {
    */
   reseed(seed: number): void {
     this.seed = seed;
-    this.rng = lcg(seed);
+    this.rng = this.countedRng(seed);
+  }
+
+  /** How many numbers the match's stream has handed out. Part of a replay's state check
+   *  (game/replayHash.ts): the stream's own position is hidden inside its closure, and two
+   *  worlds that drew a different number of rolls have already parted, whatever their units
+   *  look like yet. */
+  rngDraws = 0;
+
+  private countedRng(seed: number): () => number {
+    const next = lcg(seed);
+    this.rngDraws = 0;
+    return () => {
+      this.rngDraws++;
+      return next();
+    };
   }
 
   /** Draw from the match's seeded stream. For the few rolls that live just OUTSIDE the sim
@@ -25999,6 +26147,7 @@ export class SimWorld {
     // …and the MATCH LOG's (src/game/matchLog.ts), which only wants to hear it — a call, not a
     // queue, so it can never fall behind the trigger engine's drain or compete with it.
     this.deathObserver?.(u, killerId ? this.units.get(killerId) : undefined);
+    this.deathTap?.(u, killerId ? this.units.get(killerId) : undefined);
     this.unitDrops.delete(u.id);
   }
 

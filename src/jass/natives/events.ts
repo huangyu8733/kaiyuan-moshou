@@ -325,7 +325,12 @@ export function registerEventNatives(rt: Runtime): void {
     l.handleId = c.rt.handles.alloc(l);
     return jHandle(l.handleId, "location");
   });
-  def(rt, "GetOrderTarget", (c) => resp(c, "OrderTargetUnit")); // widget = the ordered unit target
+  // widget = whatever the order was aimed at: the unit, else the item.
+  def(rt, "GetOrderTarget", (c) => {
+    const u = resp(c, "OrderTargetUnit");
+    return u.k === "handle" ? u : resp(c, "OrderTargetItem");
+  });
+  def(rt, "GetOrderTargetItem", (c) => resp(c, "OrderTargetItem"));
   def(rt, "GetOrderTargetUnit", (c) => resp(c, "OrderTargetUnit"));
   // The WIDGET-KIND refinement: an order aimed at an ITEM answers that handle, and null when the
   // order did not name one. (The unit form above keeps its meaning; WC3 has no "order target
@@ -385,7 +390,11 @@ export function registerEventNatives(rt: Runtime): void {
   def(rt, "GetManipulatingUnit", (c) => resp(c, "ManipulatingUnit"));
   def(rt, "GetSoldItem", (c) => resp(c, "ManipulatedItem"));
   def(rt, "GetSellingUnit", (c) => resp(c, "SellingUnit"));
-  def(rt, "GetBuyingUnit", (c) => resp(c, "ManipulatingUnit"));
+  // …and for a UNIT sale it is the patron at the counter (Interpreter.pumpSellUnitEvents).
+  def(rt, "GetBuyingUnit", (c) => {
+    const patron = resp(c, "BuyingUnit");
+    return patron.k === "handle" ? patron : resp(c, "ManipulatingUnit");
+  });
   def(rt, "GetSoldUnit", (c) => resp(c, "SoldUnit"));
   // Set while an EnumItemsInRect filter / action callback runs (natives/items.ts).
   def(rt, "GetEnumItem", (c) => resp(c, "EnumItem"));

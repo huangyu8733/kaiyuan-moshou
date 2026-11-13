@@ -44,7 +44,7 @@ import { WeatherOverlay } from "./weather";
 import { loadWeatherRegistry, type WeatherRegistry } from "../data/weather";
 import { DebugColliders, OverlayLayer, COLLIDER_COLORS, FLOATS_PER_VERT, type ColliderBatch } from "./debugColliders";
 import { FogState, VISION_CELL, type VisionMap } from "../sim/vision";
-import { RtsController, ILLUSION_TINT, RAISED_TINT, type RtsHost, type SelectionInfo, type PlacedRef } from "../game/rts";
+import { RtsController, ILLUSION_TINT, RAISED_TINT, type CheatKind, type RtsHost, type SelectionInfo, type PlacedRef } from "../game/rts";
 import type { Instance as RtsInstance } from "../game/rts";
 import type { MatchLinkSetup } from "../game/matchLink";
 import type { ScoreRow, ScoreTable } from "../game/scoreTable";
@@ -72,7 +72,7 @@ import { loadLightningRegistry } from "../data/lightning";
 import { specialFxDoomedOver, specialFxOwesItsClip, specialFxPhaseAt, type SpecialFxClips } from "./specialFxClock";
 import { pickEffectSequence, yawPitchRollQuat } from "./effectAnim";
 import { loadAbilityRegistry, mdlPath, type AbilityRegistry, type AbilityDef, type BuffFx, isRepairCode, KNOWN_ABILITIES, TREE_UPGRADE_ABILITY, requiredHeroLevel, morphFlags, MORPH_FLAG_PERMANENT, MORPH_FLAG_REQUIRES_PAYMENT, type AbilityLevel, iconAt, isStance } from "../data/abilities";
-import { loadCommandStrings, disabledIconPath, placeholderIcon, iconFileCandidates, type CommandStrings } from "../data/commandStrings";
+import { loadCommandStrings, disabledIconPath, isButtonIcon, MISSING_ICON_URL, iconFileCandidates, type CommandStrings } from "../data/commandStrings";
 import { resolveTipRefs } from "../data/tipRefs";
 import { loadItemRegistry, type ItemRegistry } from "../data/items";
 import { CAMERA, FOG_OF_WAR, PLACEMENT, MELEE, MINIMAP, MISC_DATA, TEXT_TAG, heroReviveCost, mapMiscEpoch, miscKeyIsRead, setMapMiscOverlay, type ReviveMode } from "../data/gameplayConstants";
@@ -92,6 +92,46 @@ import { MELEE_NORMAL as MELEE_AI_NORMAL } from "../ai/ids";
 import { DEFAULT_GAME_SPEED, gameSpeedLabel, gameSpeedRate, type GameSpeed } from "../data/gameSpeed";
 import { MatchLog, type LogSeat } from "../game/matchLog";
 import { matchLogSink } from "../game/matchLogSink";
+import { CHECK_EVERY, Phase, ReplayPlayer, ReplayRecorder, encodeReplay, readReplayHeader, type ReplayEnding, type ReplayEvent, type ReplayHeader, type ReplayView } from "../game/replay";
+import type { ReplayControls } from "../ui/replayPanel";
+import { diffDumps, stateDump, stateHash } from "../game/replayHash";
+import { STATE_EVERY, StateTracker } from "../game/replayState";
+import { InputTracker, isInputSample, type InputSample } from "../game/inputTrack";
+import { commandSource, cursorPermille, selectionSource, watchInputSource } from "../ui/inputSource";
+import { hotkeyMode } from "../data/hotkeys";
+import { replaySink, type ReplaySink } from "../game/replaySink";
+import { ReplayUploader, installId } from "../game/replayUpload";
+import { autosaveReplay, shareReplays } from "../data/options";
+
+/** The one uploader for the page (issue #158) — replays waiting from an earlier session are sent
+ *  on the first match's close as well as this one's. */
+const replayUploader = new ReplayUploader(shareReplays);
+
+/** The match that just closed, if it was recorded: where its `LastReplay` went and when it is
+ *  on disk — what the score screen's Save Replay keeps a copy of (ui/saveReplayDialog.ts). */
+let lastReplay: { sink: ReplaySink; written: Promise<boolean>; suggested: string } | null = null;
+
+/** When a replay was made, as a file name may carry it: `2026-11-13 03-26-53` (no colons —
+ *  Windows refuses them in a name). */
+function replayStamp(d = new Date()): string {
+  const two = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}-${two(d.getSeconds())}`;
+}
+
+/** An autosaved replay's name: the date, the time and the map, so a folder of them reads in order.
+ *  A map may colour its own name (`|c00ff0033DotA|r`): the file is named by the words alone. */
+function autosaveName(mapName: string): string {
+  return `${replayStamp()} ${wc3StripMarkup(mapName).trim()}`;
+}
+
+/** The name Save Replay offers: the map and when it was played, so saving twice off the same map
+ *  does not land on the name already there. */
+function suggestedName(mapName: string): string {
+  return `${wc3StripMarkup(mapName).trim()} ${replayStamp()}`;
+}
+export function lastRecordedReplay(): typeof lastReplay {
+  return lastReplay;
+}
 import { patchLevel } from "../patches";
 import { AI_SCRIPT_FOR } from "../ai";
 import { HERO_SEATS as CANDY_HERO_SEATS, isCandyWarScript } from "../ai/plus/candy/map";
@@ -100,19 +140,21 @@ import { HERO_SEATS as DOTA_HERO_SEATS, isDotAScript } from "../ai/plus/dota/map
 import { playerLabels } from "../ui/playerSlots";
 import { ModelViewerScene } from "./modelViewer";
 import { animPropsFor, buildAnimSet } from "./unitAnims";
-import { OBSERVER_NAME, type Controller, type MeleeConfig, type SlotConfig } from "../ui/lobby";
+import { OBSERVER_NAME, OBSERVER_PLAYER, type Controller, type MeleeConfig, type SlotConfig } from "../ui/lobby";
 import { MetricsOverlay } from "../ui/metrics";
 import { cursorImageValue, cursorPx, cursorValue } from "../ui/cursor";
 import { perfLog } from "../dev/perfLog";
 /** package.json's version, as the main menu prints it (vite.config.ts). */
 declare const __OW3_VERSION__: string;
+declare const __OW3_COMMIT__: string;
+declare const __OW3_SIM_FINGERPRINT__: string;
 import { animStride, renderSize, videoSettings } from "./videoQuality";
 import { edgeScrollScale, keyScrollScale } from "./scrollOptions";
 import { gamepadPan, setGamepadHost } from "../ui/gamepad";
 import { TerrainCull } from "./terrainCull";
 import type { PickVolume } from "./modelCollision";
 import { setSimProfiler } from "../sim/profile";
-import { wc3ToPlain } from "../ui/wc3Text";
+import { wc3StripMarkup, wc3ToPlain } from "../ui/wc3Text";
 import { GameHud, isTyping, upkeepBand, PLAYER_COLORS, type HudDriver, type MinimapBlight, type CommandButton, type SpawnEntry, type SpawnOwner, type SpawnRequest } from "../ui/hud";
 import { GAME_HEIGHT, disposeWorldLayer, worldLayer } from "../ui/stage";
 import { EscMenu } from "../ui/escMenu";
@@ -1515,7 +1557,7 @@ export class MapViewerScene {
   private pausedBy = -1;
   /** Anything at all stopping the world. */
   private get paused(): boolean {
-    return this.panelPaused || this.scriptPaused || this.playerPaused || this.waitPaused;
+    return this.panelPaused || this.scriptPaused || this.playerPaused || this.waitPaused || this.replayPaused;
   }
   /** Stopped for a player whose connection is down — theirs (`waitingFor`) or ours (`linkDownAt`). */
   private get waitPaused(): boolean {
@@ -1549,6 +1591,42 @@ export class MapViewerScene {
   /** Ticks elapsed since the match began. THE match clock — the number a multiplayer
    *  command is stamped with and a snapshot is taken at (docs/multiplayer.md). */
   private simTick = 0;
+  /** `simTick` when this match's world began — a replay counts its steps from here
+   *  (game/replay.ts), so the stamp is the match's own and not the scene's. */
+  private replayTick0 = 0;
+  /** Where in a step the frame loop is (`advanceSim`), for stamping a replay input's PHASE:
+   *  `null` between steps, `"pre"` before the controller's tick, `"post"` after it. */
+  private stepStage: "pre" | "post" | null = null;
+  /** RECORDING this match (issue #158) — null when nothing records (a LAN client, a campaign,
+   *  a replay being watched, a build with nowhere to keep the file). */
+  private replayRecorder: ReplayRecorder | null = null;
+  /** …and its state track, once a game second (game/replayState.ts). */
+  private replayStates: StateTracker | null = null;
+  /** The seats a recording's fog bits are taken for (the header's). */
+  private replaySeatIds: number[] = [];
+  /** WATCHING a replay: the file's inputs, handed back step by step. */
+  private replayPlayback: ReplayPlayer | null = null;
+  /** The map this match is played on, as a replay names it — set by the start (main.ts). */
+  private replayMap: ReplayHeader["map"] | null = null;
+  /** The seat a LAN player is leaving from, while `seatLeft` raises it — so the replay's record
+   *  of that EVENT_PLAYER_LEAVE carries the slot state that went with it. */
+  private leavingSeat: number | null = null;
+  /** The first replay step whose state check did not match, for the replay panel to say so. */
+  replayDiverged: number | null = null;
+  /** The replay panel's own pause (issue #158) — a fifth owner beside the four `paused` reads,
+   *  because it is the watcher's and nobody else's. */
+  private replayPaused = false;
+  /** The replay panel's speed, a multiplier on the game speed (ui/replayPanel.ts REPLAY_SPEEDS). */
+  private replaySpeed = 1;
+  /** A SEEK under way: the step the replay is racing to. Forward only — a seek BACK plays the
+   *  match again from its start (`onReplayRewind`) and arrives here as a forward one. */
+  private replaySeekTo: number | null = null;
+  /** The watcher's Fog of War box: on, the match as its players saw it; off, the whole map. */
+  private replayFog = false;
+  /** Asked to play the replay again from its start and race to `at` — the only way back in a
+   *  match that can only run forward (main.ts restarts it). `view` is what the watcher had set. */
+  onReplayRewind: ((at: number, view: ReplayView) => void) | null = null;
+  /** When the last simulated sample of the recording player's camera was taken. */
   /** When the sim last advanced (performance.now() ms). Owned by `advanceSim` and SHARED
    *  between the rAF frame and the background pump: whichever driver runs next advances
    *  only by the time the other has not already spent, so time is never counted twice. */
@@ -1812,9 +1890,6 @@ export class MapViewerScene {
   // (built, cancelled, re-tasked, the worker dead) is not placed at all, rather than standing
   // for a frame on the hope that the next rebuild notices.
   private pendingGhostWanted = new Set<string>();
-  // Workers whose build foundation is mid-spawn (async model load), so
-  // tickPendingBuild doesn't raise the same building twice.
-  private buildSpawning = new Set<number>();
   // Workers waiting for their build site to clear of units → seconds waited so far.
   private buildWait = new Map<number, number>();
   // Workers that STOPPED short of their build site and have been re-sent to its centre once
@@ -2882,7 +2957,26 @@ export class MapViewerScene {
     // the lobby's choices aren't known yet, so the seed arrives here — still ahead of unit
     // seeding, the map script and the first tick, which is the last moment it is safe.
     // Until this existed every match ran off a hardcoded 1 and rolled identically.
-    this.rts!.setSeed(config.seed ?? randomSeed());
+    // The seed actually used is kept: a replay must roll with it, not with "roll one".
+    const seed = config.seed ?? randomSeed();
+    this.rts!.setSeed(seed);
+    // …and from here the world does not STEP until the loading screen lifts (`holdAtStart`).
+    // Setup is seconds of the map's art streaming in, and the frame loop used to keep stepping
+    // through it — so how many steps the match had taken before its first real one depended on
+    // how fast THIS machine loaded, and a critter's wander clock, set on its first step, was
+    // different every time. A replay is a count of steps from the same start, so the start has
+    // to be the same: built and adopted while held ("adoption yes, simulation no"), begun on
+    // the release. It is also what the hold was for in the first place — the creeps and the
+    // clock must not run behind a picture.
+    this.startHeld = true;
+    // WATCHING A REPLAY (issue #158): the recorded match's own config, played by its file. The
+    // machine is an OBSERVER whatever seat the recorder held, and the speed is the watcher's to
+    // set however the match was locked.
+    const playback = config.replay ?? null;
+    this.replayPlayback = playback ? new ReplayPlayer(playback) : null;
+    this.replayRecorder = null;
+    this.replayTick0 = this.simTick;
+    this.replayDiverged = null;
     // The campaign difficulty the player picked, before a line of the map's script runs —
     // its chapters branch on GetGameDifficulty from map init onwards. A skirmish sends none
     // and the match runs at MAP_DIFFICULTY_NORMAL, which is what the reference calls it.
@@ -2895,7 +2989,7 @@ export class MapViewerScene {
     this.campaign = config.campaign === true;
     // …and how fast it runs (src/data/gameSpeed.ts): a networked config carries the host's pick
     // and LOCKS it; single player always opens on Fast, the player's F10 pick lasting this match.
-    this.speedLocked = config.gameSpeed !== undefined;
+    this.speedLocked = config.gameSpeed !== undefined && !playback;
     this.setGameSpeed(config.gameSpeed ?? DEFAULT_GAME_SPEED);
     // What the Quest Log calls this match. The map's own w3i name is the default and is right
     // for every map you pick off a list; a CAMPAIGN chapter is titled by the campaign index
@@ -2903,13 +2997,13 @@ export class MapViewerScene {
     // ever seen. See MeleeConfig.mapName.
     if (config.mapName) this.mapDisplayName = config.mapName;
     // Who WE are — or that we are nobody, and only watching (see `observer`).
-    this.observer = config.observer === true;
+    this.observer = config.observer === true || playback !== null;
     this.observers = config.observers ?? [];
     this.lockTeams = config.lockTeams === true;
     this.allTalk = config.allTalk === true;
     // A LAN client is told (every human slot in a shared config says "user", so
     // the fallback would seat every machine on the same player — see MeleeConfig.localPlayer).
-    this.localPlayer = config.localPlayer
+    this.localPlayer = playback ? OBSERVER_PLAYER : config.localPlayer
       ?? config.slots.find((s) => s.controller === "user")?.id
       ?? config.slots[0]?.id
       ?? 0;
@@ -3034,7 +3128,9 @@ export class MapViewerScene {
           // …and WHICH AI, from the Custom Game screen's Advanced Options switch (issue #124).
           plus: s.aiPlus === true,
         })),
-      config.seed ?? 1,
+      // The seed the match ROLLED with (above), so a map's own AI script — which runs on a
+      // replay's playback as it ran in the match (RtsController.tick) — draws the same numbers.
+      seed,
       // …and where EVERYBODY starts, people included. A Computer+ scout tours the enemy start
       // locations (src/ai/plus/, `PlusHost.startLocations`), which is what a melee map's start
       // locations are for and what the minimap already prints for a person before the match.
@@ -3049,6 +3145,9 @@ export class MapViewerScene {
       // means anything at all: Computer+ is a melee player and is refused on a custom map
       // (RtsController.startMeleeAIFor). The lobby is the only place that knows.
       melee,
+      // …and whether this is a CAMPAIGN chapter, where Computer+ is refused outright whatever a
+      // slot or a preference says: a chapter's computers are always Blizzard's.
+      config.campaign === true,
     );
     for (const slot of config.slots) this.rts!.simWorld.initStash(slot.id, startGold, startLumber);
     // …and the supply CEILING this map asks for, before a line of its script runs — a chapter
@@ -3062,8 +3161,486 @@ export class MapViewerScene {
     // doesn't stall a frame parsing its model (see warmPortraits). Kicked off once
     // the HUD (portrait canvas) and local race exist; re-scanned in the frame loop.
     this.warmPortraits();
+    this.beginReplay(config, seed, races, melee);
     return races;
   }
+
+  /**
+   * Start RECORDING this match, or arm the PLAYBACK of the replay being watched (issue #158,
+   * game/replay.ts). Called at the end of `beginMatch` — after the seed and the races are rolled
+   * and before the map's script runs or a unit is seeded, so nothing the match does can come
+   * before the recorder is listening.
+   */
+  private beginReplay(config: MeleeConfig, seed: number, races: Map<number, PlayableRace>, melee: boolean): void {
+    // The last match's replay is not this one's: the score screen offers nothing until this
+    // match has one of its own (recorded here, or handed over by the host at the end).
+    lastReplay = null;
+    const rts = this.rts;
+    if (!rts) return;
+    if (this.replayPlayback) {
+      // The computers are seated as usual but never think: their decisions are in the file.
+      rts.replayAiInputs = () => this.replayInject(Phase.Ai);
+      rts.setCommandTap(null);
+      // …and a replay played again to go BACK picks up where the watcher was: the step it races
+      // to, the camera, the speed, the fog, the pause and Auto Camera.
+      const resume = config.replayResume;
+      this.replaySeekTo = resume && resume.at > 0 ? resume.at : null;
+      this.replaySpeed = resume?.speed ?? 1;
+      this.replayPaused = resume?.paused ?? false;
+      this.replayFog = resume?.fog ?? false;
+      if (this.replayFog) rts.setLocalRevealAll(false);
+      if (resume) {
+        this.target[0] = resume.x;
+        this.target[1] = resume.y;
+        this.distance = resume.distance;
+        this.autoCam.setEnabled(resume.autoCamera);
+      }
+      return;
+    }
+    rts.replayAiInputs = null;
+    // Nothing to name the map by (a dev boot with no start, a test page), a mission (a chapter
+    // is not a game off a list, and WC3 keeps no replay of one either), or a build with nowhere
+    // to put the file: nothing records. A LAN CLIENT stops it again in `attachMatchLink`.
+    if (!this.replayMap || config.campaign || !replaySink()) return;
+    const header: ReplayHeader = {
+      format: 1,
+      version: __OW3_VERSION__,
+      commit: __OW3_COMMIT__,
+      fingerprint: __OW3_SIM_FINGERPRINT__,
+      install: this.replayInstall,
+      recordedAt: new Date().toISOString(),
+      map: this.replayMap,
+      // RESOLVED: the seed it rolled with and every Random race already rolled. `random` stays
+      // set on a seat that was Random, which is what the watcher's HUD prints.
+      config: {
+        ...config,
+        seed,
+        replay: undefined,
+        slots: config.slots.map((s) => ({ ...s, race: races.get(s.id) ?? s.race, random: s.random || s.race === "random" })),
+      },
+      seats: config.slots
+        .filter((s) => s.controller === "user" || s.controller === "computer")
+        .map((s) => ({
+          player: s.id,
+          name: this.playerLabel(s.id),
+          kind: s.controller === "user" ? "human" as const : "computer" as const,
+          ...(s.controller === "computer"
+            ? { ai: !melee ? "map" as const : s.aiPlus ? "plus" as const : "classic" as const, difficulty: s.aiDifficulty ?? MELEE_AI_NORMAL }
+            : {}),
+          race: races.get(s.id) ?? String(s.race),
+          team: s.team,
+          color: rts.playerColor(s.id),
+          // The recording player's own anonymous id (game/replayUpload.ts) — only theirs, and
+          // only with their consent to share (data/options.ts `shareReplays`).
+          ...(s.id === this.localPlayer && !this.observer && shareReplays() ? { id: installId() } : {}),
+        })),
+      localPlayer: this.localPlayer,
+      observer: this.observer,
+      edition: isRoc() ? "roc" : "tft",
+      patch: patchLevel(),
+    };
+    const rec = new ReplayRecorder(header, () => ({ t: this.simTick - this.replayTick0, ph: this.replayPhase() }));
+    const states = (this.replayStates = new StateTracker());
+    // Deaths as they happen, with the killer and the place (the state track's own sim hook).
+    rts.simWorld.deathTap = (victim, killer) => states.died(victim, killer);
+    this.replaySeatIds = header.seats.map((s) => s.player);
+    this.replayRecorder = rec;
+    rts.setCommandTap((player, cmd) => {
+      // A map's own AI script runs again on playback, so what it orders is not an input.
+      if (rts.inScriptAi) return undefined;
+      const e = this.replayRecorder?.push({ k: "cmd", p: player, cmd });
+      // Marked when the authority REFUSED it (replayed, it is refused again by the same rule).
+      return e?.k === "cmd" ? (took) => { if (!took) e.no = 1; } : undefined;
+    });
+    rts.onCheat = (player, kind) => this.replayRecorder?.push({ k: "cheat", p: player, kind });
+    rts.onCheatSelected = (kind, ids) => this.replayRecorder?.push({ k: "cheatsel", kind, ids: [...ids] });
+    rts.onInputs = (player, scheme, samples) => this.takeInputs(player, scheme, samples);
+    this.beginInputTrack();
+  }
+
+  /** The replay panel's controls (issue #158, ui/replayPanel.ts) — null in a live match. */
+  private replayControls(): ReplayControls | null {
+    const play = this.replayPlayback;
+    if (!play) return null;
+    return {
+      version: play.replay.header.version,
+      state: () => ({
+        tick: this.simTick - this.replayTick0,
+        total: play.lastTick,
+        paused: this.replayPaused,
+        speed: this.replaySpeed,
+        seeking: this.replaySeekTo,
+        diverged: this.replayDiverged,
+      }),
+      setPaused: (on) => {
+        this.replayPaused = on;
+      },
+      setSpeed: (mult) => {
+        this.replaySpeed = mult;
+        this.speedRate = gameSpeedRate(this.speed) * this.speedBoost * this.replaySpeed;
+      },
+      seek: (t) => this.seekReplay(t),
+      fog: () => this.replayFog,
+      setFog: (on) => {
+        this.replayFog = on;
+        this.rts?.setLocalRevealAll(!on);
+        this.rts?.rebuildVision(); // at once, so a PAUSED replay shows it too
+      },
+    };
+  }
+
+  /**
+   * Go to step `t` of the replay. FORWARD is a race: the steps are run as fast as a frame
+   * allows, silently, and the picture is drawn once a frame (`advanceSim`). BACK cannot be done
+   * in place — a match only runs forward — so the replay is played again from its start and
+   * races to `t` (`onReplayRewind`, main.ts), with everything the watcher had set carried over.
+   */
+  private seekReplay(t: number): void {
+    const play = this.replayPlayback;
+    if (!play) return;
+    t = Math.max(0, Math.min(play.lastTick, Math.round(t)));
+    const now = this.simTick - this.replayTick0;
+    if (t >= now) {
+      this.replaySeekTo = t > now ? t : null;
+      return;
+    }
+    this.onReplayRewind?.(t, this.replayView());
+  }
+
+  /** The seek has arrived (or can go no further): the sound comes back and time runs again. */
+  private endReplaySeek(): void {
+    this.replaySeekTo = null;
+    this.simAccum = 0;
+    this.sounds?.setLoadingGate(false);
+  }
+
+  /** What the watcher has set, to carry across a rewind. */
+  private replayView(): ReplayView {
+    return {
+      x: this.target[0],
+      y: this.target[1],
+      distance: this.distance,
+      speed: this.replaySpeed,
+      fog: this.replayFog,
+      paused: this.replayPaused,
+      autoCamera: this.autoCam.enabled,
+    };
+  }
+
+  /** The PHASE of the step an input lands in — see `Phase` (game/replay.ts). */
+  private replayPhase(): Phase {
+    if (this.stepStage === null) return Phase.Between;
+    if (this.rts?.inAiPhase) return Phase.Ai;
+    return this.stepStage === "post" ? Phase.Post : Phase.Pre;
+  }
+
+  /** Hand back every recorded input due at this point of this step (WATCHING a replay). */
+  private replayInject(ph: Phase): void {
+    const play = this.replayPlayback;
+    if (!play) return;
+    for (const e of play.take(this.simTick - this.replayTick0, ph)) this.replayApply(e);
+  }
+
+  /** Apply ONE recorded input, through the door it went through in the match. */
+  private replayApply(e: ReplayEvent): void {
+    const rts = this.rts;
+    if (!rts) return;
+    const interp = this.mapScript?.interp;
+    switch (e.k) {
+      case "cmd":
+        rts.executeReplay(e.p, e.cmd);
+        return;
+      case "chat":
+        this.deliverChat({ from: e.from, text: e.text, target: e.target });
+        return;
+      case "ping":
+        this.showSignal(e.p, e.x, e.y);
+        return;
+      case "sel":
+        // Handed to the map's selection pump in `pumpMapScript`, which asked for it there.
+        this.replaySelections.push(e);
+        return;
+      case "dlg": {
+        // A click also CLOSES the dialog for the player who clicked — script state, since
+        // `DialogDisplay` and the visibility of a dialog are the map's to ask about.
+        const dialog = interp?.rt.dialogs.find((d) => d.handleId === e.dialog);
+        if (dialog) {
+          dialog.visibleFor.delete(e.p);
+          dialog.revision++;
+        }
+        interp?.fireDialogClick(e.button, e.dialog, e.p);
+        return;
+      }
+      case "frame":
+        interp?.fireFrameEvent(e.frame, e.ev, e.p);
+        return;
+      case "pev":
+        if (e.left) {
+          // A player who LEFT (a LAN seat going, `seatLeft`): the slot state the victory check
+          // reads changes with the event, exactly as it did in the match.
+          this.announceGone(e.p);
+          this.playersOut.add(e.p);
+          if (interp) interp.rt.ensurePlayer(e.p).slotState = 2; // PLAYER_SLOT_STATE_LEFT
+        }
+        interp?.firePlayerEvent(e.p, e.ev);
+        return;
+      case "cheat":
+        rts.cheat(e.kind as CheatKind, e.p);
+        return;
+      case "cheatsel":
+        rts.cheatSelected(e.kind as "hp" | "mp" | "cooldown" | "kill", e.ids);
+        return;
+      case "lock": {
+        const u = rts.simWorld.units.get(e.unit);
+        if (u) u.spawning = e.secs;
+        return;
+      }
+      case "ally":
+        rts.setPlayerAlliance(e.p, e.other, e.type, e.on);
+        return;
+      case "give":
+        this.transferResources(e.p, e.other, e.gold, e.lumber);
+        return;
+      // Notes: the pace and the pause of a replay are the watcher's own.
+      case "pause":
+      case "speed":
+        return;
+    }
+  }
+
+  /**
+   * The end of one step, for the replay: a STATE CHECK every `CHECK_EVERY` steps — taken while
+   * recording, compared while watching — and, while recording a person's match, a sample of
+   * their camera (six times a second; not an input, see game/replay.ts).
+   */
+  private replayStepDone(): void {
+    const t = this.simTick - this.replayTick0;
+    const rts = this.rts;
+    if (!rts) return;
+    // The END of the recording: the replay stops there. Past it nobody's inputs exist — the
+    // computers would stand idle and the people with them — so it would no longer be the match.
+    if (this.replayPlayback && t >= this.replayPlayback.lastTick && !this.replayPaused) {
+      this.replayPaused = true;
+      if (this.replaySeekTo !== null) this.endReplaySeek();
+    }
+    if (t % MapViewerScene.replayCheckEvery === 0) {
+      // A DEV recording keeps the state behind each check too, so a parted playback can say
+      // what parted (game/replayHash.ts `diffDumps`).
+      if (this.replayRecorder) this.replayRecorder.check(t, stateHash(rts.simWorld), import.meta.env.DEV ? stateDump(rts.simWorld) : undefined);
+      else if (this.replayPlayback && !this.replayPlayback.verify(t, () => stateHash(rts.simWorld))) {
+        if (this.replayDiverged === null) {
+          this.replayDiverged = t;
+          console.warn(`[replay] the match has parted from the recording at ${(t / SIM_HZ).toFixed(1)} s (step ${t})`);
+          const was = this.replayPlayback.replay.dumps?.[t] as ReturnType<typeof stateDump> | undefined;
+          if (was) console.warn(`[replay] first differences:\n  ${diffDumps(was, stateDump(rts.simWorld)).join("\n  ")}`);
+        }
+      }
+    }
+    if (this.replayRecorder && this.replayStates && t % STATE_EVERY === 0) {
+      const seats = this.replaySeatIds;
+      this.replayRecorder.state(this.replayStates.sample(rts.simWorld, t, {
+        seenBy: (u) => rts.seenByMask(u.id, seats),
+        ai: () => rts.computerPlusLog(),
+      }));
+    }
+  }
+
+  /**
+   * This player's INPUT TRACK (issue #158, game/inputTrack.ts) — started with the match on the
+   * machine of anybody who PLAYS in it and has agreed to share (data/options.ts `shareReplays`):
+   * the recording machine keeps its own straight in the replay, and a LAN client, which records
+   * nothing, sends its own to the host in batches.
+   */
+  private beginInputTrack(): void {
+    const rts = this.rts;
+    this.inputTracker = null;
+    if (!rts || this.observer || this.replayPlayback || !shareReplays()) return;
+    const client = rts.frozenClient;
+    if (!client && !this.replayRecorder) return; // nothing is recording this match
+    watchInputSource();
+    // A client has no step count of its own: the host's game clock, at 60 steps a second.
+    const clock = client ? (): number => Math.round(rts.matchSeconds() * SIM_HZ) : (): number => this.simTick - this.replayTick0;
+    const tracker = (this.inputTracker = new InputTracker(clock));
+    rts.onGroup = (op, key, ids) => tracker.group(op, key, ids);
+    rts.onLocalCommand = (cmd) => tracker.command(cmd.c === "order" ? `order:${cmd.order.kind}` : cmd.c, commandSource());
+    this.inputsSentAt = performance.now();
+  }
+  private inputTracker: InputTracker | null = null;
+  private inputsSentAt = 0;
+  /** How often a LAN client sends the host its input track, in ms. Ours. */
+  private static readonly INPUTS_EVERY_MS = 5000;
+
+  /** Once a frame: the camera, the cursor and the selection; and on its clock, a client's batch. */
+  private tickInputTrack(): void {
+    const tracker = this.inputTracker;
+    const rts = this.rts;
+    if (!tracker || !rts || this.startHeld) return;
+    tracker.tick({ x: this.target[0], y: this.target[1], distance: this.distance, yaw: this.yaw }, cursorPermille());
+    tracker.selection(rts.selectedUnitIds(), rts.activeSubgroupType(), selectionSource);
+    if (rts.frozenClient && performance.now() - this.inputsSentAt >= MapViewerScene.INPUTS_EVERY_MS) this.flushInputTrack();
+  }
+
+  /** Hand over what the tracker holds: into the recording on the machine that records, to the
+   *  host from a client. */
+  private flushInputTrack(): void {
+    const tracker = this.inputTracker;
+    const rts = this.rts;
+    if (!tracker || !rts) return;
+    this.inputsSentAt = performance.now();
+    const samples = tracker.drain();
+    if (!samples.length) return;
+    if (this.replayRecorder) this.replayRecorder.inputs(this.localPlayer, hotkeyMode(), samples);
+    else if (rts.frozenClient) rts.sendInputs(hotkeyMode(), samples);
+  }
+
+  /** HOST: a batch of a client's input track. Checked sample by sample — it is another machine's
+   *  word going into our file — and a step later than now is pulled back to now. */
+  private takeInputs(player: number, scheme: string, samples: unknown[]): void {
+    const rec = this.replayRecorder;
+    if (!rec) return;
+    const now = this.simTick - this.replayTick0;
+    const good: InputSample[] = [];
+    for (const s of samples) {
+      if (!isInputSample(s)) continue;
+      s[1] = Math.max(0, Math.min(now, Math.round(s[1])));
+      good.push(s);
+    }
+    rec.inputs(player, scheme, good);
+  }
+
+  /** How often a state check is taken — `CHECK_EVERY`, or under `?dev&replaycheck=N` every N
+   *  steps, to find the very step a playback parts at (both runs must use the same N). */
+  private static readonly replayCheckEvery: number = (() => {
+    const n = import.meta.env.DEV ? Number(new URLSearchParams(location.search).get("replaycheck")) : 0;
+    return n > 0 ? Math.floor(n) : CHECK_EVERY;
+  })();
+
+  /** The map this match is played on, as a replay names it (main.ts, before setup). */
+  setReplayMap(map: ReplayHeader["map"], install = ""): void {
+    this.replayMap = map;
+    this.replayInstall = install;
+  }
+  private replayInstall = "";
+
+  /** Is a replay being watched — and where is it? For the replay panel. */
+  get replayState(): { tick: number; total: number; done: boolean } | null {
+    const play = this.replayPlayback;
+    if (!play) return null;
+    const tick = this.simTick - this.replayTick0;
+    return { tick, total: play.lastTick, done: play.done && tick >= play.lastTick };
+  }
+
+  /**
+   * Close this match's RECORDING and keep it as the last replay (issue #158). Every match that
+   * recorded leaves one, whatever ended it — as WC3's `LastReplay.w3g` does; the score screen's
+   * Save Replay keeps a copy under a name.
+   */
+  private closeReplay(): void {
+    this.flushInputTrack(); // the last of this player's own input track, into the file or to the host
+    this.inputTracker = null;
+    const rec = this.replayRecorder;
+    this.replayRecorder = null;
+    this.replayStates = null;
+    if (this.rts) this.rts.simWorld.deathTap = null;
+    this.rts?.setCommandTap(null);
+    if (!rec) return;
+    const ticks = this.simTick - this.replayTick0;
+    // A match that never began (left at the loading screen) is nothing to watch.
+    if (ticks <= 0) return;
+    rec.end(this.replayEnding(ticks));
+    const sink = replaySink();
+    if (!sink) return;
+    // Kept under its own name too when the player asked for it — the date, the time and the map,
+    // so a folder of them reads in order.
+    const keep = autosaveReplay() ? autosaveName(rec.header.map.name) : undefined;
+    const written = rec.finish().then(async (bytes) => {
+      await sink.saveLast(bytes, keep);
+      console.info(`[replay] recorded ${rec.eventCount} inputs over ${(ticks / SIM_HZ).toFixed(0)} s (${bytes.length} bytes)`);
+      // …and offered to the collection (game/replayUpload.ts; nothing is sent until it has
+      // somewhere to send to, and never with the player's switch off).
+      void replayUploader.offer(bytes);
+      return true;
+    }).catch((err) => {
+      console.warn("[replay] could not be saved:", err);
+      return false;
+    });
+    lastReplay = { sink, written, suggested: suggestedName(rec.header.map.name) };
+  }
+
+  /** How the match stands, as a replay's ending: the steps played and each seat's result. */
+  private replayEnding(ticks: number): ReplayEnding {
+    const table = this.scoreTable();
+    return {
+      ticks,
+      results: (table?.rows ?? []).map((r) => ({ player: r.player, result: r.won ? "won" : this.playersOut.has(r.player) ? "lost" : "none" })),
+    };
+  }
+
+  /**
+   * HOST of a LAN match: the game is over, so every peer gets the replay (issue #158) — the
+   * host is the one machine that recorded it. Sent ONCE, at the end only (the developer's call):
+   * when the match is decided, or when the host leaves, which ends it for everybody. The file
+   * the peers get is the match as it stands at that moment, ended there.
+   */
+  private async shareReplay(): Promise<void> {
+    const rec = this.replayRecorder;
+    const rts = this.rts;
+    if (this.replayShared || !rec || !rts?.hostsLanMatch) return;
+    this.replayShared = true;
+    this.flushInputTrack();
+    const ticks = this.simTick - this.replayTick0;
+    if (ticks <= 0) return;
+    try {
+      const bytes = await encodeReplay({ ...rec.snapshot(), ending: this.replayEnding(ticks) });
+      if (rts.sendReplay(bytes)) console.info(`[replay] handed to the other players (${bytes.length} bytes)`);
+    } catch (err) {
+      console.warn("[replay] could not be handed to the other players:", err);
+    }
+  }
+  private replayShared = false;
+
+  /**
+   * CLIENT: the host's replay of the game that just ended. Kept as this machine's own
+   * `LastReplay` (and in `Autosaved/` under this player's own option), and what this player's
+   * score screen saves. Not offered to the uploader: the host's copy is the match's.
+   */
+  private takePeerReplay(bytes: Uint8Array): void {
+    const sink = replaySink();
+    const written = (async (): Promise<boolean> => {
+      if (!sink) return false;
+      try {
+        const { header } = await readReplayHeader(bytes);
+        await sink.saveLast(bytes, autosaveReplay() ? autosaveName(header.map.name) : undefined);
+        lastReplay = { sink, written: Promise.resolve(true), suggested: suggestedName(header.map.name) };
+        console.info(`[replay] the host's replay is kept (${bytes.length} bytes)`);
+        return true;
+      } catch (err) {
+        console.warn("[replay] the host's replay could not be kept:", err);
+        return false;
+      }
+    })();
+    this.peerReplayArrived?.(written);
+  }
+  /** Resolved by `takePeerReplay` — what a client waits on before it hangs up (`awaitPeerReplay`). */
+  private peerReplayArrived: ((written: Promise<boolean>) => void) | null = null;
+  private peerReplay: Promise<boolean> | null = null;
+
+  /** CLIENT: the host said its replay follows the ending — wait for it (and for it to be kept),
+   *  but never longer than `PEER_REPLAY_MS`: a quit must not hang on a dead wire. */
+  private awaitPeerReplay(): Promise<boolean> {
+    return (this.peerReplay ??= new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), MapViewerScene.PEER_REPLAY_MS);
+      this.peerReplayArrived = (written) => {
+        clearTimeout(timer);
+        void written.then(resolve);
+      };
+    }));
+  }
+  /** How long a client waits for the host's replay after the game ends. Ours. */
+  private static readonly PEER_REPLAY_MS = 30_000;
+
+  /** Recorded selections waiting for this step's pump (WATCHING a replay). */
+  private replaySelections: Array<Extract<ReplayEvent, { k: "sel" }>> = [];
 
   /** Standard-melee start — run from the MAP'S OWN SCRIPT (7.3; see docs/triggers.md).
    *
@@ -3088,6 +3665,15 @@ export class MapViewerScene {
    *  owns the setup; neither should reach across the other. */
   attachMatchLink(setup: MatchLinkSetup): void {
     this.rts?.attachMatchLink(setup);
+    // A LAN CLIENT's world is a fog-limited copy the host writes — it records nothing; the
+    // host's replay is the match's (issue #158).
+    if (this.rts?.frozenClient) {
+      this.replayRecorder = null;
+      this.rts.setCommandTap(null);
+      this.rts.onInputs = null;
+      // …but its player's own input track is still theirs to give: sent to the host in batches.
+      this.beginInputTrack();
+    }
     void this.voiceChat.warm(); // open the microphone now, so the first press loses nothing
     // Arm the background pump HERE, not from the frame loop: rAF is stopped in a hidden
     // window, so a host whose tab is already covered when the match starts would otherwise
@@ -3107,13 +3693,21 @@ export class MapViewerScene {
     // would have built, so `GameDialog` renders the real screen off the game's own FDF and the
     // two engine button behaviours (any click closes; a quit button leaves) work unchanged.
     if (this.rts) {
+      // The host's replay, whenever it comes — at the end, or as the host leaves (issue #158).
+      this.rts.onReplay = (bytes) => {
+        void this.awaitPeerReplay();
+        this.takePeerReplay(bytes);
+      };
       this.rts.onRemoteDialog = (msg) => {
         // A CLIENT never sees `RemovePlayer` for itself — its own script never runs the defeat
         // check (that is the whole of item F7) — so the authority's stamp is the only way it can
         // know its game is over, and it is what hangs up this end of the wire.
         if (msg.over && !this.matchEnded) {
           this.matchEnded = true;
-          this.rts?.endMatchWire();
+          this.flushInputTrack(); // what is left of our input track, while the wire is still up
+          // The host's replay follows the ending (issue #158): hang up once it is here.
+          if (msg.replay) void this.awaitPeerReplay().finally(() => this.rts?.endMatchWire());
+          else this.rts?.endMatchWire();
         }
         if (msg.scores) this.remoteScores = msg.scores; // the host's count (see `leave`)
         this.remoteDialog = {
@@ -3499,7 +4093,7 @@ export class MapViewerScene {
     if (!this.rts || !this.viewer.map) return;
     // Custom maps get their starting resources from triggers (not the melee default),
     // so seed empty stashes; the map's own script grants gold/lumber where it wants.
-    this.beginMatch(config, 0, 0);
+    const races = this.beginMatch(config, 0, 0);
 
     // (The map's custom object data is already in — loadMap installs it the moment the
     // archive is opened, so the pre-placed .doo pass and the pathing/ubersplat stamps see
@@ -3547,7 +4141,11 @@ export class MapViewerScene {
     // messages appear in the HUD message log.
     await this.preloadScriptHost();
     const openedAt = [this.target[0], this.target[1]];
-    this.runMapScript({ melee: false, slots: config.slots });
+    // …with the races `beginMatch` already ROLLED. A "random" seat resolved a second time here
+    // played one race in the script (GetPlayerRace → MeleeStartingUnitsForPlayer, the AI's
+    // race file) while the roster, the console skin and the match log reported another — an
+    // observed (4)Monolith listed its Night Elf as "human" and its Human as "orc".
+    this.runMapScript({ melee: false, races, slots: config.slots });
     this.openOnScriptStart(openedAt);
     // COMPUTER+ ON EXTREME CANDY WAR (src/ai/plus/candy/, docs/candy-war-ai.md). A scenario runs none
     // of the melee library, so no script will ever call `StartMeleeAI` here — the lobby's computers
@@ -4366,7 +4964,14 @@ export class MapViewerScene {
           // by the name it played the whole match under. Same string the owner line reads.
           ...(this.playerNames.get(s.id) ? { name: this.playerNames.get(s.id) } : {}),
         })),
-        localPlayer: this.localPlayer,
+        // A REPLAY answers `GetLocalPlayer` as the machine that RECORDED it did, so a script's
+        // presentation branches (and anything a map got away with doing inside one) go the
+        // way they went in the match.
+        localPlayer: this.replayPlayback ? this.replayPlayback.replay.header.localPlayer : this.localPlayer,
+        // Who is only WATCHING — this machine, and the Observers bench (Runtime.watchers).
+        watchers: this.replayPlayback
+          ? [...(this.replayPlayback.replay.header.observer ? [this.replayPlayback.replay.header.localPlayer] : []), ...this.observers.map((o) => o.id)]
+          : [...(this.observer ? [this.localPlayer] : []), ...this.observers.map((o) => o.id)],
       };
       // Which strings are ORDERS, for `OrderId` (jass/orders.ts): the map's own abilities are
       // loaded by now, so its custom order strings are in the list with the stock ones.
@@ -4388,6 +4993,25 @@ export class MapViewerScene {
         // the interpreter itself (ChooseRandomItem draws from its seeded RNG — 7.18).
         onBoot: (e) => {
           this.mapScript = e;
+          // A computer the map seats on an AI script of its OWN (`StartMeleeAI(p, "war3mapImported\\…ai")`
+          // — src/ai/scriptAi.ts) runs it in a VM of its own on the install's common.j + common.ai,
+          // calling the same engine table as this one. The file is the map's import, else the
+          // install's `Scripts\` (where every campaign .ai lives).
+          if (this.rts) {
+            const archive = this.mapArchive;
+            const install = this.vfs;
+            const text = (b: Uint8Array | null | undefined): string | null => (b ? new TextDecoder("windows-1252").decode(b) : null);
+            this.rts.aiScriptHost = {
+              sources: (name) => {
+                const commonJ = text(install.rawBytes("Scripts\\common.j"));
+                const commonAi = text(install.rawBytes("Scripts\\common.ai"));
+                const base = name.split(/[\\/]/).pop() ?? name;
+                const script = text(archive?.rawBytes(name)) ?? text(install.rawBytes(name)) ?? text(install.rawBytes(`Scripts\\${base}`));
+                return commonJ && commonAi && script ? { commonJ, commonAi, script, players: e.interp.rt.setup.numPlayers } : null;
+              },
+              hooks: () => e.interp.rt.hooks,
+            };
+          }
           // The sim asks whether a cinematic is playing (SimWorld.inCinematic) — Blizzard.j's own
           // flag, set in CinematicModeExBJ's global half, so it is the same answer everywhere.
           const globals = e.interp.rt.globals;
@@ -4427,6 +5051,13 @@ export class MapViewerScene {
       });
       if (!engine) return null;
       this.mapScript = engine; // pumped each tick (timers + region + death/damage/attack events — 7.4b/c)
+      // What the script hears from a PLAYER is a replay input (game/replay.ts).
+      engine.interp.inputTap = (e) => {
+        const rec = this.replayRecorder;
+        if (!rec) return;
+        if (e.k === "pev" && e.p === this.leavingSeat) rec.push({ ...e, left: true });
+        else rec.push(e);
+      };
       this.syncEventCaptures(engine);
       const s = engine.setup;
       const trigs = engine.interp.rt.triggerRegs.length;
@@ -4573,7 +5204,16 @@ export class MapViewerScene {
       // Drained every tick even when nothing listens — it is the drain that advances the
       // "what was selected last time" baseline, so a trigger registered mid-match must not
       // find the whole standing selection waiting for it as news.
-      const picks = this.rts.drainSelectionEvents();
+      let picks = this.rts.drainSelectionEvents();
+      // A replay's selections are the RECORDED player's, not the watcher's clicks: those are
+      // drained above and dropped, these are what the map hears (game/replay.ts).
+      if (this.replayPlayback) {
+        this.replayInject(Phase.Post);
+        picks = this.replaySelections.map((e) => ({ unitId: e.unit, player: e.p, selected: e.on }));
+        this.replaySelections = [];
+      } else if (picks.length && this.scriptWatchesSelection) {
+        for (const p of picks) this.replayRecorder?.push({ k: "sel", p: p.player, unit: p.unitId, on: p.selected });
+      }
       if (picks.length && this.scriptWatchesSelection) {
         engine.interp.pumpSelectionEvents(picks.flatMap((p) => {
           const u = this.rts ? unitSnapshot(this.rts.simView, p.unitId) : null;
@@ -4706,8 +5346,9 @@ export class MapViewerScene {
     // The map's own frames (BlzCreateFrame …), drawn out of its archive over the install, and
     // the mouse on them raised as the frame events its triggers registered — on this machine,
     // for the local player, as a dialog button's click is.
-    this.scriptFrames = new ScriptFrameOverlay(ui, () => this.assetFiles(), skin, (frame, event) =>
-      this.mapScript?.interp.fireFrameEvent(frame, event, this.localPlayer));
+    this.scriptFrames = new ScriptFrameOverlay(ui, () => this.assetFiles(), skin, (frame, event) => {
+      if (!this.replayPlayback) this.mapScript?.interp.fireFrameEvent(frame, event, this.localPlayer);
+    });
     this.multiboard = new MultiboardOverlay(ui, this.vfs, skin);
     this.timerDialogs = new TimerDialogOverlay(ui, this.vfs, skin);
     this.suspendDialog = new SuspendDialogOverlay(ui, this.vfs, skin);
@@ -4719,6 +5360,7 @@ export class MapViewerScene {
       // script's own dialog-button triggers run first (they can still read GetClickedButton),
       // and the quit is what tears the match down.
       onClick: (button) => {
+        if (this.replayPlayback) return; // a replay's dialogs were answered in the match
         const engine = this.mapScript;
         const dialog = engine?.interp.rt.dialogs.find((d) => d.handleId === button.dialogId);
         if (dialog) {
@@ -4835,6 +5477,8 @@ export class MapViewerScene {
           // drop that player off the wire mid-match, and neither must their own defeat while
           // somebody else is still playing.
           ...(this.matchDecided ? { over: true } : {}),
+          // …and the host's replay follows it, so the recipient keeps its wire up for it.
+          ...(this.matchDecided && this.replayRecorder && this.rts?.hostsLanMatch ? { replay: true } : {}),
         });
         // Remembered only when it actually went somewhere, so a player who has not been
         // seated yet is retried rather than silently written off.
@@ -4857,6 +5501,7 @@ export class MapViewerScene {
           k: "dlg", message: over.message, over: true,
           buttons: over.buttons.map((b) => ({ text: b.text, quit: b.quit, hotkey: b.hotkey, ...(b.doScoreScreen ? { score: true } : {}) })),
           ...(scores ? { scores } : {}),
+          ...(this.replayRecorder && this.rts?.hostsLanMatch ? { replay: true } : {}),
         });
       }
       if (this.observer && !rt.dialogs.some((d) => d.visibleFor.has(this.localPlayer))) {
@@ -4876,7 +5521,8 @@ export class MapViewerScene {
     // screen explaining why. Relay first, then hang up.
     if (this.matchDecided && !this.matchEnded) {
       this.matchEnded = true;
-      this.rts?.endMatchWire();
+      // …and the replay goes to every peer before it does (issue #158; they wait for it).
+      void this.shareReplay().finally(() => this.rts?.endMatchWire());
     }
   }
 
@@ -5273,14 +5919,15 @@ export class MapViewerScene {
       // tenth of its hit points to all of them, paying nothing until it is finished. It just
       // has nobody hammering it (SimWorld.attachEntangled marks it `selfBuilds`). The melee
       // opening's `entangleinstant` is the one that skips both clocks (EntangleRequest.instant).
-      void this.spawnUnit(d, e.x, e.y, e.owner, e.team, e.instant ? 0 : d.buildTime).then((simId) => {
+      {
+        const simId = this.spawnUnitNow(d, e.x, e.y, e.owner, e.team, e.instant ? 0 : d.buildTime);
         if (simId === null) {
-          mine.entangledBy = 0; // the model never arrived — leave the mine as it was
-          return;
+          mine.entangledBy = 0; // no world to raise it in — leave the mine as it was
+          continue;
         }
         world.attachEntangled(simId, mineId, e.casterId);
         this.claimMineWidget(simId, mineId, widget);
-      });
+      }
     }
     this.releaseMineWidgets(world);
   }
@@ -5316,9 +5963,61 @@ export class MapViewerScene {
     this.splats?.remove(`m${mineId}`);
   }
 
+  /**
+   * Make a unit NOW, on the step that asked for it — the record, its pathing stamp and its
+   * ground decal — and let its body stream in behind it (`spawnUnit` on the reserved id).
+   *
+   * The sim must never wait on a MODEL. A foundation, a summon or an entangled mine used to come
+   * into existence when its model finished loading, which is a browser fetch: on a fast machine
+   * that was the same step, with several steps to a frame (a boosted sim, a slow frame) it was
+   * a few steps later, and a replay — a count of steps — played a different match from the one
+   * it recorded (issue #158). Trained units and script units were already made this way.
+   */
+  private spawnUnitNow(
+    def: UnitDef, x: number, y: number, owner: number, team: number, constructionTime = 0,
+    facing = (3 * Math.PI) / 2,
+    /** Once the body is attached (a summon's Birth clip). */
+    onBody?: (simId: number) => void,
+  ): number | null {
+    if (!this.viewer.map || !this.rts) return null;
+    const fp = def.isBuilding && def.pathTex && this.grid ? this.footprintFor(def.pathTex) : null;
+    if (fp && this.grid) [x, y] = this.grid.snapForBuildingRect(x, y, fp.w, fp.h);
+    const simId = this.rts.addSimUnit(def, x, y, facing, owner, team, constructionTime);
+    this.stampBuilding(def, simId, x, y, fp, false);
+    if (def.model) {
+      void this.spawnUnit(def, x, y, owner, team, constructionTime, facing, simId, true).then((id) => {
+        if (id !== null) onBody?.(id);
+      });
+    }
+    return simId;
+  }
+
+  /** A building's pathing stamp, the sim's ownership of it, its seat, and its ground decal — the
+   *  part of making a structure the WORLD needs, apart from its model. */
+  private stampBuilding(def: UnitDef, simId: number, x: number, y: number, fp: Footprint | null, placedHasIt: boolean): void {
+    if (!this.rts) return;
+    if (fp && this.grid) {
+      stampFootprint(this.grid, fp, x, y);
+      // The sim owns the stamp from here: it frees those cells the moment the building
+      // leaves the world (death, RemoveUnit, cancelled construction).
+      this.rts.simWorld.setPathStamp(simId, fp, x, y);
+      const [seatW, seatH] = seatHalfExtents(def, fp);
+      // Seat the structure on the tallest terrain its BODY spans so it never clips into a
+      // small hill/slope (issue #15) without perching above its own ground decal — see
+      // seatHalfExtents for why that is the body and not the stamp.
+      this.rts.setBuildingFootprint(simId, seatW, seatH);
+    }
+    if (def.isBuilding && def.uberSplat && !placedHasIt) {
+      this.simBuildingSplats.add(simId);
+      this.addBuildingSplat(simId, def, x, y);
+    }
+  }
+
   private async spawnUnit(
     def: UnitDef, x: number, y: number, owner: number, team: number, constructionTime = 0,
     facing = (3 * Math.PI) / 2, reservedId?: number,
+    /** The record's stamp and decal are already down (`spawnUnitNow`): attach the body only. */
+    stamped = false,
   ): Promise<number | null> {
     const map = this.viewer.map;
     if (!map || !this.rts) return null;
@@ -5382,22 +6081,12 @@ export class MapViewerScene {
     const halfFacing = facing / 2;
     instance.setRotation(new Float32Array([0, 0, Math.sin(halfFacing), Math.cos(halfFacing)]));
 
-    // Buildings block pathing: stamp their footprint so units route around them.
-    if (fp && this.grid) {
-      stampFootprint(this.grid, fp, x, y);
-      // The sim owns the stamp from here: it frees those cells the moment the building
-      // leaves the world (death, RemoveUnit, cancelled construction).
-      this.rts.simWorld.setPathStamp(simId, fp, x, y);
-      // Seat the structure on the tallest terrain its BODY spans so it never clips into a
-      // small hill/slope (issue #15) without perching above its own ground decal — see
-      // seatHalfExtents for why that is the body and not the stamp.
-      this.rts.setBuildingFootprint(simId, seatW, seatH);
-    }
-    // Paint the building's ground texture (ubersplat) on the terrain under it. Tracked
-    // so it's removed when the building is destroyed (reconcile) or cancelled. A frozen
-    // client re-creating a MAP-PLACED building it scouted (the snapshot drain) skips the
-    // paint — that building's `p<i>` decal already exists and would double-blend darker.
-    if (def.isBuilding && def.uberSplat) {
+    // Buildings block pathing: stamp their footprint so units route around them, and paint
+    // the ground texture (ubersplat) under it — unless `spawnUnitNow` already did both on the
+    // step the unit was made. A frozen client re-creating a MAP-PLACED building it scouted
+    // (the snapshot drain) skips the paint — that building's `p<i>` decal already exists and
+    // would double-blend darker.
+    if (!stamped) {
       let placedHasIt = false;
       for (const s of this.mapBuildingSplats.values()) {
         if (s.simId === simId) {
@@ -5405,10 +6094,7 @@ export class MapViewerScene {
           break;
         }
       }
-      if (!placedHasIt) {
-        this.simBuildingSplats.add(simId);
-        this.addBuildingSplat(simId, def, x, y);
-      }
+      this.stampBuilding(def, simId, x, y, fp, placedHasIt);
     }
     return simId;
   }
@@ -5510,11 +6196,6 @@ export class MapViewerScene {
     if (!this.rts) return;
     const world = this.rts.simWorld;
     for (const w of world.units.values()) {
-      // A worker mid-spawn is exempt from BOTH halves below: its foundation's own footprint
-      // is already on the grid (spawnUnit stamps before its model promise settles) while it
-      // still holds the `buildPending` that raised it, so asking would refuse the very build
-      // that is happening.
-      if (this.buildSpawning.has(w.id)) continue;
       // Re-ask the ground of every build order this worker still holds, and drop the ones it
       // now refuses (with a refund). A build site is authorised when the player CLICKS it,
       // and a shift-queued one can sit for a minute before the worker walks over — long
@@ -5598,22 +6279,20 @@ export class MapViewerScene {
         const workerId = w.id;
         const mineId = pb.mineId;
         const widget = this.mineWidget(mineId, mine.x, mine.y);
-        this.buildSpawning.add(workerId);
-        void this.spawnUnit(def, mine.x, mine.y, w.owner, this.teamOf(w.owner), def.buildTime || 60).then((simId) => {
-          this.buildSpawning.delete(workerId);
-          if (simId === null) {
-            mine.entangledBy = 0; // the model never arrived — leave the mine as it was
-            world.cancelPendingBuild(workerId);
-            return;
-          }
-          // `entangler` 0: nothing HOLDS a haunted mine. An Entangled Gold Mine is released
-          // the moment its Tree uproots; a Haunted one outlives the Acolyte that summoned it,
-          // like every other Undead structure (see summonsBuildings).
-          world.attachEntangled(simId, mineId, 0);
-          this.claimMineWidget(simId, mineId, widget);
-          world.assignBuilder(workerId, simId); // clears buildPending, and lets the Acolyte go
-          this.playSummonGesture(workerId);
-        });
+        // Raised on THIS step, never when its model arrives (spawnUnitNow).
+        const simId = this.spawnUnitNow(def, mine.x, mine.y, w.owner, this.teamOf(w.owner), def.buildTime || 60);
+        if (simId === null) {
+          mine.entangledBy = 0; // no world to raise it in — leave the mine as it was
+          world.cancelPendingBuild(workerId);
+          continue;
+        }
+        // `entangler` 0: nothing HOLDS a haunted mine. An Entangled Gold Mine is released
+        // the moment its Tree uproots; a Haunted one outlives the Acolyte that summoned it,
+        // like every other Undead structure (see summonsBuildings).
+        world.attachEntangled(simId, mineId, 0);
+        this.claimMineWidget(simId, mineId, widget);
+        world.assignBuilder(workerId, simId); // clears buildPending, and lets the Acolyte go
+        this.playSummonGesture(workerId);
         continue;
       }
       const fp = def.pathTex ? this.footprintFor(def.pathTex) : null;
@@ -5622,18 +6301,16 @@ export class MapViewerScene {
         // Site clear (only the builder was there) → raise the foundation.
         this.buildWait.delete(w.id);
         const workerId = w.id;
-        this.buildSpawning.add(workerId);
         // The foundation belongs to the WORKER's owner, never to this machine's player —
         // the second half of the localPlayer disease (see the gate above, and bug 4).
         // A "Tiny" building item's structure raises over its row's own `Dur1` (ItemBuild).
-        void this.spawnUnit(def, pb.x, pb.y, w.owner, this.teamOf(w.owner), pb.item?.buildTime || def.buildTime || 60).then((simId) => {
-          this.buildSpawning.delete(workerId);
-          if (simId !== null) {
-            world.clearRaisedSite(simId, workerId); // anyone of ours caught walking across it
-            world.assignBuilder(workerId, simId); // clears buildPending
-            this.playSummonGesture(workerId);
-          } else world.cancelPendingBuild(workerId); // model failed to load → refund
-        });
+        // Raised on THIS step, never when its model arrives (spawnUnitNow).
+        const simId = this.spawnUnitNow(def, pb.x, pb.y, w.owner, this.teamOf(w.owner), pb.item?.buildTime || def.buildTime || 60);
+        if (simId !== null) {
+          world.clearRaisedSite(simId, workerId); // anyone of ours caught walking across it
+          world.assignBuilder(workerId, simId); // clears buildPending
+          this.playSummonGesture(workerId);
+        } else world.cancelPendingBuild(workerId); // no world to raise it in → refund
         continue;
       }
       // Units are standing where the building must go. Our own were already walked off it
@@ -5674,8 +6351,13 @@ export class MapViewerScene {
     return out;
   }
 
+  /** A slot's team: the lobby's seating, and for a player the lobby never seats — a custom
+   *  map's army or creep computer, MAP_CONTROL_NEUTRAL or simply absent from a truncated w3i —
+   *  the team the map's own config() gave it (`SetPlayerTeam`, whose index IS the force index
+   *  the lobby numbers its teams by). Such a player used to be a team of one, numbered after
+   *  its own slot, whatever the script had said. */
   private teamOf(owner: number): number {
-    return this.meleeTeams.get(owner) ?? owner;
+    return this.meleeTeams.get(owner) ?? (owner >= 0 ? this.mapScript?.interp.rt.ensurePlayer(owner).team : undefined) ?? owner;
   }
 
   /** Send a freshly-produced unit to its building's rally target: harvest a
@@ -10135,6 +10817,7 @@ export class MapViewerScene {
         }
       },
       autoCamera: () => this.autoCam.enabled,
+      replayControls: () => this.replayControls(),
       setAutoCamera: (on) => this.autoCam.setEnabled(on),
       creepCamps: () => this.rts?.creepCamps() ?? [],
       minimapIcons: () => this.rts?.minimapIcons() ?? [],
@@ -10350,8 +11033,12 @@ export class MapViewerScene {
         for (const u of this.rts?.simWorld.units.values() ?? []) if (u.hp > 0) out.set(u.typeId, (out.get(u.typeId) ?? 0) + 1);
         return out;
       },
-      spawnTest: (req) => void this.spawnTest(req),
+      spawnTest: (req) => {
+        this.replayRecorder?.taint("dev tools spawned units");
+        void this.spawnTest(req);
+      },
       armDevPlace: (onPlace, onCancel) => {
+        if (onPlace) this.replayRecorder?.taint("dev tools placed units");
         this.devPlace = onPlace && this.cheatsAllowed ? { onPlace, onCancel: onCancel ?? (() => {}) } : null;
       },
       cheatsAllowed: () => this.cheatsAllowed,
@@ -10366,6 +11053,7 @@ export class MapViewerScene {
       disabledPanels: () => this.deadPanels(),
       mountClock: (slot) => this.mountClock(slot),
       resourceHover: (kind) => this.hud?.showResourceTip(kind),
+      clockHover: (on) => this.hud?.showClockTip(on),
     });
     this.consoleUi.setObserver(this.observer);
     this.hud = new GameHud(ui, driver);
@@ -10427,7 +11115,11 @@ export class MapViewerScene {
         })),
       isAlly: (other) => this.rts?.playersAreCoAllied(this.localPlayer, other) ?? false,
       get: (other, type) => this.rts?.getPlayerAlliance(this.localPlayer, other, type) ?? false,
-      set: (other, type, value) => this.rts?.setPlayerAlliance(this.localPlayer, other, type, value),
+      set: (other, type, value) => {
+        // An input the command door never sees, so the replay takes it here (game/replay.ts).
+        this.replayRecorder?.push({ k: "ally", p: this.localPlayer, other, type, on: value });
+        this.rts?.setPlayerAlliance(this.localPlayer, other, type, value);
+      },
       stash: () => this.rts?.stashFor(this.localPlayer) ?? { gold: 0, lumber: 0 },
       trade: (other, gold, lumber) => this.giveResources(other, gold, lumber),
       resourceClick: () => this.sounds?.playUi("InterfaceClick"),
@@ -10513,7 +11205,8 @@ export class MapViewerScene {
    * `?dev` boot leaves the seats it does not fill as empty `user` slots, so it reads two.
    */
   private get cheatsAllowed(): boolean {
-    return !!this.rts && !this.rts.networked;
+    // Not while watching a replay: a cheat now would change a match that was already played.
+    return !!this.rts && !this.rts.networked && !this.replayPlayback;
   }
 
   /**
@@ -10582,6 +11275,13 @@ export class MapViewerScene {
    * chat: it is the only confirmation the message went anywhere).
    */
   private sendChat(text: string, target: ChatTarget): void {
+    // Watching a REPLAY, the match is the file's: a line typed now was never said in it, so it
+    // reaches no script and no player — it is shown to the watcher alone.
+    if (this.replayPlayback) {
+      if (text.trim().toLowerCase() === "/dev") this.hud?.toggleDevTools();
+      else this.showChat({ from: this.localPlayer, text, target: { scope: "observers" } });
+      return;
+    }
     if (this.typedCheat(text)) return;
     target = this.chatTargetFor(target);
     const link = this.rts?.matchLinkHandle ?? null;
@@ -10623,6 +11323,7 @@ export class MapViewerScene {
     // re-tagged HERE, on the authority, so every copy that leaves carries the audience it
     // actually reached.
     line = observerLine(line, this.chatWorld());
+    this.replayRecorder?.push({ k: "chat", from: line.from, text: line.text, target: line.target });
     this.fireChatTriggers(line);
     const heard = chatRecipients(line, this.chatWorld());
     const link = this.rts?.matchLinkHandle ?? null;
@@ -10632,7 +11333,8 @@ export class MapViewerScene {
     // ally (src/ai/plus/teamchat.ts), and it may only answer what was addressed to it.
     this.rts?.heardChat(line, heard);
     this.matchLog?.event(`chat (${line.target.scope}${line.target.player !== undefined ? ` to P${line.target.player}` : ""}): ${line.text}`, line.from);
-    if (heard.includes(this.localPlayer)) this.showChat(line);
+    // A replay's watcher reads every line, as the observer of a real WC3 replay does.
+    if (heard.includes(this.localPlayer) || this.replayPlayback) this.showChat(line);
   }
 
   /** Put a line on screen and in the history. No routing, no triggers — either this machine
@@ -10787,6 +11489,7 @@ export class MapViewerScene {
    */
   private giveResources(other: number, gold: number, lumber: number): void {
     if (!this.rts?.playersAreCoAllied(this.localPlayer, other)) return;
+    this.replayRecorder?.push({ k: "give", p: this.localPlayer, other, gold, lumber }); // as `ally`
     this.transferResources(this.localPlayer, other, gold, lumber);
   }
 
@@ -10869,6 +11572,7 @@ export class MapViewerScene {
    * then show it here if this machine is among them.
    */
   private deliverSignal(from: number, x: number, y: number): void {
+    this.replayRecorder?.push({ k: "ping", p: from, x, y });
     const link = this.rts?.matchLinkHandle ?? null;
     if (link) {
       for (let p = 0; p < MELEE.MAX_PLAYERS; p++) {
@@ -10884,7 +11588,7 @@ export class MapViewerScene {
    *  its colour say who. */
   private showSignal(from: number, x: number, y: number): void {
     const co = from === this.localPlayer || (this.rts?.playersAreCoAllied(from, this.localPlayer) ?? false);
-    if (!co) return;
+    if (!co && !this.replayPlayback) return; // …a replay's watcher sees everybody's
     const [r, g, b] = this.signalColor(from);
     this.hud?.ping({ x, y, duration: 0, r, g, b, extraEffects: true });
     // `UI\SoundInfo\UISounds.slk` MapPing (Sound\Interface\MapPing.wav) — every signal sounds,
@@ -10910,13 +11614,11 @@ export class MapViewerScene {
   }
 
   /**
-   * "Upkeep level %d." — the line the game keeps for crossing an upkeep bracket, raised on
-   * the change rather than every frame.
-   *
-   * MINIMAL, and the honest reason is that the data stops short: `Upkeeplevel` is one of the
-   * few [Errors] rows with no war3skins sound beside it and nothing anywhere says what its
-   * `%d` counts, so the band index (0 none / 1 low / 2 high — hud.ts upkeepBand) is our
-   * reading and not the file's. Printed to the message log with the other reports.
+   * Crossing an upkeep bracket, raised on the change rather than every frame. The real client
+   * does NOT print `Upkeeplevel` ("Upkeep level %d.", CommandStrings [Errors]) for it — that row
+   * is never seen in play. What it shows is the band's own label ("Low Upkeep", in its colour)
+   * as the large `WorldFrameTopMessage` under the clock (GameHud.showUpkeep), with UISounds.slk
+   * `UpkeepLevel` (Sound\Interface\UpkeepRing.wav) — a row nothing else in the game names.
    */
   private noteUpkeep(foodUsed: number): void {
     const band = upkeepBand(foodUsed);
@@ -10924,7 +11626,7 @@ export class MapViewerScene {
     const first = this.upkeepBandNow < 0;
     this.upkeepBandNow = band;
     if (first) return; // the opening reading is the state, not a change
-    this.announce(fillSlots(this.strings.forRace("Upkeeplevel", this.localRace), [band]));
+    if (this.hud?.showUpkeep(band)) this.sounds?.playUi("UpkeepLevel");
   }
   /** The band the local player was last seen in; -1 until the first reading. */
   private upkeepBandNow = -1;
@@ -10973,7 +11675,12 @@ export class MapViewerScene {
     const interp = this.mapScript?.interp;
     if (!interp) return;
     interp.rt.ensurePlayer(seat).slotState = 2; // PLAYER_SLOT_STATE_LEFT
-    interp.firePlayerEvent(seat, EVENT_PLAYER_LEAVE);
+    this.leavingSeat = seat;
+    try {
+      interp.firePlayerEvent(seat, EVENT_PLAYER_LEAVE);
+    } finally {
+      this.leavingSeat = null;
+    }
   }
 
   /** "%s has left the game." — once per seat, whichever of the routes that say it gets there first. */
@@ -11259,6 +11966,12 @@ export class MapViewerScene {
    * room may already be gone, and a quit must never hang on a dead wire).
    */
   private async leave(scores: boolean): Promise<void> {
+    // A HOST leaving ends the game for everybody, so the peers get the replay now (issue #158);
+    // a CLIENT whose game ended waits for the one the host is sending, so its score screen can
+    // save it.
+    this.flushInputTrack();
+    if (this.rts?.hostsLanMatch) await this.shareReplay();
+    else if (this.peerReplay) await this.peerReplay;
     if (!scores) return this.onExit?.(null);
     let table = this.remoteScores ?? this.scoreTable();
     if (!table && this.rts && !this.matchEnded && this.rts.askForScores()) {
@@ -11600,6 +12313,7 @@ export class MapViewerScene {
    *    rather than floating over the film (see syncHudVisible). Keyed on the letterbox alone,
    *    like the cursor and like ESC-skips-the-cinematic: `EnableUserUI(false)` is the momentary
    *    blackout blizzard.j flicks around each cinematic FADE, and a panel must not blink for it.
+   *  • **Not before the match has started** — the loading screen is still up (`startHeld`).
    *  • **Whatever is in front of you is what answers.** A panel's own key CLOSES it — one that
    *    is up must never become unclosable — and every other key does NOTHING while it is up.
    *    Not "close that one and open this one": these are modal screens, and WC3 does not swap
@@ -11613,6 +12327,12 @@ export class MapViewerScene {
    */
   private togglePanel(panel: ConsolePanel): boolean {
     if (!this.interfaceShown) return false;
+    // Nor behind the LOADING SCREEN. The match and its key handler exist from the moment the
+    // map is built, several seconds before the screen comes down (see holdAtStart), and a
+    // panel opened then is opened onto nothing: an F11 pressed at "L O A D I N G" started the
+    // game with the Allies dialog already up. Refused here rather than in the F-key handler so
+    // that it holds for all four panels and for every door to them.
+    if (this.startHeld || this.loadingScreenUp) return false;
     // The one thing that is always allowed. Ahead of `deadPanels`, which lists the OPEN panel
     // among the dead ones (its button is behind the panel's own scrim and cannot be clicked;
     // the key is what is left).
@@ -11714,6 +12434,15 @@ export class MapViewerScene {
    * and the two must not clobber each other — a chapter that pauses itself in init (they do,
    * for their opening scenes) would otherwise be un-paused by our release.
    */
+  /** Is the loading screen over the canvas? Wider than `startHeld`, which begins only once
+   *  setup has returned: this scene outlives a match and its key handler is bound for good, so
+   *  the whole of the load — the panels are mounted part-way through it — has to be deaf to
+   *  the console's F-keys, not just its last stretch (see togglePanel). */
+  private loadingScreenUp = false;
+  setLoadingScreen(on: boolean): void {
+    this.loadingScreenUp = on;
+  }
+
   holdAtStart(on: boolean): void {
     this.startHeld = on;
     // The clock is not owed the held time: `advanceSim` re-stamps `simLast` every pass while
@@ -11822,6 +12551,7 @@ export class MapViewerScene {
       this.pauseTimeouts.set(player, left - 1);
     }
     this.playerPaused = on;
+    this.replayRecorder?.push({ k: "pause", p: player, on });
     this.pausedBy = on ? player : -1;
     this.rts?.matchLinkHandle?.rulePause({ k: "pause", on, by: player, left: this.timeoutsFor(player) });
     this.notePause(player, on, this.timeoutsFor(player));
@@ -12228,6 +12958,10 @@ export class MapViewerScene {
       for (let ry = 0; ry < 3; ry++) for (let rx = 0; rx < 4; rx++) if (!used.has(`${rx},${ry}`)) return [rx, ry];
       return [bx, by];
     };
+    // Nobody of ours standing at this shop: its sold units say so in advance, as its item
+    // wares do (patronLine). `undefined` — our own building, or a shop that asks for nobody —
+    // is not a refusal.
+    const soldPatron = sold.size ? world.unitSalePatron(sel.id, this.localPlayer) !== null : true;
     for (const uid of list) {
       const d = this.registry.get(uid);
       if (!d) continue;
@@ -12278,7 +13012,7 @@ export class MapViewerScene {
       out.push(this.cmd({
         id: `train:${uid}`, icon: this.blpIcon(d.icon), name: d.name, hotkey: d.hotkey || (d.name[0]?.toUpperCase() ?? ""),
         tip: d.tip, // "Train |cffffcc00P|reasant" — the game's own tooltip title
-        desc: this.tipText(d.description || `Trains a ${d.name}.`) + this.stockLine(st)
+        desc: this.tipText(d.description || `Trains a ${d.name}.`) + (sold.has(uid) ? this.patronLine(soldPatron) : "") + this.stockLine(st)
           + this.requirementLine(uid, owned, gated ? undefined : []),
         gold, lumber, food: d.foodUsed,
         count: badge, // the shop's stock badge
@@ -12893,29 +13627,34 @@ export class MapViewerScene {
       }
       // Orc Burrow garrison (UnitAbilities.slk otrb: Abtl Battle Stations + Astd Stand Down).
       // Battle Stations pulls nearby peons in; Stand Down (shown once occupied) sends them
-      // back to work. Icons/hotkeys/slots are the ability data's own (OrcAbilityFunc/Strings).
-      if (su && su.garrisonCap > 0 && (!su.building || su.building.constructionLeft <= 0)) {
-        // The Entangled Gold Mine has the same kind of hold and a different card. Its crew is
-        // in there to WORK, not to shoot, so there is no Battle Stations to pull them in and
-        // no Stand Down to send them back — just `Aenc`'s own Unload All, with that row's art
-        // and slot (NightElfAbilityFunc [Aenc] Unart=BTNUnload, Unbuttonpos=0,2; hotkey U).
-        // Loading is a right-click: you send a wisp at the mine, you don't fetch it from here.
-        if (world.cargoHoldCode(su.typeId) === "Aenc") {
-          // `Aenc`'s own two halves, at that row's own art and slots (NightElfAbilityFunc
-          // [Aenc]: Art=BTNLoad Buttonpos=1,2, Unart=BTNUnload Unbuttonpos=0,2). Load arms a
-          // pick — "Orders a Wisp to enter the gold mine" — and is greyed once the crew is
-          // full, because there is nowhere left to put one.
-          out.push(this.cmd({
-            id: "load", icon: btnIcon("BTNLoad"), name: "Load", hotkey: "L",
-            desc: "Orders a Wisp to enter the gold mine.", col: 1, row: 2,
-            disabled: su.garrison.length >= su.garrisonCap,
-          }));
-          if (su.garrison.length > 0)
-            out.push(this.cmd({ id: "standdown", icon: btnIcon("BTNUnload"), name: "Unload All", hotkey: "U", desc: "Removes all Wisps from the gold mine.", col: 0, row: 2 }));
-        } else {
-          out.push(this.cmd({ id: "battlestations", icon: btnIcon("BTNBattleStations"), name: "Battle Stations", hotkey: "B", desc: "Causes nearby Peons to run into the Burrow so that they can defend their base.", col: 0, row: 2 }));
-          if (su.garrison.length > 0)
-            out.push(this.cmd({ id: "standdown", icon: btnIcon("BTNBacktoWork"), name: "Stand Down", hotkey: "D", desc: "Causes Peons within the Burrow to return to work.", col: 1, row: 2 }));
+      // back to work. Every word, letter, icon and slot is the ROW's own (OrcAbilityFunc /
+      // OrcAbilityStrings [Abtl]/[Astd]) and never retyped here, because those are exactly the
+      // columns a player's CustomKeys.txt rewrites at the SLK boundary (docs/hotkeys.md) — a
+      // literal "B" could not be rebound (issue #246).
+      //
+      // The Entangled Gold Mine has NO block here: its card is its abilList's own `Slo2` Load
+      // Wisp and `Adri` Unload All, drawn by the ability loop like any other row. `Aenc` is the
+      // mine's HOLD, the twin of the burrow's `Abun` and a transport's `Acar`, and in the real
+      // 1.30.4 client its `Art`/`Unart` are never drawn (see the loop's `holdGate`).
+      if (su && su.garrisonCap > 0 && world.cargoHoldCode(su.typeId) === "Abun" && (!su.building || su.building.constructionLeft <= 0)) {
+        // The unit's OWN row for the code first (a map may carry its own copy), then the
+        // stock one.
+        const holdDef = (code: string): AbilityDef | undefined => {
+          const own = su.abilities.find((a) => a.code === code);
+          return (own && this.abilities.get(own.id)) || this.abilityDefByCode(code);
+        };
+        // `Tip`/`Ubertip`/`Hotkey`/`Art`/`Buttonpos`, as the ability loop reads them.
+        const holdButton = (id: string, def: AbilityDef | undefined): CommandButton | null =>
+          def ? this.cmd({
+            id, icon: this.blpIcon(iconAt(def, 1)), name: def.name, hotkey: def.hotkey,
+            tip: this.abilityTip(def, 1), desc: this.abilityDesc(def, 1),
+            col: def.buttonX, row: def.buttonY,
+          }) : null;
+        const battle = holdButton("battlestations", holdDef("Abtl"));
+        if (battle) out.push(battle);
+        if (su.garrison.length > 0) {
+          const stand = holdButton("standdown", holdDef("Astd"));
+          if (stand) out.push(stand);
         }
       }
 
@@ -13448,7 +14187,12 @@ export class MapViewerScene {
       // …and a cargo hold's two buttons answer to the hold: Load with no seat left, Unload
       // All with nobody aboard, are each a press that could only be refused (holdRoom /
       // garrison — docs/transports.md).
-      const holdGate = ab.code === "Aloa" ? this.rts.simView.holdRoom(su) <= 0 : ab.code === "Adro" ? su.garrison.length === 0 : false;
+      const holdGate = ab.code === "Aloa" ? this.rts.simView.holdRoom(su) <= 0 : ab.code === "Adro" || ab.code === "Adri" ? su.garrison.length === 0 : false;
+      // …and the Entangled Gold Mine HIDES them rather than greying them, as the real 1.30.4
+      // client does (seen under Wine): an empty mine shows Load Wisp (`Slo2`, 0,2) alone, a
+      // partly crewed one Load Wisp and Unload All (`Adri`, 1,2), a full one Unload All alone.
+      // A transport's are left greyed — nobody has looked at a full Zeppelin's card yet.
+      if (holdGate && this.rts.simWorld.cargoHoldCode(su.typeId) === "Aenc") continue;
       const col = reversed ? def.unButtonX : def.buttonX; // the ability's real WC3 card slot
       const row = reversed ? def.unButtonY : def.buttonY;
       const passive = def.target === "passive";
@@ -13776,14 +14520,6 @@ export class MapViewerScene {
       if (sel) this.rts.execute(this.localPlayer, { c: "standdown", buildingId: sel.id });
       return;
     }
-    if (id === "load") {
-      // The selection is the HOLD and the click picks its passenger — the same shape as the
-      // shop's "Select a unit to purchase" pick, and the opposite way round from every other
-      // order on the card. See RtsController.orderClickAt.
-      const sel = this.rts.selectedInfo();
-      if (sel && this.rts.armLoad(sel.id)) this.hud?.setArmed(true);
-      return;
-    }
     if (id.startsWith("train:")) {
       const sel = this.rts.selectedInfo();
       // The whole focused sub-group, not just the leader — see trainUnit. A mine or a ground
@@ -13953,6 +14689,7 @@ export class MapViewerScene {
    * ally side is also the QUIET one: only their BUILDINGS are news (see the attack case).
    */
   private showAlert(a: Alert): void {
+    if (this.observer) return this.showWatchedAlert(a);
     const own = a.player === this.localPlayer;
     const ally = !own && (this.rts?.playersAreCoAllied(a.player, this.localPlayer) ?? false);
     if (!own && !ally) return; // an enemy's troubles are their own
@@ -14023,6 +14760,65 @@ export class MapViewerScene {
     this.sounds?.playUi(`${sound}${UI_SOUND_RACE[this.localRace]}`);
   }
 
+  /**
+   * The same news for somebody only WATCHING (issue #167's observer), in the announcer's voice.
+   *
+   * A watcher has no race, so none of the four race voices is theirs — and UISounds.slk has a
+   * fifth set for exactly that, the `…Generic` rows under `Sound\Dialogue\GenericWarnings\`
+   * (`TownAttackGeneric` → GenericWarningTownAttack1.mp3, `HeroDiesGeneric`,
+   * `GoldMineLowGeneric`). It is the map-agnostic announcer: the same voice whatever the
+   * tileset, the map kind or the races on the field. Which events it speaks is OURS:
+   *
+   *  • a TOWN under attack, a HERO fallen, a gold mine running LOW or COLLAPSED — anybody's,
+   *    since everybody on the field is what a watcher watches;
+   *  • NOT a unit under attack. That line is "a fight you cannot see has started", per player,
+   *    and a watcher of ten players would hear it without pause.
+   *
+   * The collapsed mine's row is spelled `NoGoldGeneric` in the table and its file is
+   * GenericWarningGoldCollapsed1.mp3 — there is no `GoldMineCollapseGeneric` — so the FILE is
+   * what is trusted. The lines are the third-person [Errors] rows the data already has
+   * ("%s's city is under siege!", "%s has fallen in battle.") and the human copy of the two
+   * mine rows, which is the one worded for nobody in particular ("A gold mine has collapsed.").
+   */
+  private showWatchedAlert(a: Alert): void {
+    if (a.player < 0) return; // a creep camp's troubles are nobody's news
+    const name = (typeId: string | undefined, proper: string | undefined): string =>
+      proper || this.registry.get(typeId ?? "")?.name || "";
+    let key = "";
+    let sound = "";
+    const args: Array<string | number> = [];
+    switch (a.kind) {
+      case "attack":
+        return;
+      case "townattack":
+        key = "Allytownattack";
+        sound = "TownAttackGeneric";
+        args.push(this.playerNames.get(a.player) ?? `Player ${a.player + 1}`);
+        this.hud?.ping({ x: a.x, y: a.y, duration: 0, r: 255, g: 0, b: 0, extraEffects: false });
+        break;
+      case "herodeath":
+        sound = "HeroDiesGeneric";
+        if (a.killer) {
+          key = "Herokilledhero";
+          args.push(name(a.hero?.typeId, a.hero?.properName), name(a.killer.typeId, a.killer.properName));
+        } else {
+          key = "Herodies";
+          args.push(name(a.hero?.typeId, a.hero?.properName));
+        }
+        break;
+      case "minelow":
+        key = "Goldminelow";
+        sound = "GoldMineLowGeneric";
+        break;
+      case "minedestroyed":
+        key = "Goldminedestroyed";
+        sound = "NoGoldGeneric"; // GenericWarningGoldCollapsed1.mp3 — see above
+        break;
+    }
+    if (key) this.hud?.showError(fillSlots(this.strings.forRace(key, "human"), args));
+    if (sound) this.sounds?.playUi(sound);
+  }
+
   /** Can the local player afford this? Refuses (naming the resource they're short of)
    *  when not. WC3 reports gold first, so a player short of both hears "Not enough gold."
    *  Callers still do the deduction themselves — it happens later, once the order's own
@@ -14064,6 +14860,9 @@ export class MapViewerScene {
     // A sold-out shelf has its own line ("That unit is not available") — worth keeping,
     // since a Tavern with no stock looks identical to one that just refused silently.
     if (this.rts.simView.shopStock(buildingId, unitId) === 0) return SHOP_ERROR.nostock;
+    // …and a shop's unit shelf wants somebody standing at it, as its item shelf does
+    // (SimWorld.unitSalePatron): "A valid patron must be nearby."
+    if (world.shopWaresOf(buildingId).units.includes(unitId) && world.unitSalePatron(buildingId, this.localPlayer) === null) return SHOP_ERROR.nopatron;
     return "";
   }
 
@@ -14684,13 +15483,14 @@ export class MapViewerScene {
       const bytes = read();
       url = bytes ? blpToDataUrl(bytes) : null;
       // The LAST RESORT (docs/icons.md): a button icon that is neither in the install nor
-      // derivable from it (vfs/derivedArt.ts) is drawn as the engine's own placeholder,
-      // `BTNTemp.blp`, rather than as an empty square, so the ability or item behind it is still
-      // there to see and press. Its greyed twin then comes the ordinary way (DISBTNTemp).
-      const temp = url ? null : placeholderIcon(path);
-      if (temp) url = this.blpIcon(temp);
+      // derivable from it (vfs/derivedArt.ts) is drawn as a flat fuchsia square — "this art is
+      // missing", said the way the game says it — rather than as an empty slot, so the ability
+      // or item behind it is still there to see and press. Its greyed twin falls back on the
+      // live art as every missing DIS* does, and so is the same square.
+      const missing = !url && isButtonIcon(path);
+      if (missing) url = MISSING_ICON_URL;
       this.iconCache.set(key, url);
-      if (url && !temp) this.iconSource.set(url, path);
+      if (url && !missing) this.iconSource.set(url, path);
     }
     return url;
   }
@@ -14915,7 +15715,17 @@ export class MapViewerScene {
     // made a client's own base invisible: records, vision, no models.
     for (const sp of this.rts?.drainScriptSpawns() ?? []) {
       const d = this.registry.get(sp.typeId);
-      if (d) void this.spawnUnit(d, sp.x, sp.y, sp.player, sp.team, 0, sp.facing, sp.simId);
+      if (!d) continue;
+      // A STRUCTURE's pathing goes down on this step, not when its model arrives — the cells a
+      // building blocks are world state, and a replay steps through them (spawnUnitNow). Where
+      // the record IS, which a script may already have moved.
+      const u = this.rts?.simWorld.units.get(sp.simId);
+      const fp = u && d.isBuilding && d.pathTex && this.grid ? this.footprintFor(d.pathTex) : null;
+      if (u && fp && !this.rts?.frozenClient) {
+        const placedHasIt = [...this.mapBuildingSplats.values()].some((m) => m.simId === sp.simId);
+        this.stampBuilding(d, sp.simId, u.x, u.y, fp, placedHasIt);
+        void this.spawnUnit(d, sp.x, sp.y, sp.player, sp.team, 0, sp.facing, sp.simId, true);
+      } else void this.spawnUnit(d, sp.x, sp.y, sp.player, sp.team, 0, sp.facing, sp.simId);
     }
     // Bodies owed to records the APPLIER created (item 2c — a client's trained peon, a
     // scouted enemy building coming back into view): the record already exists under the
@@ -15086,8 +15896,11 @@ export class MapViewerScene {
       // It is the Birth clip's event and not "any" A event (playModelBirthSound): the Tornado's
       // model keys its Birth AND its Death, and landed to the sound of dying half the time.
       else if (!s.illusion && this.pointVisible(sx, sy)) this.sounds?.playModelBirthSound(d.model, { x: sx, y: sy, z: this.rts!.groundHeightAt(sx, sy) });
-      void this.spawnUnit(d, sx, sy, s.owner, s.team).then((simId) => {
-        if (simId === null) return;
+      {
+        // Made on THIS step (spawnUnitNow); its Birth clip, and the spawn lock that clip times,
+        // wait for the body (`summonBirth`).
+        const simId = this.spawnUnitNow(d, sx, sy, s.owner, s.team, 0, undefined, (id) => this.summonBirth(id));
+        if (simId === null) continue;
         const su = world.units.get(simId);
         if (su) su.unsummonArt = s.unsummonArt; // how it leaves when its time is up
         if (su && summonLeft > 0) {
@@ -15136,9 +15949,22 @@ export class MapViewerScene {
         if (su && s.foodFree) su.foodFree = true;
         // …and a body split off a hurt one is as hurt (SummonRequest.hpFrac — Dismount).
         if (su && s.hpFrac !== undefined) su.hp = Math.max(1, su.maxHp * s.hpFrac);
-        this.rts!.beginSummonBirth(simId); // materialize (birth clip + spawn lock)
-      });
+      }
     }
+  }
+
+  /**
+   * A summon's body has arrived: materialize it — the Birth clip, and the SPAWN LOCK that clip's
+   * length times (`SimUnit.spawning`). The lock is a fact the sim takes from the MODEL, which
+   * arrives when the browser has fetched it, so a replay carries it as an input (game/replay.ts
+   * `lock`): recorded where it landed, and on playback taken from the file rather than from
+   * whenever the model happens to arrive this time.
+   */
+  private summonBirth(simId: number): void {
+    const rts = this.rts;
+    if (!rts) return;
+    const lock = rts.beginSummonBirth(simId, !this.replayPlayback);
+    if (lock !== null) this.replayRecorder?.push({ k: "lock", unit: simId, secs: lock });
   }
 
   /** Advance the simulation by however much real time has passed since it LAST advanced —
@@ -15160,7 +15986,12 @@ export class MapViewerScene {
    *  to lose: the alternative is a death spiral. (With the background pump running, no
    *  hidden-window backlog builds in the first place — 50 ms of debt is at most 3 steps.) */
   private advanceSim(now: number): void {
-    if (this.paused || this.startHeld) {
+    // A replay SEEK runs through the watcher's own pause (it is going somewhere), but not through
+    // any other: a match the script has stopped — its end — is as far as a seek can go.
+    const seeking = this.replaySeekTo !== null;
+    const stopped = seeking ? this.panelPaused || this.scriptPaused || this.playerPaused || this.waitPaused : this.paused;
+    if (seeking && this.scriptPaused) this.endReplaySeek();
+    if (stopped || this.startHeld) {
       this.simLast = now;
       this.lastSimStep = 0; // no game time passed, so a camera following a group holds too
       // A world held at the gate still ADOPTS: the loading screen's last stretch is the start
@@ -15171,6 +16002,10 @@ export class MapViewerScene {
       // what the init removed is off the screen and the fog is lit before the screen comes
       // down, rather than on the first step after it (RtsController.settleHeld).
       if (this.startHeld) this.rts?.settleHeld();
+      // …and a PAUSED REPLAY is watched with the camera moving: the floating bars, the hover
+      // and every model's fog are built by the entry sync, which only a step runs, so without
+      // this they stay where the last step left them while the watcher pans away.
+      else if (this.replayPlayback) this.rts?.settleHeld();
       return;
     }
     // rAF timestamps and performance.now() share a clock, but a frame's vsync stamp can
@@ -15182,14 +16017,23 @@ export class MapViewerScene {
     // longer step, so the sim behaves identically at every speed and only the cadence moves.
     // The catch-up cap grows with the rate, or Fastest would drop steps on any 60 Hz frame.
     this.simAccum += (dt / 1000) * this.speedRate;
-    const maxSteps = Math.ceil(MAX_STEPS_PER_FRAME * Math.max(1, this.speedRate));
+    // A replay seek owes exactly the steps to its target, and as many of them as one frame's
+    // budget affords — the time it costs is the machine's, not the speed's.
+    if (seeking) this.simAccum = (this.replaySeekTo! - (this.simTick - this.replayTick0) + 0.5) * SIM_DT;
+    const maxSteps = seeking ? Number.MAX_SAFE_INTEGER : Math.ceil(MAX_STEPS_PER_FRAME * Math.max(1, this.speedRate));
     // …and a BOOSTED sim (the Sim Speed cheat, `setSpeedBoost`) is held to a time budget as well
     // as a count: at a few thousand per cent the count alone would let one frame step for
     // seconds and the window would stop answering. `stepCost` is the running cost of one step, so
     // the frame can tell its LAST step in advance and still sync what it draws (`lastStep`).
-    const budgetEnd = this.speedBoost > 1 ? now + MapViewerScene.BOOST_FRAME_MS : Infinity;
+    const budgetEnd = this.speedBoost > 1 || seeking ? now + MapViewerScene.BOOST_FRAME_MS : Infinity;
+    // Silent while it races: a minute of fighting in a tenth of a second is noise, not sound.
+    if (seeking) this.sounds?.setLoadingGate(true);
     let steps = 0;
     while (this.simAccum >= SIM_DT && steps < maxSteps) {
+      // A REPLAY's inputs for this step, from between the frames and the step's start — and a
+      // recorded input landing from here on is stamped inside the step (game/replay.ts).
+      this.stepStage = "pre";
+      this.replayInject(Phase.Pre);
       // A frozen client must not start builds off its own records (option 2): the worker's
       // position is the HOST's answer arriving at the snapshot cadence, and the host runs the real
       // tickPendingBuild — a local start here would mint a local id, which is the
@@ -15206,6 +16050,7 @@ export class MapViewerScene {
       const lastStep = !(this.simAccum - SIM_DT >= SIM_DT && steps + 1 < maxSteps)
         || performance.now() + 2 * this.stepCost >= budgetEnd;
       this.rts?.tick(SIM_DT, lastStep ? this.drawOwed : 0); // sim runs in seconds; advance, then sync before render
+      this.stepStage = "post";
       if (lastStep) this.drawOwed = 0;
       // Engine combat text ages on the SIM clock, like a script's text tags do inside the
       // interpreter — so the F10 menu freezes a crit number in place instead of running it
@@ -15240,10 +16085,19 @@ export class MapViewerScene {
       perfLog.begin("script");
       if (!this.rts?.frozenClient) this.pumpMapScript(SIM_DT); // Phase 7: the map's timers + enter/leave-region triggers
       perfLog.end("script");
+      this.replayInject(Phase.Post);
       this.simTick++;
+      this.stepStage = null;
+      this.replayStepDone();
       this.simAccum -= SIM_DT;
       steps++;
       this.stepCost = this.stepCost * 0.9 + (performance.now() - stepAt) * 0.1;
+      // A REPLAY that has just reached the end of its recording stops ON that step: the steps
+      // this frame still owed are past the last input anybody gave (a raced replay owes dozens).
+      if (this.replayPlayback && this.replayPaused && !seeking) {
+        this.simAccum = 0;
+        break;
+      }
       // Out of budget (a boosted sim only): the owed steps are dropped like a clamped frame's.
       if (lastStep && budgetEnd !== Infinity && performance.now() + 2 * this.stepCost >= budgetEnd) {
         this.simAccum = 0;
@@ -15251,6 +16105,7 @@ export class MapViewerScene {
       }
     }
     perfLog.tally("simSteps", steps);
+    if (seeking && this.replaySeekTo !== null && this.simTick - this.replayTick0 >= this.replaySeekTo) this.endReplaySeek();
     // Steps the frame could not afford. A sim falling behind wall time is the difference
     // between "the game is slow" and "the game is slow AND running in slow motion".
     if (steps === maxSteps) perfLog.tally("simClamped");
@@ -15443,8 +16298,11 @@ export class MapViewerScene {
   setGameSpeed(speed: GameSpeed): void {
     const was = this.speed;
     this.speed = speed;
-    this.speedRate = gameSpeedRate(speed) * this.speedBoost;
-    if (was !== speed) this.matchLog?.event(`game speed ${gameSpeedLabel(speed, null)}`);
+    this.speedRate = gameSpeedRate(speed) * this.speedBoost * this.replaySpeed;
+    if (was !== speed) {
+      this.matchLog?.event(`game speed ${gameSpeedLabel(speed, null)}`);
+      this.replayRecorder?.push({ k: "speed", speed, boost: this.speedBoost });
+    }
   }
 
   /**
@@ -15456,12 +16314,14 @@ export class MapViewerScene {
    * Single player only, like every cheat (`cheatsAllowed`). Answers the factor now in force.
    */
   setSpeedBoost(factor: number): number {
-    if (!this.cheatsAllowed || !Number.isFinite(factor)) return this.speedBoost;
+    // …and a REPLAY's watcher may race it too: the pace changes nothing about the match.
+    if ((!this.cheatsAllowed && !this.replayPlayback) || !Number.isFinite(factor)) return this.speedBoost;
     const next = Math.max(1, Math.min(MapViewerScene.MAX_SPEED_BOOST, factor));
     if (next === this.speedBoost) return next;
     this.speedBoost = next;
-    this.speedRate = gameSpeedRate(this.speed) * this.speedBoost;
+    this.speedRate = gameSpeedRate(this.speed) * this.speedBoost * this.replaySpeed;
     this.matchLog?.event(`sim speed ${Math.round(next * 100)}% (cheat)`);
+    this.replayRecorder?.push({ k: "speed", speed: this.speed, boost: next });
     return this.speedBoost;
   }
 
@@ -15584,6 +16444,7 @@ export class MapViewerScene {
       // to DRAW come from the same instant of game time.
       this.advanceSim(t);
       this.tickMatchLog(); // the match's record (src/game/matchLog.ts) — once a game-second
+      this.tickInputTrack(); // this player's camera, cursor and selection (game/inputTrack.ts)
       // **How much time the WORLD is worth this frame — zero while it is stopped.**
       //
       // A pause used to stop the SIM and nothing else: units held their ground while their
@@ -15683,6 +16544,12 @@ export class MapViewerScene {
           const widget = this.removeNodeVisual(mine.id, mine.x, mine.y, map.units as unknown as HideableWidget[]);
           this.splats?.remove(`m${mine.id}`); // drop the mine's ground texture
           this.collapseGoldMine(mine, widget);
+        }
+        // …and a mine a SCRIPT removed (RemoveUnit on its handle — SimWorld.removeMine) simply
+        // goes: its body, its footprint and its ground texture, with no Death and no dust.
+        for (const mine of world.drainRemovedMines()) {
+          this.removeNodeVisual(mine.id, mine.x, mine.y, map.units as unknown as HideableWidget[]);
+          this.splats?.remove(`m${mine.id}`);
         }
         // The news the engine announces by itself — a raid, a hero lost, a mine running out
         // (see SimWorld.Alert). Drained before the completion cues so that if a Town Hall
@@ -16205,6 +17072,7 @@ export class MapViewerScene {
     // dev server render its digest beside it.
     perfLog.close();
     this.closeMatchLog();
+    this.closeReplay();
     this.speedBoost = 1;
     setSimProfiler(null);
     this.metrics.hide();
@@ -16393,7 +17261,6 @@ export class MapViewerScene {
     this.bloodMageSpheres.clear();
     this.bloodMageSpheresLoading.clear();
     this.placement = null;
-    this.buildSpawning.clear();
     this.buildWait.clear();
     this.cursorSheet = null;
     this.reticleImgs.clear();
@@ -17283,9 +18150,20 @@ export class MapViewerScene {
     // to ride, a shake. It runs AFTER the player's input so a cinematic wins, and it lets go
     // of each field the moment that field's blend lands. `dtMs` is MILLISECONDS (the frame
     // loop's clock); every duration in a JASS camera call is SECONDS.
-    if (this.scriptCam.active) {
+    //
+    // …and it is GAME time: a camera blend is timed by the same script that times the fade
+    // beside it, so it stands still wherever the world does — paused, and above all HELD AT
+    // THE GATE. Map initialization runs while the loading screen is still waiting for its
+    // key, and Monolith's intro starts there: `CameraSetupApplyForPlayer(…, 0)` then
+    // `ResetToGameCameraForPlayer(…, 6)` beside a 6-second fade. Aged on the frame clock, the
+    // six seconds were spent behind the loading screen, so the shot was already the plain game
+    // camera when the screen came down and the fade then darkened a camera that never moved —
+    // the intro read as "the screen just goes black". Still the frame's own `dt` (scaled to
+    // the game speed) rather than the sim's stepped seconds, so the blend stays smooth on a
+    // 144 Hz screen where half the frames step no sim tick at all.
+    if (this.scriptCam.active && !this.paused && !this.startHeld) {
       const cam = this.readCamera();
-      this.scriptCam.update(Math.min(dtMs, 100) / 1000, cam, (id) => {
+      this.scriptCam.update((Math.min(dtMs, 100) / 1000) * this.speedRate, cam, (id) => {
         const u = this.rts?.simView.units.get(id);
         return u ? { x: u.x, y: u.y } : null;
       });

@@ -38,7 +38,7 @@ const EXPECTED = [
   "addHeroXp", "addToStock", "createBlightedGoldMine", "createItem", "enumItems",
   "getHeroSkillPoints", "getHeroXp", "getResourceAmount", "killUnit", "removeUnit",
   "getTimeOfDay", "getUnitAbilityLevel", "getUnitAcquireRange", "getUnitFacing", "getUnitFlyHeight", "getUnitLevel",
-  "getUnitMoveSpeed", "getUnitState", "getUnitX", "getUnitY",
+  "getUnitMoveSpeed", "getUnitState", "getUnitTurnSpeed", "getUnitX", "getUnitY",
   "isDawnDuskEnabled", "isPointBlighted", "setBlight", "isUnitPaused", "itemInfo",
   "modifySkillPoints", "pauseUnit", "playerTechCount", "removeFromStock", "removeItem",
   "resetUnitCooldown", "selectHeroSkill", "setAllTypeSlots", "setDawnDusk", "setHeroLevel",
@@ -48,7 +48,7 @@ const EXPECTED = [
   "getHeroAttribute", "setHeroAttribute", "suspendHeroXp",
   // …and `UnitDamageTarget`, which is how a custom map's spells deal damage at all
   // (pass 2; sim-trigger-damage-test.cjs).
-  "damageTarget",
+  "damageTarget", "drainHeroEvents", "drainItemEvents",
   // …and the natives the rebalance maps reach only through blizzard.j: the area blast, the
   // way DOWN a hero's levels, the experience rate, a paused clock, the twelve classifications a
   // script may change, the buff filters, a laid corpse and the cliff layer
@@ -200,11 +200,14 @@ check("createBlightedGoldMine returns a script handle", hooks.createBlightedGold
 check("…which resolves back to that mine", hooks.getResourceAmount(hooks.createBlightedGoldMine(0, 1510, 1710, 0)), 500);
 check("…and -1 when nothing is in range", hooks.createBlightedGoldMine(0, 90000, 90000, 0), -1);
 
-// RemoveUnit must REFUSE a mine handle. A mine is not a sim unit, so sim.removeUnit could not
-// take it off the map anyway — but the only caller that tries is the Undead start's mine swap,
-// which puts one straight back, so leaving it standing IS the swap. Spying on the sim rather
-// than driving it, because what is being checked is the routing, not SimWorld.removeUnit.
-console.log("\nRemoveUnit refuses a gold mine, and reaches the sim for anything else");
+// RemoveUnit on a mine handle takes the MINE off the map — through the mine table, never
+// sim.removeUnit, since a mine is not a sim unit. A map may clear a mine for good: Monolith's
+// "Empty Player" removes the mine on every empty start and stands a random neutral building
+// there, and while this was a no-op that building went up INSIDE the mine. Blizzard.j's Undead
+// swap (BlightGoldMineForPlayerBJ) removes and then CreateBlightedGoldmine-s at the same x/y,
+// and must get the very same mine back — same handle, same gold. Spying on the sim's unit
+// removal, because what is being checked is the routing, not SimWorld.removeUnit.
+console.log("\nRemoveUnit takes a gold mine off the map, and reaches the sim for anything else");
 const removed = [];
 const killed = [];
 const realRemove = world.removeUnit.bind(world);
@@ -215,7 +218,15 @@ const spyHooks = simHooks(world, teamOf);
 
 spyHooks.removeUnit(mineHandle);
 check("a mine handle does not reach sim.removeUnit", removed, []);
-check("…and the mine is still standing", !!world.mines.get(3), true);
+check("…but the mine is gone from the map", world.mines.has(3), false);
+check("…and goes quietly: not a collapse", world.drainDepletedMines().length, 0);
+check("a blighted create at the SAME point gets that mine back", spyHooks.createBlightedGoldMine(0, 1500, 1700, 0), mineHandle);
+check("…standing again, with its gold", world.mines.get(3)?.gold, 500);
+check("…and nothing left for the renderer to take down", world.drainRemovedMines().length, 0);
+spyHooks.removeUnit(mineHandle);
+check("a mine removed for good is handed to the renderer once", world.drainRemovedMines().map((m) => m.id), [3]);
+check("…after which no create can bring it back", world.restoreRemovedMine(1500, 1700), undefined);
+world.mines.set(3, { id: 3, x: 1500, y: 1700, radius: 64, gold: 500, busy: false, busyBy: 0, entangledBy: 0 }); // for the checks below
 spyHooks.removeUnit(3);
 check("a real unit id does reach it", removed, [3]);
 spyHooks.killUnit(3);
@@ -252,11 +263,12 @@ const ah = authorityHooks({
   foodCapCeilingOf: (p) => authority.foodCapCeilingOf(p),
   currentOrderId: (id) => authority.currentOrderId(id),
   issueUnitOrder: (...a) => authority.issueUnitOrder(...a),
+  issueNeutralOrder: (...a) => authority.issueNeutralOrder(...a),
   createScriptUnit: (...a) => { created.push(a); return 909; },
   restoreScriptUnit: (...a) => { restored.push(a); return 910; },
 });
 check("authorityHooks holds the resource, order and create natives", Object.keys(ah).sort(),
-  ["createUnit", "getPlayerState", "getUnitCurrentOrder", "issueNeutralImmediateOrder", "issueUnitOrder", "restoreUnit", "setPlayerState"]);
+  ["createUnit", "getPlayerState", "getUnitCurrentOrder", "issueNeutralImmediateOrder", "issueNeutralOrder", "issueUnitOrder", "restoreUnit", "setPlayerState"]);
 
 // RestoreUnit is a CREATE — the game cache only says what to make (docs/campaigns.md) — so it
 // is here beside CreateUnit rather than in the pure-world half, and it is synchronous for the
@@ -350,6 +362,28 @@ const m2 = vh.createFogModifier(1, 4, rect);
 check("modifier ids are distinct across players", m1 !== m2, true);
 check("…and are not per-viewpoint counters starting at the same number", [m1, m2], [1, 2]);
 
+// `afterUnits` (every native's last argument) decides whether a modifier is laid UNDER the
+// units' own sight or OVER it. Every BJ passes false. (4)Monolith marks each Monolith with a
+// FOGGED one to show where it stands; laid over unit sight, it blinded the army beside it, which
+// then never acquired the Monolith and no computer ever damaged one.
+console.log("\nafterUnits: a modifier under unit sight, or over it");
+const vp0 = vset.viewpointFor(0);
+const regs = () => vset.modifiers.values();
+visionWorld.units.set(901, { id: 901, owner: 0, team: 0, x: 600, y: 600, sightDay: 400, sightNight: 400, flying: false, hp: 100, neutralPassive: false });
+const fogUnder = vh.createFogModifier(0, 2, { kind: "circle", x: 640, y: 640, radius: 128 }, false);
+vh.fogModifierStart(fogUnder);
+vp0.rebuild(regs());
+check("afterUnits=false: the unit still SEES the spot the FOGGED modifier covers", vh.isPointVisibleTo(0, 640, 640), true);
+vh.destroyFogModifier(fogUnder);
+const fogOver = vh.createFogModifier(0, 2, { kind: "circle", x: 640, y: 640, radius: 128 }, true);
+vh.fogModifierStart(fogOver);
+vp0.rebuild(regs());
+check("afterUnits=true: the modifier wins over the unit's sight", vh.isPointVisibleTo(0, 640, 640), false);
+check("…and the spot reads as fogged", vh.isPointFoggedTo(0, 640, 640), true);
+vh.destroyFogModifier(fogOver);
+visionWorld.units.delete(901);
+vp0.rebuild(regs());
+
 console.log("\nFogEnable is global, not local-only  (the bug seating exposed)");
 check("fog starts enabled", vh.isFogEnabled(), true);
 vh.fogEnable(false);
@@ -404,13 +438,26 @@ check("a mine is a STRUCTURE", roster.isUnitType(MINE_ID_BASE + 3, 2), true);
 check("…and GROUND", roster.isUnitType(MINE_ID_BASE + 3, 4), true);
 check("…and not DEAD", roster.isUnitType(MINE_ID_BASE + 3, 1), false);
 
-// isUnitAlly is a TEAM question and must use the injected seating, not the slot number.
+// isUnitAlly asks the ALLIANCE MATRIX about the unit's owner, and falls back on the injected
+// seating (never the slot number) only where no matrix is installed — this world has none.
 // Players 0 and 1 are both on team 7 in TEAMS above; player 2 is on 9.
 world.units.set(77, { id: 77, owner: 0, team: 7, hp: 100 });
 check("a unit on my team is an ally", roster.isUnitAlly(77, 1), true);
 check("…and one on another team is not", roster.isUnitAlly(77, 2), false);
 world.units.set(78, { id: 78, owner: 12, team: -1, hp: 100 }); // neutral hostile
 check("neutral hostile (team -1) is nobody's ally", roster.isUnitAlly(78, 0), false);
+// …and WITH a matrix the matrix decides, whatever the team numbers say. This is DotA's army
+// computer: a player the lobby never seats (so its "team" is its own slot) that the script
+// allied to its heroes with SetPlayerAlliance alone.
+{
+  const before = world.alliedPlayers;
+  world.alliedPlayers = (a, b) => (a === 0 && b === 2) || (a === 2 && b === 0);
+  check("the matrix makes an ally of another team's player", roster.isUnitAlly(77, 2), true);
+  check("…and an enemy of a team-mate it does not list", roster.isUnitAlly(77, 1), false);
+  check("…a unit is always its own owner's ally", roster.isUnitAlly(77, 0), true);
+  check("…and neutral hostile is still nobody's", roster.isUnitAlly(78, 0), false);
+  world.alliedPlayers = before;
+}
 
 console.log("\nthe count natives are what MeleeInitVictoryDefeat reads");
 world.units.set(80, { id: 80, owner: 5, team: 0, hp: 100, building: { constructionLeft: 0 }, typeId: "hkee" });

@@ -345,6 +345,21 @@ export function registerWorldNatives(rt: Runtime): void {
   def(rt, "IssueTargetOrder", (c, a) => byName(c, a[0], a[1], "target", 0, 0, a[2]));
   def(rt, "IssueTargetOrderById", (c, a) => byId(c, a[0], a[1], "target", 0, 0, a[2]));
 
+  // IssueNeutral*Order(forWhichPlayer, neutralStructure, order, …): an order to a building that
+  // is not the player's, on the player's behalf — a purchase (Authority.issueNeutralOrder).
+  // The by-NAME form takes a unit's or item's name-as-order, which is `UnitId`'s vocabulary
+  // rather than `OrderId`'s; nothing in the corpus uses it and it answers false.
+  const neutral = (c: NativeCtx, a: JassValue[], kind: "immediate" | "point" | "target"): JassValue => {
+    const p = c.rt.data<JassPlayer>(a[0]);
+    const shop = unit(c, a[1]);
+    if (!p || !shop || shop.simId < 0) return jBool(false);
+    return jBool(c.rt.hooks?.issueNeutralOrder?.(p.index, shop.simId, asInt(a[2]), kind) ?? false);
+  };
+  def(rt, "IssueNeutralImmediateOrderById", (c, a) => neutral(c, a, "immediate"));
+  def(rt, "IssueNeutralPointOrderById", (c, a) => neutral(c, a, "point"));
+  def(rt, "IssueNeutralTargetOrderById", (c, a) => neutral(c, a, "target"));
+  for (const name of ["IssueNeutralImmediateOrder", "IssueNeutralPointOrder", "IssueNeutralTargetOrder"]) def(rt, name, () => jBool(false));
+
   // Order id ↔ string vocabulary (OrderId/String2OrderId → int, OrderId2String → string).
   def(rt, "OrderId", (_c, a) => jInt(orderIdOf(orderStr(a[0]))));
   def(rt, "String2OrderId", (_c, a) => jInt(orderIdOf(orderStr(a[0]))));
@@ -398,6 +413,12 @@ export function registerWorldNatives(rt: Runtime): void {
   def(rt, "GetUnitY", (c, a) => ({ k: "real", n: liveNum(c, unit(c, a[0]), (h, id) => h.getUnitY?.(id), (u) => u.y) }));
   def(rt, "GetUnitFacing", (c, a) => ({ k: "real", n: liveNum(c, unit(c, a[0]), (h, id) => rad2deg(h.getUnitFacing?.(id)), (u) => u.facing) }));
   def(rt, "GetUnitMoveSpeed", (c, a) => ({ k: "real", n: liveNum(c, unit(c, a[0]), (h, id) => h.getUnitMoveSpeed?.(id), () => 0) }));
+  // The live 0..1 `turnRate` SetUnitTurnSpeed writes. With no live value (the handle has no sim
+  // unit, or the sim has dropped it) the type's own rate answers, as GetUnitDefaultTurnSpeed
+  // does; with no engine attached at all there is no type table either, and it is 0.
+  def(rt, "GetUnitTurnSpeed", (c, a) => jReal(liveNum(c, unit(c, a[0]),
+    (h, id) => h.getUnitTurnSpeed?.(id),
+    (u) => c.rt.hooks?.unitTypeDefault?.(u.typeId, "turnRate") ?? 0)));
   def(rt, "GetUnitFlyHeight", (c, a) => ({ k: "real", n: liveNum(c, unit(c, a[0]), (h, id) => h.getUnitFlyHeight?.(id), () => 0) }));
   // A `location` handle for the unit's LIVE position. Locations are the currency of the
   // BJ layer: "pick every unit within 600 of <unit>" compiles to
@@ -549,17 +570,6 @@ export function registerWorldNatives(rt: Runtime): void {
     if (u && u.simId >= 0) c.rt.hooks?.wakeUnit?.(u.simId);
     return JNULL;
   });
-  // IssueNeutralImmediateOrderById(forWhichPlayer, whichUnit, unitId) — "go use the neutral unit
-  // of THAT TYPE": the shop cases are written this way ('h085' is a DotA shop type), because a
-  // neutral shop is nobody's and a plain order would be refused. Handled by the authority,
-  // which knows which shop serves whom.
-  def(rt, "IssueNeutralImmediateOrderById", (c, a) => {
-    const u = unit(c, a[1]);
-    if (!u || u.simId < 0) return jBool(false);
-    const player = c.rt.data<JassPlayer>(a[0])?.index ?? asInt(a[0]);
-    return jBool(c.rt.hooks?.issueNeutralImmediateOrder?.(player, u.simId, intToRawcode(asInt(a[2]))) ?? false);
-  });
-
   // SelectUnit(u, flag) / ClearSelection — the script drives the player's SELECTION (7.24).
   // A cinematic clears it on the way in (nothing should stay ringed and command-carded while
   // the camera flies), and a hero-pick map selects the hero it just handed you.

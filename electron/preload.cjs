@@ -92,6 +92,33 @@ contextBridge.exposeInMainWorld("ow3native", {
     append: (id, text) => ipcRenderer.send("ow3:log-append", String(id), String(text ?? "")),
     end: (id) => ipcRenderer.invoke("ow3:log-end", String(id)),
   },
+  /**
+   * REPLAYS (src/game/replay.ts, issue #158): `replays/` in the data folder. `saveLast` writes the match
+   * that just ended as LastReplay, `keepLast(name)` copies it under a name, `list()` and
+   * `read(name)` are the View Replay screen's, `remove(name)` the Save Replay panel's Delete. Names only — the shell picks the folder.
+   */
+  replays: {
+    saveLast: (bytes, keep) => ipcRenderer.invoke("ow3:replay-save-last", bytes, keep ? String(keep) : undefined),
+    keepLast: (name) => ipcRenderer.invoke("ow3:replay-keep", String(name ?? "")),
+    list: () => ipcRenderer.invoke("ow3:replay-list"),
+    read: (name) => ipcRenderer.invoke("ow3:replay-read", String(name ?? "")),
+    remove: (name) => ipcRenderer.invoke("ow3:replay-delete", String(name ?? "")),
+    /** Another version's replay (electron/replayBundles.mjs): `{ size, usable }` when that
+     *  version published replay files, or null. */
+    bundleInfo: (version) => ipcRenderer.invoke("ow3:replay-bundle-info", String(version ?? "")),
+    /** Watch a replay in the version that recorded it: downloads that version's replay files
+     *  (`onProgress({ received, total })`), and opens them in a window of their own with the
+     *  options handed here. Resolves when that window is up. */
+    watchVersion: async (request, onProgress) => {
+      const handler = (_event, progress) => onProgress?.(progress);
+      ipcRenderer.on("ow3:replay-bundle-progress", handler);
+      try {
+        return await ipcRenderer.invoke("ow3:replay-watch-version", request);
+      } finally {
+        ipcRenderer.off("ow3:replay-bundle-progress", handler);
+      }
+    },
+  },
   /** Keep a map a LAN game handed us, in the install's Maps\Download\ (src/assets/downloadedMaps.ts).
    *  The page names a FILE, never a folder: the shell puts it in that one folder or nowhere. */
   saveMap: (name, bytes) => ipcRenderer.invoke("ow3:map-save", String(name), bytes),
@@ -152,6 +179,7 @@ contextBridge.exposeInMainWorld("ow3native", {
    */
   update: {
     state: () => ipcRenderer.invoke("ow3:update-state"),
+    check: () => ipcRenderer.invoke("ow3:update-check"),
     download: () => ipcRenderer.invoke("ow3:update-download"),
     install: () => ipcRenderer.invoke("ow3:update-install"),
     onChange: (fn) => {

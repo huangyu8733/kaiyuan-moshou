@@ -29,6 +29,7 @@ import { HERO_LEVEL_FX_OVERHANG, HeroLevelFx } from "./heroLevelFx";
 import { MODAL_FX_OVERHANG, ModalButtonFx } from "./modalButtonFx";
 import { anyModalOpen } from "./modal";
 import { ObserverHud, OBS, clock as matchClockText, type ObserverSeat } from "./observerHud";
+import { REPLAY_SPEEDS } from "./replayPanel";
 import { gridCommandKey, gridCommandSlot, gridHotkeys, gridInventoryKey, gridInventorySlot, hotkeyMode, hotkeysOnButtons } from "../data/hotkeys";
 
 /** Which upkeep band a food count falls in: 0 none, 1 low, 2 high — at the bands of this match
@@ -46,6 +47,13 @@ export type ResourceKind = "gold" | "lumber" | "supply" | "upkeep";
 function printf(fmt: string, args: Array<string | number>): string {
   let i = 0;
   return fmt.replace(/%%|%[sd]/g, (m) => (m === "%%" ? "%" : String(args[i++] ?? "")));
+}
+
+/** The day/night clock as `TIME_OF_DAY_TOOLTIP`'s `%s` prints it: game hours as `H:MM`, the hour
+ *  unpadded and the minutes padded ("8:18" on the real 1.30.4 client, issue #245). */
+export function clockText(hour: number): string {
+  const total = Math.floor((((hour % 24) + 24) % 24) * 60);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
 /** The band's label, as the resource bar prints it: `UPKEEP_NONE`/`_LOW`/`_HIGH`, which carry
@@ -336,6 +344,9 @@ export interface HudDriver {
   isObserver(): boolean;
   /** The observer's Auto Camera (game/autoCamera.ts): whether it is on, and the switch. */
   autoCamera(): boolean;
+  /** WATCHING A REPLAY: the replay panel's controls (issue #158, ui/replayPanel.ts). Null in a
+   *  live match. */
+  replayControls(): import("./replayPanel").ReplayControls | null;
   setAutoCamera(on: boolean): void;
   /** The observer HUD (issue #168, ui/observerHud.ts): every watched seat — its bank, food,
    *  APM, heroes, production, army and upgrades — in seat order. Empty for a player. */
@@ -1011,6 +1022,8 @@ const CHAT_AREA = {
 const FONT_HEIGHTS = {
   /** "single line of error text that appears above the console" — the gold refusal line. */
   WorldFrameMessage: 0.015,
+  /** "large upkeep text that appears below the time of day indicator" (`showUpkeep`). */
+  WorldFrameTopMessage: 0.024,
   /** "small text that is used for in-game trigger based dialog" — the message area. */
   WorldFrameUnitMessage: 0.015,
   /** "in-game chat text" — what a received chat line is drawn at, in that same area. */
@@ -1054,23 +1067,26 @@ const FONT_HEIGHTS = {
  * So only 4 of the band's 16 texels carry ink and only 2 of those are opaque — which is why
  * the real client's frame reads as a THIN gold rule even though the nine-patch is wide.
  *
- * `band` is **measured off the reference shot**, against the type rather than in pixels (the
- * only scale-invariant thing in a screenshot): there, the corner arc's radius is a little over
- * half the cap height of the title beside it, i.e. ~0.55 em, and the band IS the arc. The bnet
- * twin's `BackdropCornerSize 0.016` is 2.4× that and was tried — it draws a fat rounded frame
+ * `band` is **fitted to the real client's pixels**. It was first read off the arc against the
+ * type (~0.55 em, 0.0067), which drew the rule visibly THINNER than the original: a 1.30.4 shot
+ * at 2000×1500 (issue #245's Time of Day slab) fits the tile's own alpha/colour profile at
+ * **1.6 px per texel on all three edges it shows** — a 3-pixel gold rule between two dark ones —
+ * and ours, re-rendered at candidate bands and fitted the same way, lands there at 0.0093 (the
+ * fit reads 1.52 at 0.0089 and 1.65 at 0.0096). So the band is ~0.84 em, not 0.55. The bnet
+ * twin's `BackdropCornerSize 0.016` is 1.7× that and was tried — it draws a fat rounded frame
  * nothing like the reference. Which figures: that frame dresses a 0.18 × 0.2 CONTEXT MENU, and
  * 0.016 is exactly the tile at 1:1 on a 600-tall screen, so it is the art's own resolution
  * rather than a statement about the tooltip. The tooltip draws the same tile smaller.
  */
 const TOOLTIP_BOX = {
-  /** The band — the tile's 16 texels drawn at this height, so the visible stroke is a quarter
-   *  of it. ~0.55 em against ToolTipDesc, which is where the reference shot puts the arc. */
-  band: 0.0067,
+  /** The band — the tile's 16 texels drawn at this height, so the gold is an eighth of it and
+   *  the ink a quarter. Fitted to the real client's pixels (above): 1.6 px/texel at 1500 tall. */
+  band: 0.0093,
   /** `BackdropBackgroundInsets` in spirit — how far inside the frame's OUTER edge the fill
-   *  starts, so the fill underlaps the band and the flat slate sits BEHIND the gold stroke
-   *  instead of leaving a hairline of map showing through it. Scaled to our band from the bnet
-   *  twin's 0.005-against-0.016, i.e. a bit under a third of it. */
-  bgInset: 0.002,
+   *  starts, so the fill underlaps the band's inner half. A third of the band, as the bnet
+   *  twin's 0.005-against-0.016 is, and as the same 1.30.4 shot shows: the slate starts just
+   *  under the inner dark texel, with the map darkened between it and the gold. */
+  bgInset: 0.003,
   /** Text inset from the FILL's edge. The bnet twin anchors its first label 0.0095 in from the
    *  frame corner; the reference shot's text clears the stroke by about the stroke's own width
    *  again, which is what this is. */
@@ -1126,7 +1142,6 @@ const CHAT_BAR = {
   width: 0.4,
   height: 0.029,
   bottom: 0.142,
-  border: 0.004, // the gold frame's drawn thickness
   padX: 0.004, // the prompt's inset from the frame (measured: 6px of a 1532 px/unit shot)
 } as const;
 
@@ -1141,6 +1156,15 @@ const MSG_DEFAULT_SECS = 12; // how long an untimed DisplayTextToPlayer line lin
 // is no FDF for CChatDisplay — see CHAT_AREA). Kept in step with `.hud-chatline.fading`.
 const CHAT_FADE_SECS = 1;
 const ERROR_SECS = 2.5; // how long the gold command-error line above the console holds
+/**
+ * The big upkeep line under the clock (`showUpkeep`) — MiscUI.txt [FontHeights]
+ * `WorldFrameTopMessage`, "large upkeep text that appears below the time of day indicator".
+ * Like the tooltip, it is a programmatic frame: the type size is the file's, the rest is not.
+ * `top` is MEASURED off a shot of the real 1.30.4 client at 4:3 (the "Low Upkeep" line's centre
+ * sits 0.062 of the 0.6-tall UI space down from the top, so a 0.024 line box starts at 0.050);
+ * `secs` — how long it holds before fading — is OURS, nothing states it.
+ */
+const TOP_MESSAGE = { top: 0.05, secs: 3 } as const;
 
 /** Escape HTML, then translate WC3 text colour codes to spans: `|cAARRGGBB…|r`
  *  wraps a coloured run (alpha ignored), `|n`/`|N` is a line break, `||` a literal
@@ -1344,11 +1368,19 @@ function bakeStatBarFill(fill: HTMLCanvasElement, tint: readonly number[], rows 
   return out.toDataURL();
 }
 
+/** How opaque the tooltip slate is drawn. OURS, and deliberately above the texture's own
+ *  195/255 (0.765): the developer's call (2026-11-13) — with our brighter, not-yet-fixed-function
+ *  map behind it (docs/lighting.md) the BLP's alpha let too much terrain through every slab, hint
+ *  and observer panel. The COLOUR stays the texture's. See docs/tooltips.md. */
+const TOOLTIP_FILL_ALPHA = 0.9;
+
 /** The tooltip fill is a flat colour stored as a 64×64 texture — read its one pixel
- *  rather than hardcoding it. (Measured: rgba(24, 34, 49, 195).) */
+ *  rather than hardcoding it. (Measured: rgba(24, 34, 49, 195).) Its alpha is replaced
+ *  by TOOLTIP_FILL_ALPHA, never lowered below the texture's own. */
 function tooltipFill(bg: HTMLCanvasElement): string | null {
   const p = bg.getContext("2d")!.getImageData(0, 0, 1, 1).data;
-  return `rgba(${p[0]}, ${p[1]}, ${p[2]}, ${(p[3] / 255).toFixed(3)})`;
+  const alpha = Math.max(p[3] / 255, TOOLTIP_FILL_ALPHA);
+  return `rgba(${p[0]}, ${p[1]}, ${p[2]}, ${alpha.toFixed(3)})`;
 }
 
 /** Crop war3mapMap.blp down to the map itself.
@@ -1556,6 +1588,8 @@ export class GameHud {
   // The gold error line just above the console (WC3's SimpleMessage frame).
   private errLine!: HTMLDivElement;
   private errTimer = 0;
+  private topLine!: HTMLDivElement;
+  private topTimer = 0;
 
   constructor(parent: HTMLElement, private driver: HudDriver) {
     this.root = document.createElement("div");
@@ -1605,6 +1639,7 @@ export class GameHud {
       this.buildChatBar(),
       this.buildVoice(),
       this.buildErrorLine(),
+      this.buildTopMessage(),
     );
     parent.appendChild(this.root);
     this.applyWidgetSkin();
@@ -1810,6 +1845,7 @@ export class GameHud {
       this.refreshStatTooltip(); // at the panel's own rate: it reads the numbers the panel just drew
       this.refreshQueueTooltip(); // …and so does the queue's: a finished job shifts the slots under the cursor
       this.refreshMealTooltip(); // …and a Devour meal's, whose health runs down and which can be digested under it
+      if (this.clockTip) this.showClockTip(true); // …and the medallion's, whose clock runs under a still cursor
     }
     // A live ping PULSES, so while one is up the minimap redraws every frame instead of at
     // the 10 Hz the static dots are content with.
@@ -1973,6 +2009,20 @@ export class GameHud {
       e.preventDefault();
       this.driver.cycleIdleWorker();
       this.refreshSelectionNow();
+      return;
+    }
+    // WATCHING A REPLAY: the game's own replay keys, as `REPLAY_TOOLTIP_*` name them — Pause
+    // pauses, "+" and "-" step the speed (ui/replayPanel.ts). A watcher has no army for "-".
+    const replay = this.driver.replayControls();
+    if (replay && (e.key === "Pause" || e.key === "+" || e.key === "=" || e.key === "-")) {
+      e.preventDefault();
+      const st = replay.state();
+      if (e.key === "Pause") replay.setPaused(!st.paused);
+      else {
+        const i = Math.max(0, REPLAY_SPEEDS.indexOf(st.speed as (typeof REPLAY_SPEEDS)[number]));
+        const next = REPLAY_SPEEDS[Math.max(0, Math.min(REPLAY_SPEEDS.length - 1, i + (e.key === "-" ? -1 : 1)))];
+        replay.setSpeed(next);
+      }
       return;
     }
     // "-" selects the whole army (issue #131). Read off `e.key` rather than `e.code`, so the
@@ -2321,7 +2371,6 @@ export class GameHud {
     this.chatBar.style.width = uiPx(CHAT_BAR.width);
     this.chatBar.style.height = uiPx(CHAT_BAR.height);
     this.chatBar.style.bottom = uiPx(CHAT_BAR.bottom);
-    this.chatBar.style.setProperty("--chat-border", uiPx(CHAT_BAR.border));
     this.chatBar.style.setProperty("--chat-pad", uiPx(CHAT_BAR.padX));
     this.chatPromptEl = document.createElement("span");
     this.chatPromptEl.className = "hud-chat-prompt";
@@ -2577,6 +2626,32 @@ export class GameHud {
     void this.errLine.offsetWidth; // restart the fade-in animation on a repeat error
     this.errLine.classList.add("hud-error-on");
     this.errTimer = window.setTimeout(() => this.errLine.classList.remove("hud-error-on"), ERROR_SECS * 1000);
+  }
+
+  /** The engine's `WorldFrameTopMessage`: one large centred line under the time-of-day
+   *  indicator, replaced — never stacked — by the next. Its one tenant is the upkeep band. */
+  private buildTopMessage(): HTMLDivElement {
+    this.topLine = document.createElement("div");
+    this.topLine.className = "hud-top-message";
+    return this.topLine;
+  }
+
+  /** Crossing an upkeep bracket: the real client prints the band's OWN label — the same
+   *  `UPKEEP_NONE`/`_LOW`/`_HIGH` string the resource bar shows, colour code and all, so a
+   *  map's war3mapSkin.txt rename reaches it too — large, under the clock (TOP_MESSAGE). */
+  showUpkeep(band: 0 | 1 | 2): boolean {
+    if (this.driver.isObserver()) return false; // a watcher has no food and no upkeep
+    clearTimeout(this.topTimer);
+    // Our match clock (not the 1.30.4 console's) sits under the medallion too, right where the
+    // real line starts; with it up, the line drops just clear of it rather than over it.
+    const clock = this.matchClock && !this.matchClock.hidden ? OBS.time + OBS.score.font * 1.3 : 0;
+    this.topLine.style.top = uiPx(Math.max(TOP_MESSAGE.top, clock));
+    this.topLine.innerHTML = wc3ToHtml(this.driver.uiString(UPKEEP_KEY[band], UPKEEP_FALLBACK[band]));
+    this.topLine.classList.remove("hud-top-message-on");
+    void this.topLine.offsetWidth; // restart the fade on a quick second crossing
+    this.topLine.classList.add("hud-top-message-on");
+    this.topTimer = window.setTimeout(() => this.topLine.classList.remove("hud-top-message-on"), TOP_MESSAGE.secs * 1000);
+    return true;
   }
 
   /** Clear every on-screen message (the ClearTextMessages action). The chat display is left
@@ -3960,10 +4035,37 @@ export class GameHud {
         s("RESOURCE_UBERTIP_UPKEEP", "Upkeep is determined by the amount of food your forces are currently using.") + lines);
     }
     this.resourceTip = true;
+    this.clockTip = false;
     this.setTooltip(html);
   }
   /** The slab on display is a resource bar's (so leaving the bar hides it, and nothing else). */
   private resourceTip = false;
+
+  /**
+   * The slab for a hover over the day/night medallion (reported by `ConsoleUi`; false when it
+   * leaves), drawn where the resource bar's is — the real client raises it over the console's
+   * bottom right, not beside the medallion (issue #245, checked against a 1.30.4 screenshot).
+   *
+   * Both lines are GlobalStrings.fdf's: `TIME_OF_DAY_TOOLTIP` ("Time of Day ( |Cfffed312%s|R )",
+   * the `%s` gilded by the string itself) over `TIME_OF_DAY_UBERTIP`. The `%s` is the clock as
+   * `H:MM` — the hour unpadded, the minutes padded ("8:18" in that screenshot) — and the slab is
+   * re-drawn at the text rate while it is up, since the clock runs under a still cursor.
+   */
+  showClockTip(on: boolean): void {
+    if (!on) {
+      if (this.clockTip) this.cmdTooltip.hidden = true;
+      this.clockTip = false;
+      return;
+    }
+    this.clockTip = true;
+    this.resourceTip = false;
+    const s = (key: string, fallback: string): string => this.driver.uiString(key, fallback);
+    const title = printf(s("TIME_OF_DAY_TOOLTIP", "Time of Day ( |Cfffed312%s|R )"), [clockText(this.driver.dayNight().hour)]);
+    const body = s("TIME_OF_DAY_UBERTIP", "This is the current time of day.|N |NThe time of day can affect visibility of units and the use of some abilities.");
+    this.setTooltip(`<div class="hud-tooltip-title">${wc3ToHtml(title)}</div><div class="hud-tooltip-desc">${wc3ToHtml(body)}</div>`);
+  }
+  /** The slab on display is the medallion's — re-drawn as the clock runs, hidden as it leaves. */
+  private clockTip = false;
 
   /** The ONE write to the tooltip slab. Skips the DOM when the text is what is already there
    *  (the per-frame re-show above), and never skips un-hiding it. */
@@ -4022,7 +4124,10 @@ export class GameHud {
     this.driver.setResources({
       gold: String(Math.floor(r.gold)),
       lumber: String(Math.floor(r.lumber)),
-      supply: `${r.foodUsed}/${r.foodMax}`,
+      // Over the cap (a Farm burned down under a 25-food army: 25/20) the game prints the
+      // whole figure RED, as it does the High Upkeep label — the same `|cffff0000` code
+      // (UPKEEP_HIGH), so the bar's own markup path colours it.
+      supply: r.foodUsed > r.foodMax ? `|cffff0000${r.foodUsed}/${r.foodMax}|r` : `${r.foodUsed}/${r.foodMax}`,
       upkeep: this.driver.uiString(UPKEEP_KEY[band], UPKEEP_FALLBACK[band]),
     });
 

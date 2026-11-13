@@ -5,6 +5,7 @@ import { safeMapName } from "../assets/downloadedMaps";
 import {
   deleteDownloadedMap, downloadedMapExists, isDesktopApp, listDownloadedMaps, loadNativeInstall,
   pickNativeInstall, quitNative, rememberedInstall, saveMapToDownload,
+  checkUpdate, downloadUpdate, installUpdate, onUpdateState,
   type DownloadedMap, type InstalledFolder,
 } from "../assets/nativeInstall";
 import { DEFAULT_PROFILE } from "../vfs/profiles";
@@ -146,7 +147,7 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   heroBg.className = "home-hero-bg";
   heroBg.setAttribute("aria-hidden", "true");
   const heroBgImg = document.createElement("img");
-  heroBgImg.src = "/demoscreens/launcher-home.avif";
+  heroBgImg.src = "/demoscreens/game-server.avif";
   heroBgImg.alt = "";
   heroBgImg.draggable = false;
   heroBg.append(heroBgImg);
@@ -325,7 +326,65 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   corner.className = "home-corner";
   const quitBtn = createGlueButton({ label: t("home.quitApp"), size: "md", bordered: true });
   quitBtn.button.onclick = (): void => quitNative();
-  corner.append(quitBtn.root);
+
+  // Online upgrade: read the site's manifest, then download and install only if the player says
+  // so, twice (once to fetch, once to restart). Browser builds have no updater of their own.
+  const updateBtn = createGlueButton({ label: t("home.checkUpdate"), size: "md", bordered: true });
+  let updateBusy = false;
+  const resetUpdate = (): void => {
+    updateBusy = false;
+    updateBtn.button.textContent = t("home.checkUpdate");
+  };
+  const runUpdate = async (): Promise<void> => {
+    if (updateBusy) return;
+    if (!isDesktopApp()) {
+      showToast(t("home.updateDesktopOnly"), false);
+      return;
+    }
+    updateBusy = true;
+    updateBtn.button.textContent = t("home.updateChecking");
+    const found = await checkUpdate();
+    if (!found) {
+      resetUpdate();
+      showToast(t("home.updateDesktopOnly"), false);
+      return;
+    }
+    if (found.phase === "none") {
+      resetUpdate();
+      showToast(t("home.updateLatest"), false);
+      return;
+    }
+    if (found.phase === "error") {
+      resetUpdate();
+      showToast(t("home.updateFailed", { error: found.error ?? "" }));
+      return;
+    }
+    if (found.phase !== "available" || !found.version) {
+      resetUpdate();
+      return;
+    }
+    if (!window.confirm(t("home.updateFound", { version: found.version }))) {
+      resetUpdate();
+      return;
+    }
+    const stop = onUpdateState((state) => {
+      if (state.phase === "downloading") {
+        updateBtn.button.textContent = `${state.percent}%`;
+      } else if (state.phase === "ready") {
+        stop();
+        resetUpdate();
+        if (window.confirm(t("home.updateReady", { version: found.version ?? "" }))) installUpdate();
+      } else if (state.phase === "error") {
+        stop();
+        resetUpdate();
+        showToast(t("home.updateFailed", { error: state.error ?? "" }));
+      }
+    });
+    downloadUpdate();
+  };
+  updateBtn.button.onclick = (): void => void runUpdate();
+
+  corner.append(updateBtn.root, quitBtn.root);
   page.append(corner);
 
   // ── Install state ─────────────────────────────────────────────────────────

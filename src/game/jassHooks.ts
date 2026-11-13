@@ -94,11 +94,18 @@ export function simHooks(sim: SimWorld, teamOf: (player: number) => number): Par
     // pass-through to `sim.removeUnit`. Only `createUnit` is genuinely entangled, because
     // spawning has to load a model.
     killUnit: (id) => sim.killUnit(id),
-    // A gold mine isn't a sim unit for us, so RemoveUnit can't take it off the map — and the only
-    // caller that tries is the Undead start's mine swap, which puts one straight back (see
-    // createBlightedGoldMine). Leaving it standing IS the swap.
+    // A gold mine is a record in `mines`, not a sim unit, so RemoveUnit on its handle goes to
+    // the mine table: the mine leaves the map (SimWorld.removeMine). It used to be a no-op on
+    // the theory that the only caller was the Undead start's swap — but a MAP may clear a mine
+    // for good, and Monolith does exactly that on every empty start before standing a random
+    // neutral building there, which then went up inside a mine that never left. The Undead swap
+    // still works: createBlightedGoldMine puts the very mine it removed back.
     removeUnit: (id) => {
-      if (mineForScript(sim, id)) return;
+      const mine = mineForScript(sim, id);
+      if (mine) {
+        sim.removeMine(mine.id);
+        return;
+      }
       sim.removeUnit(id);
     },
     // --- gold mines, which are units only to a script (see MINE_ID_BASE) --------------------
@@ -114,12 +121,20 @@ export function simHooks(sim: SimWorld, teamOf: (player: number) => number): Par
       const mine = mineForScript(sim, id);
       if (mine) mine.gold = amount;
     },
-    // The Undead start's mine swap: raise a real Haunted Gold Mine over the nearest mine and
-    // hand back the MINE's handle. `RemoveUnit` deliberately left the mine alone (see the
-    // renderer's removeUnit) because the mine is still where the gold is — the building only
-    // stands over it (SimWorld.hauntMine), and everything Blizzard.j asks this return value
-    // (its gold, its location) is a question about the mine.
+    // The Undead start's mine swap: raise a real Haunted Gold Mine over the mine and hand back
+    // the MINE's handle. The mine stays the gold — the building only stands over it
+    // (SimWorld.hauntMine) — and everything Blizzard.j asks this return value (its gold, its
+    // location) is a question about the mine. With no mine just removed here (a script calling
+    // the native on its own), the nearest mine in the melee search radius is haunted, as before.
     createBlightedGoldMine: (player, x, y) => {
+      // Blizzard.j's BlightGoldMineForPlayerBJ has just RemoveUnit-ed the mine at exactly this
+      // point (it passes the old mine's own GetUnitX/GetUnitY): that mine comes back, under its
+      // old handle, and is haunted where it stood.
+      const restored = sim.restoreRemovedMine(x, y);
+      if (restored) {
+        sim.hauntMine(player, teamOf(player), restored.x, restored.y);
+        return MINE_ID_BASE + restored.id;
+      }
       let best: SimMine | undefined;
       let bestD = MELEE.MELEE_MINE_SEARCH_RADIUS ** 2;
       for (const m of sim.mines.values()) {
@@ -160,6 +175,7 @@ export function simHooks(sim: SimWorld, teamOf: (player: number) => number): Par
     getUnitAcquireRange: (id) => sim.getUnitAcquireRange(id),
     getUnitMoveSpeed: (id) => sim.getUnitMoveSpeed(id),
     setUnitTurnSpeed: (id, turn) => sim.setUnitTurnSpeed(id, turn),
+    getUnitTurnSpeed: (id) => sim.getUnitTurnSpeed(id),
     getUnitFacing: (id) => sim.getUnitFacing(id),
     // --- way gates (7.22) ---
     waygateSetDestination: (id, x, y) => sim.setWaygateDestination(id, x, y),
@@ -233,6 +249,10 @@ export function simHooks(sim: SimWorld, teamOf: (player: number) => number): Par
     getUnitAbilityLevel: (id, abilityId) => sim.abilityLevelOf(id, abilityId),
     setUnitAbilityLevel: (id, abilityId, level) => sim.setAbilityLevel(id, abilityId, level),
     selectHeroSkill: (id, abilityId) => sim.learnAbility(id, abilityId),
+    // What those natives just caused, for the interpreter to raise before the native returns
+    // (NativeCtx.flushHeroEvents). The frame's own drain then finds the list already empty.
+    drainHeroEvents: () => sim.drainHeroEvents(),
+    drainItemEvents: () => sim.drainItemEvents(), // NativeCtx.flushItemEvents, the same way
     resetUnitCooldown: (id) => sim.resetCooldowns(id),
     getUnitLevel: (id) => sim.units.get(id)?.level ?? 0,
     setHeroLevel: (id, level, eyeCandy) => sim.setHeroLevel(id, level, eyeCandy),
@@ -384,6 +404,7 @@ export function authorityHooks(authority: {
     y: number,
     targetId: number,
   ): boolean;
+  issueNeutralOrder(player: number, shopId: number, orderId: number, kind: "immediate" | "point" | "target"): boolean;
   /** `entangleinstant` — see the interception in `issueUnitOrder` below. `mineHandle` is a
    *  script-side unit handle (so it goes through MINE_ID_BASE), 0 for the no-target form. */
   entangleInstant(unitId: number, mineHandle: number): boolean;
@@ -418,6 +439,7 @@ export function authorityHooks(authority: {
     // authority resolves the type to a shop that serves the player and sends the buyer there.
     issueNeutralImmediateOrder: (player, unitId, typeId) =>
       authority.issueNeutralImmediateOrder(player, unitId, typeId),
+    issueNeutralOrder: (player, shopId, orderId, kind) => authority.issueNeutralOrder(player, shopId, orderId, kind),
     getUnitCurrentOrder: (id) => authority.currentOrderId(id),
     // CreateUnit — the sim unit exists the instant this returns, because the native is
     // SYNCHRONOUS and the next JASS statement may order or configure it. Its BODY is queued for
@@ -726,12 +748,21 @@ export function rosterHooks(
      *  UNIT_TYPE_HERO)`, and with the native missing that answered false for every hero, so no
      *  kill, death or streak was ever counted. */
     isUnitIdType: (typeId, t) => t !== 1 && deadTypeIs(t, typeId),
-    // IsUnitAlly/IsUnitEnemy: TEAM-based, so neutral hostile (team -1) is nobody's ally. This is
-    // a team question rather than an alliance one, which is why it is here and not in
-    // `visionHooks` beside `isPlayerAlly` — see 1e-note.
+    // IsUnitAlly/IsUnitEnemy: is the unit's OWNER allied with that player — the alliance
+    // matrix's answer (SimWorld.alliedPlayers), which is what the script itself wrote with
+    // SetPlayerAlliance. It was a comparison of TEAM numbers, and a team is only the lobby's
+    // seating: a player the lobby never seats has none. DotA's two army computers are such
+    // players (MAP_CONTROL_NEUTRAL, allied to their five heroes by script alone), and its AI
+    // asks `IsUnitAlly(hero, <the army player>)` to tell the sides apart — which answered false
+    // for a whole side, so "an allied hero reached the fountain" never fired there and every
+    // retreating hero stood at the fountain for the rest of the game. With no matrix installed
+    // (a headless sim) the team rule still decides. Neutral hostile and neutral passive
+    // (team < 0) stay nobody's ally, as before.
     isUnitAlly: (id, player) => {
       const u = sim.units.get(id);
-      return !!u && u.team >= 0 && u.team === teamOf(player);
+      if (!u || u.team < 0) return false;
+      if (u.owner === player) return true;
+      return sim.alliedPlayers(u.owner, player) ?? u.team === teamOf(player);
     },
     /** Bind a PRE-PLACED `CreateUnit` row to the unit already standing there (7.22).
      *
@@ -780,7 +811,7 @@ export function rosterHooks(
 // object that also holds a camera.
 export function visionHooks(
   vision: {
-    createFogModifier(m: { player: number; state: number; area: FogArea }): number;
+    createFogModifier(m: { player: number; state: number; area: FogArea; afterUnits: boolean }): number;
     fogModifierStart(id: number): void;
     fogModifierStop(id: number): void;
     destroyFogModifier(id: number): void;
@@ -824,7 +855,7 @@ export function visionHooks(
       for (const recipient of toPlayers) vision.setExposed(recipient, player, flag);
     },
     // --- fog of war: script-placed modifiers (7.22) ---
-    createFogModifier: (player, state, area) => vision.createFogModifier({ player, state, area }),
+    createFogModifier: (player, state, area, afterUnits) => vision.createFogModifier({ player, state, area, afterUnits }),
     fogModifierStart: (id) => vision.fogModifierStart(id),
     fogModifierStop: (id) => vision.fogModifierStop(id),
     destroyFogModifier: (id) => vision.destroyFogModifier(id),

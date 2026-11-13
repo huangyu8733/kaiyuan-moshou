@@ -17,7 +17,14 @@ import { mountSinglePlayerMenu, singlePlayerSides } from "./ui/fdfSinglePlayerMe
 import { mountSkirmish } from "./ui/fdfSkirmish";
 import { mountCampaignScreen, type CampaignScreenState } from "./ui/fdfCampaign";
 import { mountCustomCampaignScreen } from "./ui/fdfCustomCampaign";
-import { mountViewReplayScreen } from "./ui/fdfViewReplay";
+import { mountViewReplayScreen, replayMapPath } from "./ui/fdfViewReplay";
+import { replayBoot, replayBridge } from "./replayBoot";
+import { patchLevel, setPatchLevel } from "./patches";
+import { decodeReplay, fnv64, type Replay, type ReplayView } from "./game/replay";
+import { replaySink } from "./game/replaySink";
+
+/** Warcraft Open's version, from package.json (vite.config.ts `define`). */
+declare const __OW3_VERSION__: string;
 import { creditsMap, loadCampaigns, type Campaign, type CampaignEntry } from "./data/campaigns";
 import { isRoc, setEdition, setMapDataSet } from "./data/edition";
 import {
@@ -70,7 +77,7 @@ import { readMapBytes } from "./vfs/mapArchive";
 import { LayeredDataSource } from "./vfs/layered";
 import { MpqDataSource } from "./vfs/mpq";
 import { ModelViewerScene, type SequenceInfo } from "./render/modelViewer";
-import { MapViewerScene } from "./render/mapViewer";
+import { MapViewerScene, lastRecordedReplay } from "./render/mapViewer";
 import { matchLinkFrom, type MatchLinkSetup } from "./game/matchLink";
 import { LoadGate } from "./game/loadGate";
 import { MenuScene } from "./render/menuScene";
@@ -163,6 +170,7 @@ let meleeConfig: MeleeConfig | null = null; // consumed by the melee initializer
 // assembled it and something has to close it when the match ends (docs/multiplayer.md F4).
 let matchLink: MatchLinkSetup | null = null;
 let installMaps: Map<string, File> = new Map(); // the install's Maps\ folder (Custom Game)
+let installFlavour = ""; // which game files are mounted (vfs/loader.ts `flavour`)
 
 // The glue-screen stack (issue #61): main menu → Single Player → Custom Game, each
 // leaving and arriving the way the reference does.
@@ -215,7 +223,9 @@ async function enterMap(bytes: Uint8Array, name: string): Promise<string> {
     show("map");
     if (!mapScene) mapScene = await MapViewerScene.create(mapCanvas, vfs, sounds);
     // F10 → End Game, or a Quit button — with the score table when the game it leaves is OVER.
-    mapScene.onExit = (scores) => exitToMenu(scores);
+    // …except in a REPLAY WINDOW (src/replayBoot.ts), which has no menu to go back to: leaving
+    // the replay closes the window.
+    mapScene.onExit = (scores) => (replayBridge() ? replayBridge()!.exit() : exitToMenu(scores));
     // A campaign chapter is completed when its script declares the local player the winner —
     // that, and only that, opens the next one.
     mapScene.onLocalVictory = () => {
@@ -571,19 +581,6 @@ function mapFileFor(path: string): File {
   return file;
 }
 
-/** The install path behind a `File` a menu handed back. The skirmish screen's `onStart` has
- *  the file and its info but not the path, and a map's Chinese language file is found BY path
- *  (`i18n/mapLanguage.ts`) — so the path is looked back up in the table the file came from. */
-function pathOfMapFile(file: File): string | undefined {
-  for (const [path, candidate] of installMaps) if (candidate === file) return path;
-  // A screen may hand back the same MAP as a different `File` (a re-wrap, a re-read). Its name
-  // is still the key the install's map table was built from, so ask that before giving up —
-  // `undefined` here means the map's own language file is never even looked for.
-  const name = file?.name?.toLowerCase();
-  if (name) for (const path of installMaps.keys()) if ((path.split(/[\\/]/).pop() ?? "").toLowerCase() === name) return path;
-  return undefined;
-}
-
 function singlePlayerScreen(vfs: DataSource): GlueScreenDef {
   return {
     chrome: "SinglePlayer",
@@ -620,8 +617,9 @@ function customCampaignScreen(vfs: DataSource): GlueScreenDef {
 function viewReplayScreen(vfs: DataSource): GlueScreenDef {
   return {
     chrome: "BattlenetCustomCreate",
-    mount: () => mountViewReplayScreen(ui, vfs, {
+    mount: () => mountViewReplayScreen(ui, vfs, installMaps, replaySink(), {
       onCancel: () => void glue.goTo(singlePlayerScreen(vfs)),
+      onView: (name) => void watchReplayFile(name),
     }),
   };
 }
@@ -732,7 +730,7 @@ async function startCampaignMission(vfs: DataSource, c: Campaign, index: number,
   // The mission is finished the moment its own script declares victory — that is what opens
   // the next chapter (data/campaignProgress.ts).
   pendingCampaign = { key: c.key, index };
-  await startGame(bytes, info, campaignConfig(info, difficulty, mission.name));
+  await startGame(bytes, info, campaignConfig(info, difficulty, mission.name), undefined, undefined, mission.file);
 }
 
 /**
@@ -775,7 +773,7 @@ async function changeLevel(mapPath: string): Promise<void> {
   }
   const title = found?.entry.name ?? mapPath.replace(/^.*[\\/]/, "").replace(/\.w3[mx]$/i, "");
   const info = parseMapInfo(bytes, title);
-  await startGame(bytes, info, campaignConfig(info, difficulty, title));
+  await startGame(bytes, info, campaignConfig(info, difficulty, title), undefined, undefined, mapPath);
 }
 
 /**
@@ -812,6 +810,18 @@ async function restartMatch(difficulty: number): Promise<void> {
     defaultDifficulty: m.config.defaultDifficulty ?? m.config.difficulty,
     seed: 1 + Math.floor(Math.random() * 2147483645),
   }, undefined, undefined, m.mapPath);
+}
+
+/**
+ * Go BACK in a replay (issue #158): play it again from its start and race to step `at`, with
+ * what the watcher had set carried over (MapViewerScene.onReplayRewind). A match only runs
+ * forward, so this is the only way back until the world can be snapshotted mid-match.
+ */
+async function rewindReplay(at: number, view: ReplayView): Promise<void> {
+  const m = lastMatch;
+  if (!m?.config.replay) return;
+  endMatch();
+  await startGame(m.bytes, m.info, { ...m.config, replayResume: { at, ...view } }, undefined, undefined, m.mapPath);
 }
 
 /** The match on screen, kept so `RestartGame` can play it again. */
@@ -853,7 +863,7 @@ async function startCredits(vfs: DataSource): Promise<void> {
   applyMenuCursor(vfs); // no glue screen arrives after this one — the match does
   const info = parseMapInfo(bytes, "Credits");
   pendingCampaign = null;
-  await startGame(bytes, info, campaignConfig(info, "normal", info.name || "Credits"));
+  await startGame(bytes, info, campaignConfig(info, "normal", info.name || "Credits"), undefined, undefined, path);
 }
 
 /** The chapter the player is IN, so a victory can be credited to it. */
@@ -939,9 +949,48 @@ function skirmishScreen(vfs: DataSource): { chrome: "SinglePlayerSkirmish"; moun
     chrome: "SinglePlayerSkirmish",
     mount: () => mountSkirmish(ui, vfs, editionMaps(), {
       onCancel: () => void glue.goTo(singlePlayerScreen(vfs)),
-      onStart: (file, info, config) => void startGame(file, info, config, undefined, undefined, pathOfMapFile(file)),
+      onStart: (file, info, config, path) => void startGame(file, info, config, undefined, undefined, path),
     }),
   };
+}
+
+/**
+ * WATCH a replay (issue #158, game/replay.ts): the match it recorded, on the same map out of
+ * this install, played by its file. The map is found by the install path it was recorded on and,
+ * failing that (an install laid out differently), by its file name; its bytes' hash says whether
+ * it is the SAME map, and a different one is played anyway with a warning — the state checks will
+ * say how far it got.
+ */
+/** View Replay's button: read the file, then watch it (ui/fdfViewReplay.ts). A replay from
+ *  another Warcraft Open asks first, with the game's own "Incompatible Replay!" question. */
+async function watchReplayFile(name: string): Promise<void> {
+  const bytes = await replaySink()?.read(name);
+  if (!bytes) return;
+  const replay = await decodeReplay(bytes);
+  await watchReplay(replay);
+}
+
+async function watchReplay(replay: Replay): Promise<void> {
+  const h = replay.header;
+  const path = replayMapPath(installMaps, h.map.path);
+  const file = path ? installMaps.get(path) : undefined;
+  if (!path || !file) throw new Error(`The map "${h.map.name}" is not in this install.`);
+  const info = await readMapInfo(installMaps, path);
+  if (!info) throw new Error(`The map "${h.map.name}" could not be read.`);
+  const hash = fnv64(new Uint8Array(await file.arrayBuffer()));
+  if (hash !== h.map.hash) console.warn(`[replay] ${path} is not the map this replay was recorded on (hash ${hash}, recorded ${h.map.hash})`);
+  if (h.version !== __OW3_VERSION__) console.warn(`[replay] recorded on Warcraft Open ${h.version}; this is ${__OW3_VERSION__}`);
+  // The BALANCE PATCH the match was played on (src/patches/): a replay is a match on those
+  // tables. Put back when the replay is left (`exitToMenu`), never remembered.
+  if (h.patch && h.patch !== patchLevel()) {
+    replayPatchWas ??= patchLevel();
+    try {
+      setPatchLevel(h.patch);
+    } catch (err) {
+      console.warn(`[replay] recorded on patch ${h.patch}, which this build does not have:`, err);
+    }
+  }
+  await startGame(file, info, { ...h.config, observer: true, replay }, undefined, undefined, path);
 }
 
 /** Leave the menus and play: load the map, then melee or custom setup as the map asks.
@@ -958,7 +1007,8 @@ async function startGame(
    *  whose seat is reclaimed once the map is loaded (`reconnectFromMenu`). */
   rejoin?: LanLobby,
   /** The map's install path, when it has one — where its Chinese language file would sit
-   *  (`i18n/mapLanguage.ts`). Absent for a campaign chapter, which comes out of an archive. */
+   *  (`i18n/mapLanguage.ts`), and what a REPLAY of the match names it by so View Replay can
+   *  find it again. Absent for a campaign chapter, which comes out of an archive. */
   mapPath?: string,
 ): Promise<void> {
   meleeConfig = config;
@@ -1036,6 +1086,9 @@ async function startGame(
   // screen — the world is held with it (`holdAtStart`, below), so what the player hears and
   // what the player sees begin on the same frame (src/audio/sounds.ts setLoadingGate).
   sounds?.setLoadingGate(true);
+  // …and nothing behind it may be OPENED: F11 at the loading screen started the match with
+  // the Allies dialog up (MapViewerScene.togglePanel).
+  mapScene?.setLoadingScreen(true);
   try {
     const step = async <T>(at: number, body: () => T | Promise<T>): Promise<T> => {
       loading?.setProgress(at);
@@ -1054,6 +1107,15 @@ async function startGame(
     // whose unit list we cannot read still starts, with a bare picture.
     loading?.setMinimapPreview(previewOf(bytes));
     await step(0.15, () => enterMap(bytes, info.name));
+    mapScene?.setLoadingScreen(true); // the first match's scene exists only from here
+    // What a REPLAY of this match names its map by (issue #158): the install's own path for it
+    // when it came off a list, the bytes' hash so the same name is not taken for the same map.
+    mapScene?.setReplayMap({
+      path: mapPath ?? (map instanceof File ? [...installMaps].find(([, f]) => f === map)?.[0] : undefined) ?? config.mapName ?? info.name,
+      name: info.name,
+      hash: fnv64(bytes),
+      size: bytes.length,
+    }, installFlavour);
     // Melee maps get the standard setup (town hall + workers, melee rules);
     // custom/scenario maps run their own triggers instead (see mapKind.ts).
     //
@@ -1072,6 +1134,8 @@ async function startGame(
     // seconds before the player is looking at the map, and the creeps, the melee clock and the
     // music used to spend those seconds running behind the loading screen.
     mapScene?.holdAtStart(true);
+    // A replay goes back in time by being played again (`rewindReplay`).
+    if (config.replay && mapScene) mapScene.onReplayRewind = (at, view) => void rewindReplay(at, view);
     // A LAN match hands over the match's end of the wire (docs/multiplayer.md item 10b-note); a
     // skirmish passes none, and the controller runs exactly as it always has. Attach it AFTER
     // setup so the world it snapshots exists.
@@ -1130,7 +1194,9 @@ async function startGame(
     // `link` is the whole test, and it is the right one: a match with a wire has other machines
     // on the far end of it, and none of them can be held on one player's keyboard. Multiplayer
     // keeps the gate above and the timed beat below.
-    if (!link && loading) await loading.waitForKey();
+    // …except a REPLAY, which is watched rather than played, and is played again from its start
+    // every time the watcher goes back in time.
+    if (!link && loading && !config.replay) await loading.waitForKey();
     else await wait(Math.max(MIN_FULL_BAR_MS, START_HOLD_MS - (performance.now() - tailStart)));
     // Taken away only once the match has actually DRAWN a frame behind it, so the first thing the
     // player sees is the map and never the black canvas it was on a moment ago.
@@ -1142,6 +1208,7 @@ async function startGame(
     loading?.dispose();
     loadingCanvas.hidden = true;
     mapScene?.holdAtStart(false);
+    mapScene?.setLoadingScreen(false);
     sounds?.setLoadingGate(false);
   }
 }
@@ -1352,8 +1419,15 @@ function endMatch(): void {
  *
  *  `scores` puts the SCORE SCREEN between the two (issue #199) — handed over by every quit that
  *  asks for one (MapViewerScene.leave), and dismissed by its OK. */
+/** The patch level a replay changed, to put back when it is left (`watchReplay`). */
+let replayPatchWas: string | null = null;
+
 function exitToMenu(scores: ScoreTable | null = null): void {
   endMatch();
+  if (replayPatchWas !== null) {
+    setPatchLevel(replayPatchWas);
+    replayPatchWas = null;
+  }
   // …and back onto the MELEE tables. The menus read object data too — the Custom Game screen's
   // map previews, the hotkey editor's cards, every tooltip — and the set a chapter left behind
   // is not the one the shell should be describing. The next match sets it again from its own
@@ -1391,9 +1465,13 @@ async function showScoreScreen(vfs: DataSource, table: ScoreTable): Promise<void
   try {
     let done: () => void = () => {};
     const ok = new Promise<void>((resolve) => { done = resolve; });
+    // The match just played, when it was recorded: Save Replay keeps it under a name. The name
+    // offered is the map's and when it was played (render/mapViewer.ts `suggestedName`).
+    const rec = lastRecordedReplay();
     const screen = await mountScoreScreen({
       container: loadingLayer, canvas: loadingCanvas, vfs, table,
       localPlayer: table.viewer, onOk: () => done(),
+      replay: rec ? { sink: rec.sink, written: rec.written, suggested: rec.suggested } : undefined,
     });
     loadingCanvas.hidden = false;
     // The featured race's VictoryMusic / DefeatMusic (war3skins) under it, as the reference plays.
@@ -1457,6 +1535,7 @@ async function showMainMenu(vfs: DataSource): Promise<void> {
 function mountInstall(load: GateLoad): void {
   resolver.setInstall(load.vfs);
   installMaps = load.maps; // the Custom Game screen's map list
+  installFlavour = load.flavour; // …and which game files a replay says it was played on
   ((window as unknown as { warcraftOpen: Record<string, unknown> }).warcraftOpen ??= {}).vfs = load.vfs;
   gate?.dispose();
   gate = null;
@@ -1561,13 +1640,18 @@ installMouseCapture();
 // that Vite folds to `false` for `pnpm build`, so this branch and the dynamic import inside it
 // are dropped from the bundle entirely; there is no path from a shipped artifact to an asset
 // route. See src/dev/devBoot.ts and tools/vite-plugin-dev-install.ts.
-if (import.meta.env.DEV && new URLSearchParams(location.search).has("dev")) {
+if (replayBridge()) {
+  // A REPLAY WINDOW: another version's replay, opened by a later desktop app in this version's
+  // own page (src/replayBoot.ts). It watches the one replay it is handed and nothing else.
+  void replayBoot(ui, replayBridge()!, { mountInstall, watchReplay });
+} else if (import.meta.env.DEV && new URLSearchParams(location.search).has("dev")) {
   void import("./dev/devBoot")
     .then((m) =>
       m.devBoot({
         mountInstall,
         showMenu,
         startGame: (file, info, config, link, mapPath) => startGame(file, info, config, link, undefined, mapPath),
+        watchReplay,
         startChapter,
         startCredits: () => startCredits(resolver.installSource!),
       }),
@@ -1611,6 +1695,12 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has("dev")) {
     return vfs && t ? showScoreScreen(vfs, t).then(() => glue.uncover()) : Promise.resolve();
   },
   lastScores: () => lastScores,
+  // Watch a replay out of the replay folder by its file name (issue #158).
+  watchReplay: async (name = "LastReplay.o3r") => {
+    const bytes = await replaySink()?.read(name);
+    if (!bytes) throw new Error(`no replay named ${name}`);
+    await watchReplay(await decodeReplay(bytes));
+  },
   // Voice Control's mapping without a microphone (src/voice/control.ts).
   voiceSay,
   voicePreroll: voicePrerollState,

@@ -53,6 +53,7 @@ interface NativeBridge {
   deleteMap?(name: string): Promise<boolean>;
   update: {
     state(): Promise<UpdateState>;
+    check(): Promise<void>;
     download(): Promise<void>;
     install(): Promise<void>;
     onChange(fn: (state: UpdateState) => void): () => void;
@@ -102,6 +103,20 @@ export const quitNative = (): void => void bridge()?.quit?.();
 
 export const downloadUpdate = (): void => void bridge()?.update?.download();
 export const installUpdate = (): void => void bridge()?.update?.install();
+
+/** Ask the site's manifest for a newer build and wait for the answer. Null in a browser, and
+ *  on a shell that predates the updater. */
+export async function checkUpdate(): Promise<UpdateState | null> {
+  const update = bridge()?.update;
+  if (!update?.check) return null;
+  await update.check();
+  for (let i = 0; i < 40; i += 1) {
+    const state = await update.state();
+    if (state.phase !== "checking" && state.phase !== "idle") return state;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return update.state();
+}
 
 /**
  * Subscribe to the Warcraft Opens this machine can hear on the network (electron/beacon.mjs). A no-op

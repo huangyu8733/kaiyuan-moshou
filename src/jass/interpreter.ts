@@ -15,7 +15,7 @@
 //     anywhere inside a trigger's actions, so every enclosing call must be resumable.
 //     Expressions stay synchronous (see JassThread + runSync below).
 
-import type { Expr, FunctionDecl, JassProgram, Stmt, VarDecl } from "./ast";
+import type { BinOp, Expr, FunctionDecl, JassProgram, Stmt, VarDecl } from "./ast";
 import { rawcodeToInt } from "./lexer";
 import { dbg } from "../dev/dbg";
 import { Runtime, JassArray, compareLimit, playerStateHolds, ThreadAbort, unitStateHolds, type BoolExpr, type HostFunction, type JassPlayer, type JassUnit, type NativeCtx, type RectObj, type RegionObj, type SoundObj, type TimerObj, type TriggerObj, type TriggerReg, type UnitSnapshot } from "./runtime";
@@ -53,9 +53,8 @@ export interface OrderEvent {
   x: number;
   y: number;
   target: UnitSnapshot | null;
-  /** The ITEM the order named, if it named one — what GetOrderTargetItem answers. The sim id,
-   *  not a handle: the pump interns it through `Runtime.itemForSim`. */
-  item?: number;
+  /** The ITEM the order was aimed at (`GetOrderTargetItem`), when it was aimed at one. */
+  item?: { id: number; typeId: string; charges: number; x: number; y: number } | null;
 }
 /** One spell event (7.17): the caster, the ability rawcode, which phase of the cast,
  *  and what it was aimed at. Mirrors SimWorld's SpellEvent (the sim raises it). */
@@ -94,6 +93,8 @@ export interface ResearchEvent {
 export interface SellUnitEvent {
   shop: UnitSnapshot;
   sold: UnitSnapshot;
+  /** GetBuyingUnit: the buyer's unit that stood at the shop, when the shop asks for one. */
+  buyer?: UnitSnapshot | null;
 }
 /** A unit spawned a summoned unit (EVENT_(PLAYER_)UNIT_SUMMON). */
 export interface SummonEvent {
@@ -282,6 +283,11 @@ type ThreadGen = Generator<number, JassValue, void>;
 const WAIT_FOR_SOUND_SPINS = 120;
 
 const THREAD_NATIVES = new Set(["TriggerSleepAction", "TriggerWaitForSound", "TriggerExecute", "ConditionalTriggerExecute", "ExecuteFunc"]);
+/** …and the two `common.ai` adds, which only an AI script's VM knows (`Interpreter.aiScript`):
+ *  `Sleep(seconds)` parks the calling AI thread, `StartThread(function f)` starts another. A
+ *  map's own script never sees them as thread natives — `common.j` declares neither, and a map
+ *  is free to name a function of its own `Sleep`. */
+const AI_THREAD_NATIVES = new Set(["Sleep", "StartThread"]);
 
 /** A **trigger thread** (7.15). WC3 runs a trigger's actions — and `main()`, and timer
  *  handlers — on a thread that `TriggerSleepAction` can suspend mid-way; the engine
@@ -306,8 +312,24 @@ interface JassThread {
   result: JassValue; // its return value, if it ran to completion
 }
 
+/** One script input, as `Interpreter.inputTap` reports it. */
+export type ScriptInput =
+  | { k: "dlg"; p: number; button: number; dialog: number }
+  | { k: "frame"; p: number; frame: number; ev: number }
+  | { k: "pev"; p: number; ev: number };
+
 export class Interpreter {
+  /**
+   * What the map's script hears from a PLAYER rather than from the match — a dialog button, a
+   * frame event, a player event (leaving, ESC through a cinematic). The replay recorder's tap
+   * (game/replay.ts): these are inputs, and a replay hands them back through the same methods.
+   */
+  inputTap: ((e: ScriptInput) => void) | null = null;
+
   private depth = 0;
+  /** This VM runs a computer player's `.ai` script (src/ai/scriptAi.ts) rather than a map: it
+   *  owns `common.ai`'s `Sleep` and `StartThread` as thread natives (AI_THREAD_NATIVES). */
+  aiScript = false;
   private globalDecls: VarDecl[] = [];
   private readonly ctx: NativeCtx;
 
@@ -327,6 +349,14 @@ export class Interpreter {
       rt,
       call: (name, args) => this.callFunction(name, args),
       fireEvent: (kind, responses, matches) => this.fireEvent(kind, responses, matches),
+      flushHeroEvents: () => {
+        const events = this.rt.hooks?.drainHeroEvents?.();
+        if (events?.length) this.pumpHeroEvents(events as HeroEvent[]);
+      },
+      flushItemEvents: () => {
+        const events = this.rt.hooks?.drainItemEvents?.();
+        if (events?.length) this.pumpItemEvents(events as ItemEvent[]);
+      },
     };
     rt.onWatchedGlobal = (name, before, after) => this.fireVariableEvent(name, before, after);
   }
@@ -516,7 +546,7 @@ export class Interpreter {
     }
     for (const loc of fn.locals) {
       if (loc.isArray) frame.arrays.set(loc.name, new JassArray(loc.type, () => defaultForType(loc.type)));
-      else frame.vars.set(loc.name, loc.init ? this.eval(loc.init, frame) : defaultForType(loc.type));
+      else frame.vars.set(loc.name, loc.init ? yield* this.evalG(loc.init, frame) : defaultForType(loc.type));
     }
     try {
       yield* this.execBlockG(fn.body, frame);
@@ -547,8 +577,9 @@ export class Interpreter {
         // the *calling* thread (a native impl is a plain JS function — it cannot yield).
         // Same precedence as callFunction: the engine's meaning wins over a same-named
         // script function. Everything else can't suspend, so it goes through the sync path.
-        const args = s.args.map((a) => this.eval(a, frame));
-        if (THREAD_NATIVES.has(s.name)) {
+        const args: JassValue[] = [];
+        for (const a of s.args) args.push(yield* this.evalG(a, frame));
+        if (THREAD_NATIVES.has(s.name) || (this.aiScript && AI_THREAD_NATIVES.has(s.name))) {
           yield* this.execThreadNative(s.name, args);
           return JNULL;
         }
@@ -566,9 +597,9 @@ export class Interpreter {
         return JNULL;
       }
       case "set": {
-        const value = this.eval(s.value, frame);
+        const value = yield* this.evalG(s.value, frame);
         if (s.index !== undefined) {
-          const idx = asInt(this.eval(s.index, frame));
+          const idx = asInt(yield* this.evalG(s.index, frame));
           this.arrayFor(s.name, frame).set(idx, value);
         } else if (frame.vars.has(s.name)) {
           frame.vars.set(s.name, value);
@@ -578,14 +609,25 @@ export class Interpreter {
         return JNULL;
       }
       case "return":
-        throw new ReturnSignal(s.value ? this.eval(s.value, frame) : JNULL);
+        throw new ReturnSignal(s.value ? yield* this.evalG(s.value, frame) : JNULL);
       case "if": {
+        // An AI VM has no audience (nothing in it is presentation) and its conditions may
+        // SLEEP — `if not PrepSuicideOnPlayer(seconds) then` is common.ai's own wave loop.
+        if (this.aiScript) {
+          for (const b of s.branches) {
+            if (truthy(yield* this.evalG(b.cond, frame))) return yield* this.execBlockG(b.body, frame);
+          }
+          if (s.elseBody) yield* this.execBlockG(s.elseBody, frame);
+          return JNULL;
+        }
         // The HOST's own pass, unchanged and unmuzzled — this is the statement exactly as it
         // has always run (docs/multiplayer.md Phase E item 7b).
         const before = this.rt.localViewerReads;
         let taken = -1;
         for (let i = 0; i < s.branches.length; i++) {
-          if (truthy(this.eval(s.branches[i].cond, frame))) { taken = i; break; }
+          // evalG: a condition that calls a script function may WAIT, and the thread waits
+          // with it (`if not Buy(hero, item) then` — see evalG).
+          if (truthy(yield* this.evalG(s.branches[i].cond, frame))) { taken = i; break; }
         }
         // Did the branch we chose depend on WHO IS WATCHING? The probe answers that without
         // the parser having to recognise a shape: any route to `GetLocalPlayer` counts, direct
@@ -662,7 +704,7 @@ export class Interpreter {
         }
       }
       case "exitwhen":
-        if (truthy(this.eval(s.cond, frame))) throw EXIT_LOOP;
+        if (truthy(yield* this.evalG(s.cond, frame))) throw EXIT_LOOP;
         return JNULL;
     }
   }
@@ -675,6 +717,20 @@ export class Interpreter {
    *  They still have ordinary native impls in natives/events.ts for the synchronous
    *  path (a `ForGroup` callback that calls `TriggerExecute`, say). */
   private *execThreadNative(name: string, args: JassValue[]): ThreadGen {
+    // common.ai's two (AI_THREAD_NATIVES). `Sleep` is TriggerSleepAction under the AI's name —
+    // game seconds, parked on the scheduler. `StartThread` starts the function as a thread of
+    // its own, run at once up to its first `Sleep` exactly as a trigger thread is
+    // (`startThread`); the caller carries on, which is how `main()` gets past
+    // `StartThread(function WorkerAssignment)` — a function that never returns — to the next line.
+    if (name === "Sleep") {
+      yield Math.max(0, asNum(args[0] ?? jReal(0)));
+      return JNULL;
+    }
+    if (name === "StartThread") {
+      const code = args[0];
+      if (code?.k === "code") this.startThread(`StartThread:${code.fn}`, this.callFunctionG(code.fn, []));
+      return JNULL;
+    }
     if (name === "TriggerSleepAction") {
       // THE suspension point. `TriggerSleepAction(n)` parks this thread for n seconds of
       // GAME time (blizzard.j's PolledWait loops on it, so "Wait" in the GUI lands here).
@@ -875,6 +931,78 @@ export class Interpreter {
     }
   }
 
+  /**
+   * `eval` for a THREAD, where an expression may suspend.
+   *
+   * The real JASS VM is a bytecode machine: a function called from inside an expression can
+   * wait, and the whole thread waits there with it. `eval` cannot suspend (it is plain JS), so
+   * an expression that reaches a SCRIPT function is evaluated here instead, as a generator,
+   * and the wait travels up to whatever is driving the thread. Anything that calls no script
+   * function takes `eval` unchanged, which is nearly every expression there is.
+   *
+   * Two scripts are why, one per VM:
+   *
+   *  • common.ai's wave loop is `if not PrepSuicideOnPlayer(seconds) then`, `exitwhen
+   *    SuicidePlayer(p, …)` and `set have = WaitForSignal()`, each of which sleeps for minutes.
+   *    Handed a null at once, every campaign wave "failed" and the next began in the same
+   *    instant, until the loop cap.
+   *  • a MAP's own AI does the same thing. DotA AI buys an item with `return RGE(…)` /
+   *    `set ok = RGE(…)`, and `RGE` creates the item, hands it to the hero and then polls a
+   *    per-player flag its own pickup trigger sets (`TriggerSleepAction(0.1)` in a loop). This
+   *    used to be an AI-VM-only path: a map's VM adopted the rest of such a call as a thread of
+   *    its own and told the caller "false" (runSync). So the shopping list ran on at once
+   *    with the first purchase still in flight, every later one reset the flag the earlier
+   *    ones were waiting on, the gold was spent and the buyers never woke — heroes kept the
+   *    six items they started with for the rest of the match.
+   *
+   * Where the thread CANNOT wait — a condition, a filter, an enum callback, all driven by
+   * `runSync` — the wait still ends the callback there, as it does in the game.
+   */
+  private *evalG(e: Expr, frame: Frame): ThreadGen {
+    if (!this.mayWait(e)) return this.eval(e, frame);
+    switch (e.kind) {
+      case "index": {
+        const idx = asInt(yield* this.evalG(e.index, frame));
+        return this.arrayFor(e.name, frame).get(idx);
+      }
+      case "call": {
+        const args: JassValue[] = [];
+        for (const a of e.args) args.push(yield* this.evalG(a, frame));
+        return yield* this.callFunctionG(e.name, args);
+      }
+      case "unary":
+        return this.evalUnary(e.op, yield* this.evalG(e.expr, frame));
+      case "binary": {
+        // Left first, and `and`/`or` stop where `evalBinary` stops — the two evaluators must
+        // not disagree about whether the right-hand side of `u != null and Ready(u)` runs.
+        const l = yield* this.evalG(e.left, frame);
+        if (e.op === "and" && !truthy(l)) return jBool(false);
+        if (e.op === "or" && truthy(l)) return jBool(true);
+        const r = yield* this.evalG(e.right, frame);
+        return this.binaryOf(e.op, l, r);
+      }
+      default:
+        return this.eval(e, frame);
+    }
+  }
+
+  /** Does this expression call a SCRIPT function anywhere (the only thing that can sleep)?
+   *  A property of the tree, so it is worked out once per node. */
+  private mayWait(e: Expr): boolean {
+    const hit = this.waitCache.get(e);
+    if (hit !== undefined) return hit;
+    let r = false;
+    switch (e.kind) {
+      case "index": r = this.mayWait(e.index); break;
+      case "call": r = (!this.rt.natives.has(e.name) && this.rt.functions.has(e.name)) || e.args.some((a) => this.mayWait(a)); break;
+      case "unary": r = this.mayWait(e.expr); break;
+      case "binary": r = this.mayWait(e.left) || this.mayWait(e.right); break;
+    }
+    this.waitCache.set(e, r);
+    return r;
+  }
+  private readonly waitCache = new WeakMap<Expr, boolean>();
+
   private evalUnary(op: "-" | "not" | "+", v: JassValue): JassValue {
     if (op === "not") return jBool(!truthy(v));
     if (op === "+") return v;
@@ -882,13 +1010,19 @@ export class Interpreter {
   }
 
   private evalBinary(e: Extract<Expr, { kind: "binary" }>, frame: Frame | null): JassValue {
-    // and/or: JASS evaluates BOTH sides (no short-circuit) — do the same.
+    // and/or stop at the side that decides them (JS `&&`/`||` below), as JASS does.
     if (e.op === "and") return jBool(truthy(this.eval(e.left, frame)) && truthy(this.eval(e.right, frame)));
     if (e.op === "or") return jBool(truthy(this.eval(e.left, frame)) || truthy(this.eval(e.right, frame)));
 
-    const l = this.eval(e.left, frame);
-    const r = this.eval(e.right, frame);
-    switch (e.op) {
+    return this.binaryOf(e.op, this.eval(e.left, frame), this.eval(e.right, frame));
+  }
+
+  private binaryOf(op: BinOp, l: JassValue, r: JassValue): JassValue {
+    switch (op) {
+      case "and":
+        return jBool(truthy(l) && truthy(r));
+      case "or":
+        return jBool(truthy(l) || truthy(r));
       case "==":
         return jBool(jassEquals(l, r));
       case "!=":
@@ -1471,7 +1605,6 @@ export class Interpreter {
     for (const e of events) {
       const unit = this.rt.unitForSim(e.unit);
       const target = e.target ? this.rt.unitForSim(e.target) : JNULL;
-      const itemSnap = e.item !== undefined ? this.rt.hooks?.itemInfo?.(e.item) : null;
       const responses = new Map<string, JassValue>([
         ["TriggerUnit", unit],
         ["OrderedUnit", unit],
@@ -1479,7 +1612,7 @@ export class Interpreter {
         ["OrderPointX", jReal(e.x)],
         ["OrderPointY", jReal(e.y)],
         ["OrderTargetUnit", target],
-        ["OrderTargetItem", itemSnap ? this.rt.itemForSim(itemSnap) : JNULL],
+        ["OrderTargetItem", e.item ? this.rt.itemForSim(e.item) : JNULL],
       ]);
       const playerEvt = e.kind === "immediate" ? EVENT_PLAYER_UNIT_ISSUED_ORDER : e.kind === "point" ? EVENT_PLAYER_UNIT_ISSUED_POINT_ORDER : EVENT_PLAYER_UNIT_ISSUED_TARGET_ORDER;
       const unitEvt = e.kind === "immediate" ? EVENT_UNIT_ISSUED_ORDER : e.kind === "point" ? EVENT_UNIT_ISSUED_POINT_ORDER : EVENT_UNIT_ISSUED_TARGET_ORDER;
@@ -1685,8 +1818,10 @@ export class Interpreter {
         ["TriggerUnit", shop],
         ["SellingUnit", shop],
         ["SoldUnit", sold],
-        // GetBuyingUnit — for a UNIT sale WC3 has no patron standing at the counter (you hire
-        // a Tavern hero with the shop selected, not with a unit), so the buyer reads null.
+        // GetBuyingUnit — the buyer's unit standing in the shop's reach, which a shop with an
+        // interact ability requires of a unit sale as of an item's (SimWorld.unitSalePatron).
+        // Null for a shop that asks for nobody.
+        ["BuyingUnit", e.buyer ? this.rt.unitForSim(e.buyer) : JNULL],
       ]);
       this.dispatchToRegs(responses, (reg) =>
         (reg.kind === "playerUnitEvent" && this.playerUnitEventMatches(reg, EVENT_PLAYER_UNIT_SELL, e.shop.owner, shop, sold)) ||
@@ -1804,6 +1939,7 @@ export class Interpreter {
    *  the script's: MeleeVictoryDialogBJ registers a trigger on its quit button and never adds
    *  an action to it. */
   fireDialogClick(buttonHandleId: number, dialogHandleId: number, player: number): void {
+    this.inputTap?.({ k: "dlg", p: player, button: buttonHandleId, dialog: dialogHandleId });
     const responses = new Map<string, JassValue>([
       ["ClickedButton", jHandle(buttonHandleId, "button")],
       ["ClickedDialog", jHandle(dialogHandleId, "dialog")],
@@ -1820,6 +1956,7 @@ export class Interpreter {
    *  `GetTriggerPlayer` in scope. Raised by the drawing, which owns the mouse — as a dialog
    *  button's click is (`fireDialogClick`). */
   fireFrameEvent(frameHandleId: number, eventIndex: number, player: number): void {
+    this.inputTap?.({ k: "frame", p: player, frame: frameHandleId, ev: eventIndex });
     const responses = new Map<string, JassValue>([
       ["TriggerFrame", jHandle(frameHandleId, "framehandle")],
       ["TriggerFrameEvent", this.rt.enumHandle("FrameEventType", eventIndex)],
@@ -1851,6 +1988,7 @@ export class Interpreter {
    * has to know about the BJ — matching the registration's player and event enum is enough.
    */
   firePlayerEvent(player: number, eventIndex: number): void {
+    this.inputTap?.({ k: "pev", p: player, ev: eventIndex });
     const responses = new Map<string, JassValue>([["TriggerPlayer", this.rt.playerHandle(player)]]);
     this.dispatchToRegs(responses, (reg) => this.matchesPlayerEvent(reg, player, eventIndex));
   }

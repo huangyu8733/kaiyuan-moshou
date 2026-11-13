@@ -561,6 +561,8 @@ export interface JassItem {
   invulnerable?: boolean;
   droppable?: boolean;
   pawnable?: boolean;
+  /** SetItemPlayer — the item's own player (absent = Neutral Passive). See GetItemPlayer. */
+  player?: number;
 }
 
 /** Where an item is right now — the bridge's answer for a JASS `item` handle. Mirrors
@@ -573,7 +575,7 @@ export interface ItemSnapshot {
   y: number;
   holder: number; // sim id of the unit carrying it (0 = lying on the ground)
   slot: number; // inventory slot when carried, else -1
-  owner: number; // GetItemPlayer — the holder's slot, or 15 (Neutral Passive) on the ground
+  owner: number; // the HOLDER's slot, or 15 (Neutral Passive) on the ground — not GetItemPlayer
   life: number; // GetWidgetLife — hit points left on the ground, the type's whole HP when carried
 }
 
@@ -674,6 +676,7 @@ export interface EngineHooks {
   setUnitMoveSpeed?(unitId: number, speed: number): void; // SetUnitMoveSpeed
   getUnitMoveSpeed?(unitId: number): number | undefined; // GetUnitMoveSpeed
   setUnitTurnSpeed?(unitId: number, turn: number): void; // SetUnitTurnSpeed
+  getUnitTurnSpeed?(unitId: number): number | undefined; // GetUnitTurnSpeed
   setUnitTimeScale?(unitId: number, scale: number): void; // SetUnitTimeScale (animation rate)
   // Live position/facing reads — a script-created unit's JASS handle otherwise keeps
   // its spawn-time values, so route Get* through the sim when a sim id is attached.
@@ -692,7 +695,15 @@ export interface EngineHooks {
    *  took. `order` is the order STRING ("attack", "holybolt"): an ABILITY order is cast
    *  by name (the engine's numeric ids for those aren't in any data file), so the bridge
    *  matches it against the unit's abilities' own order strings. */
+  /** The sim's pending hero level/skill events, drained — for `NativeCtx.flushHeroEvents`.
+   *  (The interpreter's HeroEvent; typed loosely because the runtime does not import it.) */
+  drainHeroEvents?(): ReadonlyArray<unknown>;
+  /** …and its pending item pickup/drop/use/sell events, for `NativeCtx.flushItemEvents`. */
+  drainItemEvents?(): ReadonlyArray<unknown>;
   issueUnitOrder?(unitId: number, orderId: number, order: string, kind: "immediate" | "point" | "target", x: number, y: number, targetId: number): boolean;
+  /** IssueNeutral*OrderById — an order to a neutral building on `player`'s behalf (a purchase:
+   *  `orderId` is the ware's rawcode). True when the sale went through. */
+  issueNeutralOrder?(player: number, shopId: number, orderId: number, kind: "immediate" | "point" | "target"): boolean;
   /** GetUnitCurrentOrder — the unit's active sim order as a generic order id (0 = none). */
   getUnitCurrentOrder?(unitId: number): number;
   // --- unit groups (7.16): enumeration + the classification a group filter asks about ---
@@ -1060,6 +1071,22 @@ export interface EngineHooks {
    *  gets none either. `script` is the .ai filename the game would have loaded; ours are
    *  ports of those four files (src/ai/, docs/melee-ai.md), so the name IS the race. */
   startMeleeAI?(player: number, script: string): void;
+  /** `CommandAI(p, command, data)` — a map trigger leaves an order on a computer's command
+   *  stack, which its `.ai` script reads with GetLastCommand / GetLastData / PopLastCommand.
+   *  (4)Monolith's "Attack Enemy" trigger is how its creep players are told to go after the
+   *  players: command 1, once a creep hero reaches the map's level. */
+  commandAi?(player: number, command: number, data: number): void;
+  /** `StartCampaignAI(p, "h02_red.ai")` — the campaign twin of `startMeleeAI`: a chapter seats
+   *  its computers on the install's own `Scripts\<chapter>_<colour>.ai`, which is RUN
+   *  (src/ai/scriptAi.ts). Several Frozen Throne chapters (HumanX02) name the same kind of file
+   *  through `StartMeleeAI` instead, and land in the same place. */
+  startCampaignAI?(player: number, script: string): void;
+  /** `RemoveGuardPosition(u)` ("Ignore Unit Guard Position") / `RecycleGuardPosition(u)` — a map
+   *  trigger telling the unit's computer to leave it alone, or to take it back. `unitId` is the
+   *  sim id. */
+  guardPosition?(unitId: number, op: "ignore" | "recycle"): void;
+  /** `RemoveAllGuardPositions(p)`. */
+  removeAllGuardPositions?(player: number): void;
   /** GetPlayerStructureCount / GetPlayerUnitCount — melee defeat is "my team owns no
    *  structures", so these decide who has lost (MeleeCheckForLosersAndVictors). */
   playerStructureCount?(player: number, includeIncomplete: boolean): number;
@@ -1198,7 +1225,7 @@ export interface EngineHooks {
   // --- fog of war: script-placed modifiers (7.22) ---
   /** CreateFogModifierRect / CreateFogModifierRadius[Loc] — returns the modifier's id.
    *  Created STOPPED: the native does not start it, FogModifierStart does. */
-  createFogModifier?(player: number, state: number, area: JassFogArea): number;
+  createFogModifier?(player: number, state: number, area: JassFogArea, afterUnits: boolean): number;
   fogModifierStart?(id: number): void;
   fogModifierStop?(id: number): void;
   destroyFogModifier?(id: number): void;
@@ -1633,6 +1660,17 @@ export class Runtime {
    *  UI like the boards above, but for a second reason as well: a timer dialog's *time* is
    *  never pushed, it is read live off the timer it is bound to, every frame. */
   readonly timerDialogs: TimerDialogObj[] = [];
+  /**
+   * True while the map's `main()` runs — MAP INITIALIZATION, which in the real client happens
+   * during the load, before the game exists. A request there to SHOW a timer window, a
+   * multiboard or a leaderboard is dropped: the object is made and keeps every setting, it is
+   * just not on screen, and a later Display call (from a trigger that runs in the game) is what
+   * puts it up. That is the community's standing rule for all three ("elapsed game time 0.00",
+   * never Map Initialization — hiveworkshop threads 104417, 226164) and what the real 1.30.4
+   * client does with (4)Monolith, whose Init Variables trigger `CreateTimerDialogBJ`s its
+   * "Monolith Disruption" window at init: no window until a shard is first disrupted.
+   */
+  mapInitializing = false;
   /** Live `sound` handles (7.20). The engine walks these each frame for the two things it
    *  can only do over time: keep an `AttachSoundToUnit`'d sound on its (moving) unit, and
    *  reap a `KillSoundWhenDone` handle once its clip has finished. */
@@ -1723,6 +1761,49 @@ export class Runtime {
    * Phase E evaluates per recipient inside `forAudience`.
    */
   audience: number | null = null;
+
+  /**
+   * The WATCHERS: player numbers that hold no seat and only observe the match — this machine
+   * when it got up to watch, and a LAN game's Observers bench (`LobbyInfo.watchers`).
+   *
+   * In WC3 an observer IS a slot (`PLAYER_STATE_OBSERVER`), so a map's own audience code
+   * reaches it for free: it is in `bj_FORCE_ALL_PLAYERS`, and a `for i = 0 to 11` loop over
+   * `DisplayTimedTextToPlayer(Player(i), …)` prints to it with everybody else. Ours sits one
+   * past the last slot, in no force and in no such loop, so a map that announces through
+   * either — DotA prints every kill through `IsPlayerInForce(GetLocalPlayer(), force)` and
+   * its "team is OWNING" line seat by seat — told a watcher nothing at all.
+   *
+   * One rule stands in for the slot it does not have: **a watcher is in the audience of
+   * anything addressed to MORE THAN ONE player.** A force that has EVER held two counts it as a member
+   * (`IsPlayerInForce`, natives/forces.ts), and a line handed to a second seat in the same
+   * instant is handed to it once (`watcherEcho`). What is said to ONE player — an error, a
+   * reply to their own command, `GetForceOfPlayer(p)` — stays theirs.
+   */
+  watchers = new Set<number>();
+  /** The lines `DisplayTextToPlayer` handed out this instant, and to whom (see `watchers`). */
+  private echoAt = -1;
+  private readonly echoSeen = new Map<string, { first: number; told: boolean }>();
+
+  /**
+   * A line was just addressed to `player`. Answers the watchers who should be shown it too:
+   * all of them, the first time the SAME line reaches a SECOND seat in one game instant, and
+   * nobody otherwise — so a ten-seat loop is read once and a private line not at all.
+   */
+  watcherEcho(player: number, msg: string): Iterable<number> {
+    if (this.watchers.size === 0 || this.watchers.has(player)) return [];
+    if (this.gameTime !== this.echoAt) {
+      this.echoAt = this.gameTime;
+      this.echoSeen.clear();
+    }
+    const seen = this.echoSeen.get(msg);
+    if (!seen) {
+      this.echoSeen.set(msg, { first: player, told: false });
+      return [];
+    }
+    if (seen.told || seen.first === player) return [];
+    seen.told = true;
+    return this.watchers;
+  }
 
   /** What `GetLocalPlayer` resolves to right now. */
   get localViewer(): number {
@@ -1933,8 +2014,9 @@ export class Runtime {
    *  melee library reads exactly that through GetPlayerSlotState / GetPlayerRace /
    *  GetPlayerStartLocation. Slots the lobby didn't fill are marked EMPTY, so they get
    *  no starting units, no resources, and keep the creep camp on their start location. */
-  applyLobby(slots: ReadonlyArray<LobbySlot>, localPlayer: number): void {
+  applyLobby(slots: ReadonlyArray<LobbySlot>, localPlayer: number, watchers: Iterable<number> = []): void {
     this.localPlayer = localPlayer;
+    this.watchers = new Set(watchers);
     // PLAYER_SLOT_STATE_EMPTY for every PLAYER the table has — 24 on a 1.31+ map (enums.ts).
     for (let i = 0, n = widePlayerTable() ? 24 : 12; i < n; i++) this.ensurePlayer(i).slotState = 0;
     for (const s of slots) {
@@ -2208,4 +2290,39 @@ export interface NativeCtx {
    *  the moment the owner changes. Provided by the interpreter; absent when a native
    *  runs with no interpreter attached (safe no-op). */
   fireEvent?(kind: string, responses: Map<string, JassValue>, matches?: (params: JassValue[]) => boolean): void;
+  /**
+   * Raise, NOW, the hero level/skill events the native just caused.
+   *
+   * `SelectHeroSkill`, `SetHeroLevel` and `AddHeroXP` fire EVENT_(PLAYER_)HERO_SKILL / _LEVEL
+   * from INSIDE the call in the game, and scripts are written around that: the standard guard
+   * against re-entry is
+   *
+   *     call DisableTrigger(GetTriggeringTrigger())
+   *     call SelectHeroSkill(otherHero, GetLearnedSkill())
+   *     call EnableTrigger(GetTriggeringTrigger())
+   *
+   * which only works if the event arrives while the trigger is off. Left to the frame's own
+   * pump it arrived after the trigger was back on, and the guard guarded nothing — DotA's
+   * Geomancer makes a clone when it learns its ultimate and teaches every clone the same
+   * skill this way, so each clone's lesson made another clone: a thousand of them in ten
+   * seconds. Absent with no interpreter attached (safe no-op).
+   */
+  flushHeroEvents?(): void;
+  /**
+   * The same promise for an INVENTORY native: `UnitAddItem`, `UnitAddItemById`,
+   * `UnitRemoveItem` and the trigger's instant drops raise EVENT_(PLAYER_)UNIT_PICKUP_ITEM /
+   * _DROP_ITEM before they return, and an item system is written around it. DotA sells a
+   * dummy powerup, and its pickup trigger swaps the dummy for the real item behind exactly the
+   * hero-skill guard —
+   *
+   *     call DisableTrigger(pickupTrigger)
+   *     set it = UnitAddItemById(hero, realItem)
+   *     call EnableTrigger(pickupTrigger)
+   *
+   * — while its AI buys with `UnitAddItem(hero, dummy)` and then waits on a flag that trigger
+   * sets. With the events left to the frame's pump the real item's pickup arrived after the
+   * trigger was back on and was taken for a second purchase, and a `RemoveItem` on the line
+   * after `UnitAddItem` ran before the pickup it was written to follow.
+   */
+  flushItemEvents?(): void;
 }

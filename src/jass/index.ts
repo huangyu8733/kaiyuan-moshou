@@ -119,7 +119,8 @@ export function loadMapScript(
      *  computed-key-set discipline as `worldWritingHooks`. */
     localViewHooks?: Iterable<string>;
     runMain?: boolean;
-    lobby?: { slots: ReadonlyArray<LobbySlot>; localPlayer: number };
+    /** `watchers`: the player numbers only OBSERVING the match (Runtime.watchers). */
+    lobby?: { slots: ReadonlyArray<LobbySlot>; localPlayer: number; watchers?: ReadonlyArray<number> };
     /** The playercolor index the four NEUTRAL players answer `GetPlayerColor` with — the
      *  black swatch, whose index is the install's (render/teamColor.ts `neutralTeamColor`).
      *  Passed in rather than read here: the interpreter never opens the art. */
@@ -187,13 +188,16 @@ export function loadMapScript(
   if (placedUnitCount(map) === 0) interp.rt.recordOnlySpawnFns.delete("CreateAllUnits");
   opts.onBoot?.(engine);
   interp.run("config", []);
-  if (opts.lobby) interp.rt.applyLobby(opts.lobby.slots, opts.lobby.localPlayer);
+  if (opts.lobby) interp.rt.applyLobby(opts.lobby.slots, opts.lobby.localPlayer, opts.lobby.watchers);
   if (opts.runMain) {
     // Best-effort: a script error in main() must never abort the match.
+    interp.rt.mapInitializing = true; // see Runtime.mapInitializing
     try {
       interp.run("main", []);
     } catch (err) {
       console.warn("[jass] map main() failed (non-fatal):", err);
+    } finally {
+      interp.rt.mapInitializing = false;
     }
   }
   return engine;

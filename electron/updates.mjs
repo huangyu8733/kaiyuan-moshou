@@ -1,43 +1,162 @@
-// Checking the project's GitHub releases for a newer Warcraft Open, fetching it, and restarting into
-// it — the desktop app's own updater.
+// The desktop app's own updater: check the site's release manifest, fetch the installer the
+// player said yes to, and hand over to it.
 //
-// The flow is the player's to refuse, ONCE. `autoDownload` is OFF, so nothing is fetched until
-// they say so — a game that quietly pulls 130 MB and restarts itself under somebody mid-match is
-// worse than one that is a version behind. `autoInstallOnAppQuit` is off for the same reason:
-// the install happens where the player can see it, behind the screen the game puts up
-// (src/ui/updateOverlay.ts), and never as a surprise on some later quit.
+// The manifest is one small JSON file (web/public/launcher/latest.json, served at
+// https://warcraft.hhkj.me/launcher/latest.json), so a new build is published by uploading the
+// installers and editing that file — no app release metadata, no code-signing requirement, and
+// the same file works for every platform:
 //
-// The source is the repo's Releases page (`publish` in package.json). electron-builder writes
-// `latest-linux.yml` / `latest.yml` beside each artifact when it publishes, and that file — not
-// the tag list — is what the updater reads: a release with no such file is invisible to it,
-// which is worth knowing the first time a hand-uploaded build appears not to exist.
+//   { "version": "0.3.85", "notes": "https://…", "files": {
+//       "mac-arm64": "https://…/Warcraft-Open-0.3.85-arm64.dmg",
+//       "mac-x64":   "https://…/Warcraft-Open-0.3.85-x64.dmg",
+//       "win-x64":   "https://…/Warcraft-Open-0.3.85-x64.exe",
+//       "linux-x64": "https://…/Warcraft-Open-0.3.85-x86_64.AppImage" } }
+//
+// Downloading is the player's decision, once. Installing is the second: the state goes "ready"
+// and the screen stays up until they press Restart (src/ui/updateOverlay.ts). Nothing is fetched
+// or replaced behind their back.
 
-import electronUpdater from "electron-updater";
+import { app, net, shell } from "electron";
+import { createWriteStream, promises as fsp } from "node:fs";
+import { join } from "node:path";
+import { spawn } from "node:child_process";
 
-const { autoUpdater } = electronUpdater;
-
-/** Nothing has been asked yet / nothing to do / the four states of an update in flight. */
+const MANIFEST_URL = process.env.WARCRAFT_OPEN_UPDATE_URL || "https://warcraft.hhkj.me/launcher/latest.json";
 const IDLE = { phase: "idle", version: null, percent: 0, error: null };
+
+function parseVersion(value) {
+  return String(value ?? "").replace(/^v/i, "").split(/[.+-]/).map((part) => Number.parseInt(part, 10) || 0);
+}
+
+/** Is `remote` a later version than `local`? Numeric, segment by segment. */
+export function isNewerVersion(remote, local) {
+  const a = parseVersion(remote);
+  const b = parseVersion(local);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    const left = a[i] ?? 0;
+    const right = b[i] ?? 0;
+    if (left !== right) return left > right;
+  }
+  return false;
+}
+
+/** The manifest key for this build: mac-arm64, mac-x64, win-x64, linux-x64. */
+function assetKey() {
+  const platform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "win" : "linux";
+  return `${platform}-${process.arch}`;
+}
+
+function getJson(url) {
+  return new Promise((resolve, reject) => {
+    const request = net.request(url);
+    request.on("response", (response) => {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        response.resume();
+        reject(new Error(`HTTP ${response.statusCode} for ${url}`));
+        return;
+      }
+      let body = "";
+      response.on("data", (chunk) => { body += chunk.toString("utf8"); });
+      response.on("end", () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch (err) {
+          reject(new Error(`The update manifest is not JSON: ${err?.message ?? err}`));
+        }
+      });
+    });
+    request.on("error", reject);
+    request.setHeader("Cache-Control", "no-cache");
+    request.end();
+  });
+}
+
+function download(url, target, onProgress) {
+  return new Promise((resolve, reject) => {
+    const out = createWriteStream(target);
+    const request = net.request(url);
+    request.on("response", (response) => {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        response.resume();
+        out.destroy();
+        reject(new Error(`HTTP ${response.statusCode} for ${url}`));
+        return;
+      }
+      const total = Number(response.headers["content-length"]) || 0;
+      let received = 0;
+      response.on("data", (chunk) => {
+        received += chunk.length;
+        out.write(chunk);
+        if (total) onProgress(Math.min(99, Math.round((received / total) * 100)));
+      });
+      response.on("end", () => {
+        out.end(() => {
+          onProgress(100);
+          resolve(target);
+        });
+      });
+      response.on("error", (err) => { out.destroy(); reject(err); });
+    });
+    request.on("error", (err) => { out.destroy(); reject(err); });
+    request.end();
+  });
+}
+
+async function replaceOnLinux(file) {
+  // electron-builder's AppImage runtime tells us which file we ARE. Swap it and start it again;
+  // the script waits for this process to exit so the file is no longer mapped.
+  const image = process.env.APPIMAGE;
+  if (!image) {
+    await shell.openPath(file);
+    app.quit();
+    return;
+  }
+  const script = [
+    "#!/bin/sh",
+    "sleep 1",
+    `mv -f ${JSON.stringify(file)} ${JSON.stringify(image)}`,
+    `chmod +x ${JSON.stringify(image)}`,
+    `"${image}" >/dev/null 2>&1 &`,
+    "",
+  ].join("\n");
+  const scriptPath = join(app.getPath("temp"), "warcraft-open-update.sh");
+  await fsp.writeFile(scriptPath, script, { mode: 0o755 });
+  spawn("/bin/sh", [scriptPath], { detached: true, stdio: "ignore" }).unref();
+  app.quit();
+}
+
+async function replaceOnWindows(file) {
+  // NSIS: /S installs over the old copy silently, and electron-builder's installer restarts the
+  // app when it is done. The download is a `.exe` beside the manifest's entry.
+  spawn(file, ["/S"], { detached: true, stdio: "ignore" }).unref();
+  app.quit();
+}
+
+async function replaceOnMac(file) {
+  // The dmg opens in the Finder: dragging the app over the old one is the install, and macOS
+  // keeps the Gatekeeper consent the player already gave. Quitting first avoids two copies
+  // running at once.
+  const error = await shell.openPath(file);
+  if (error) throw new Error(error);
+  app.quit();
+}
 
 export function startUpdates({ onChange, log, fakeVersion = null } = {}) {
   let state = { ...IDLE };
+  let manifest = null;
   const set = (patch) => {
     state = { ...state, ...patch };
     onChange?.(state);
   };
 
   // A pretend update, for driving the two questions without publishing a release to ask them.
-  // `main.mjs` passes this ONLY when the app is unpackaged, so a shipped build cannot be told by
-  // an environment variable that there is a version it should fetch. It walks the same states the
-  // real one does and stops short of the one thing it must not fake: replacing this build.
+  // Unpackaged only; a shipped build cannot be told there is a version it should fetch.
   if (fakeVersion) {
     setTimeout(() => set({ phase: "available", version: fakeVersion, error: null }), 400);
     return {
       get state() { return state; },
       check() { return Promise.resolve(); },
       download() {
-        // Small steps over a few seconds, because what this exists to exercise is the overlay
-        // that is up WHILE a download runs — five jumps in a second and a half is not that.
         let percent = 0;
         const tick = setInterval(() => {
           percent += 5;
@@ -49,43 +168,66 @@ export function startUpdates({ onChange, log, fakeVersion = null } = {}) {
     };
   }
 
-  // Downloading is the player's decision, so the updater must not start on its own; installing
-  // is a second decision, so it must not happen on quit either.
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-  if (log) autoUpdater.logger = log;
-
-  autoUpdater.on("update-available", (info) => set({ phase: "available", version: info?.version ?? null, error: null }));
-  autoUpdater.on("update-not-available", () => set({ phase: "none", version: null, error: null }));
-  autoUpdater.on("download-progress", (p) => set({ phase: "downloading", percent: Math.round(p?.percent ?? 0) }));
-  autoUpdater.on("update-downloaded", (info) => set({ phase: "ready", version: info?.version ?? state.version, percent: 100 }));
-  autoUpdater.on("error", (err) => {
-    // An update that cannot be checked for is not a reason to fail to START. No network, a rate
-    // limit, a release with no metadata beside it — all of them end here, and all of them leave
-    // a game that plays perfectly well at the version it already is.
-    set({ phase: "error", error: String(err?.message ?? err) });
-  });
-
   return {
     get state() { return state; },
-    /** Ask GitHub. Safe to call when there is nothing to ask (an unpackaged app), where it does
-     *  nothing rather than throwing about a missing `app-update.yml`. */
-    check() {
+    /** Ask the site for its manifest. Never throws: an update we cannot see is not a reason to
+     *  fail to start, and an unpackaged build has no updater at all. */
+    async check() {
+      if (!app.isPackaged) {
+        // A dev build has no installed copy to replace; say "up to date" so the button answers.
+        set({ phase: "none", error: null });
+        return;
+      }
       set({ phase: "checking", error: null });
-      return autoUpdater.checkForUpdates().catch((err) => set({ phase: "error", error: String(err?.message ?? err) }));
+      try {
+        const data = await getJson(MANIFEST_URL);
+        const version = String(data?.version ?? "").trim();
+        if (!version) throw new Error("The update manifest has no version.");
+        manifest = data;
+        if (!isNewerVersion(version, app.getVersion())) {
+          set({ phase: "none", version, error: null });
+          return;
+        }
+        if (!data?.files?.[assetKey()]) {
+          set({ phase: "error", error: `No build for ${assetKey()} in the update manifest.` });
+          return;
+        }
+        set({ phase: "available", version, error: null });
+      } catch (err) {
+        set({ phase: "error", error: String(err?.message ?? err) });
+      }
     },
-    download() {
-      if (state.phase !== "available") return;
-      set({ phase: "downloading", percent: 0 });
-      return autoUpdater.downloadUpdate().catch((err) => set({ phase: "error", error: String(err?.message ?? err) }));
+    /** Fetch the installer. Progress events keep the overlay honest; failures leave the player
+     *  on the build they have. */
+    async download() {
+      if (state.phase !== "available" || !manifest) return;
+      const url = manifest.files?.[assetKey()];
+      if (!url) return;
+      set({ phase: "downloading", percent: 0, error: null });
+      try {
+        const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "warcraft-open-update");
+        const dir = join(app.getPath("temp"), "warcraft-open-update");
+        await fsp.mkdir(dir, { recursive: true });
+        const target = join(dir, name);
+        await download(url, target, (percent) => set({ phase: "downloading", percent }));
+        manifest.installer = target;
+        set({ phase: "ready", percent: 100, error: null });
+      } catch (err) {
+        set({ phase: "error", error: String(err?.message ?? err) });
+      }
     },
-    /** Replace this build and start the new one. Reached when the download the player ASKED FOR
-     *  finishes, with the overlay still up saying so. */
-    install() {
-      if (state.phase !== "ready") return;
-      // `isSilent` false, `isForceRunAfter` true: show the installer where a platform has one,
-      // and come back up into the game afterwards, which is what "restart" means to a player.
-      autoUpdater.quitAndInstall(false, true);
+    /** Hand over to the installer (or open the dmg) and quit. */
+    async install() {
+      if (state.phase !== "ready" || !manifest?.installer) return;
+      set({ phase: "installing" });
+      try {
+        if (process.platform === "linux") await replaceOnLinux(manifest.installer);
+        else if (process.platform === "win32") await replaceOnWindows(manifest.installer);
+        else if (process.platform === "darwin") await replaceOnMac(manifest.installer);
+        else throw new Error(`Updates are not supported on ${process.platform}.`);
+      } catch (err) {
+        set({ phase: "error", error: String(err?.message ?? err) });
+      }
     },
   };
 }

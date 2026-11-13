@@ -60,7 +60,9 @@ import { observePlayer, type ObserverPlayerView } from "./observerView";
 import { researchableFor, scoreRow, type ScoreRow, type ScoreSeat, type ScoreTable } from "./scoreTable";
 import { type ItemRegistry } from "../data/items";
 import { workerProfileFor, harvestAbilityOf, depotRoleFor, isHarvestCode, type PlayableRace } from "../data/races";
-import { MeleeAi, AI_SCRIPT_RACES } from "../ai";
+import { MeleeAi } from "../ai";
+import { armAiSeats, pickAi } from "./aiSeating";
+import { ScriptAi, type ScriptAiSources } from "../ai/scriptAi";
 import { CreepCaster } from "../ai/creeps";
 import { ComputerPlusAi, type ConcedeReading, type PlusHost, type PlusLogReading } from "../ai/plus";
 import { CandyWarAi, type CandyHost } from "../ai/plus/candy";
@@ -71,7 +73,7 @@ import { type UpgradeRegistry } from "../data/upgrades";
 import type { SoundBoard, SoundCategory } from "../audio/sounds";
 import { WorldOverlays, healthBarsAlways, type HoverLine, type BarAbility, type BarSpec, type CrewLabelSpec, type VoiceLabelSpec } from "../render/worldOverlays";
 import type { VoiceLabels } from "./voiceLabels";
-import { INSANE_HARVEST_FACTOR, MELEE_INSANE } from "../ai/ids";
+import { INSANE_HARVEST_FACTOR, MELEE_INSANE, MELEE_NORMAL } from "../ai/ids";
 
 /** What the single-player dev tools can do to the local player's side (RtsController.cheat). */
 export type CheatKind = "gold" | "lumber" | "food" | "fastbuild" | "godmode" | "day" | "night" | "upgrades";
@@ -1117,7 +1119,13 @@ export class RtsController {
     starts: ReadonlyArray<{ player: number; x: number; y: number }> = slots.map((s) => ({ player: s.player, x: s.startX, y: s.startY })),
     races: ReadonlyMap<number, PlayableRace> = new Map(slots.map((s) => [s.player, s.race])),
     melee = false,
+    campaign = false,
   ): void {
+    // A CAMPAIGN chapter's computers are always Blizzard's — the chapter's own `.ai` script, or a
+    // race port if a chapter ever asks for one — and never Computer+, whatever the slot carries
+    // (game/aiSeating.ts, pinned by tools/ai-seating-test.cjs).
+    this.campaignMatch = campaign;
+    slots = armAiSeats(slots, campaign);
     this.meleeSeats = new Map(slots.map((s) => [s.player, s]));
     // Is this a MELEE map? The lobby knows and the script does not, and it is the one thing
     // `startMeleeAIFor` needs that it cannot read off the seat — see there. A new match says
@@ -1171,6 +1179,7 @@ export class RtsController {
       playerOut: (player) => this.isPlayerOut?.(player) ?? false,
     };
     this.meleeAi = new MeleeAi(host);
+    this.scriptAi = new ScriptAi(host);
     this.computerPlus = new ComputerPlusAi(host);
     // Kept for the one AI that is not seated by a melee script — Extreme Candy War's heroes, which
     // a custom map's start seats itself (`startCandyWarAI`). A new match starts it over.
@@ -1201,10 +1210,82 @@ export class RtsController {
    * by `prepareMeleeAI` before a line of the script ran — the script names who plays, not
    * where they sit.
    */
+  /** Where a map's own `.ai` scripts come from, and the engine table their VM calls — the
+   *  renderer's, published as the map's script boots (MapViewerScene.runMapScript). */
+  aiScriptHost: { sources(name: string): ScriptAiSources | null; hooks(): EngineHooks | null } | null = null;
+
+  /** `StartMeleeAI(p, "war3mapImported\\Murloc_AI.ai")` — a computer on a script of the map's
+   *  own (src/ai/scriptAi.ts). A file nobody can find seats NOTHING (said once): the seat
+   *  simply has no AI, which is what an unreadable script does in the real client too. */
+  private startScriptAI(player: number, script: string, seat: { race: PlayableRace; startX: number; startY: number; difficulty: number }): void {
+    const sources = this.aiScriptHost?.sources(script) ?? null;
+    if (!sources || !this.scriptAi) {
+      console.warn(`[ai] StartMeleeAI(${player}, "${script}"): no such AI script in the map or the install — that computer will not play`);
+      return;
+    }
+    const [startX, startY] = this.townFor(player, seat.startX, seat.startY);
+    this.scriptAi.add(player, script, seat.race, seat.difficulty, startX, startY, this.meleeSeed, sources, this.aiScriptHost?.hooks() ?? null);
+  }
+
+  /**
+   * A seat the lobby never armed — a CAMPAIGN computer the chapter's w3i does not list as a
+   * computer slot (a rescuable or neutral-controlled side the mission hands an AI later, as
+   * Orc03 does Grom's `Player(3)` mid-mission). Its town is where its buildings stand (else its
+   * units), its race the one the map gave the slot, its difficulty the middle one — a campaign
+   * script reads `GetGameDifficulty()`, never `MeleeDifficulty()`.
+   */
+  private unseatedComputer(player: number): { player: number; race: PlayableRace; startX: number; startY: number; difficulty: number; plus?: boolean } | null {
+    // Never a PERSON's seat: the lobby's computers are all in `meleeSeats` already, so a seat
+    // that is still PLAYING here is somebody's ("This should only be used for computer-controlled
+    // player slots" — the editor's own hint for Start Campaign AI Script, UI\TriggerStrings.txt).
+    if (this.meleeStarts.some((s) => s.player === player)) return null;
+    let bx = 0, by = 0, bn = 0, ux = 0, uy = 0, un = 0;
+    for (const u of this.sim.units.values()) {
+      if (u.owner !== player || u.hp <= 0) continue;
+      if (u.building) { bx += u.x; by += u.y; bn++; } else { ux += u.x; uy += u.y; un++; }
+    }
+    if (!bn && !un) return null;
+    const [x, y] = bn ? [bx / bn, by / bn] : [ux / un, uy / un];
+    return { player, race: this.meleeRaces.get(player) ?? "human", startX: x, startY: y, difficulty: MELEE_NORMAL };
+  }
+
+  /** Where `player`'s town stands: its main hall (UnitData `buffType` = "townhall") nearest the
+   *  given point, else the point itself. See startMeleeAIFor. */
+  private townFor(player: number, x: number, y: number): [number, number] {
+    let best: [number, number] = [x, y];
+    let bestD = Infinity;
+    for (const u of this.sim.units.values()) {
+      if (u.owner !== player || !u.building) continue;
+      if (this.registry.get(u.typeId)?.buffType !== "townhall") continue;
+      const d = (u.x - x) ** 2 + (u.y - y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = [u.x, u.y];
+      }
+    }
+    return best;
+  }
+
   startMeleeAIFor(player: number, script: string): void {
-    const seat = this.meleeSeats.get(player);
+    const seat = this.meleeSeats.get(player) ?? this.unseatedComputer(player);
     if (!this.meleeAi || !seat) return;
-    const race = AI_SCRIPT_RACES[script.toLowerCase()] ?? seat.race;
+    // The file is named by its BASENAME for the four melee races (`Scripts\human.ai` and
+    // `human.ai` are the same AI). Any other name is the MAP's own script, and it is RUN, never
+    // replaced by a race AI: a Murloc player on elf.ai builds nothing a Murloc can build and
+    // stands still for the match, which is what (4)Monolith's creep players used to do.
+    // (game/aiSeating.ts `pickAi` — the whole decision, pinned headlessly.)
+    const pick = pickAi(script, seat, { melee: this.meleeMap, campaign: this.campaignMatch });
+    if (pick.ai === "script") return this.startScriptAI(player, script, seat);
+    const race = pick.race;
+    // WHERE the computer's town is comes from its own buildings, never the lobby. common.ai
+    // does not read a start location at all — its towns are the engine's (`TownHasHall`,
+    // `TownHasMine`, `TownWithMine`), clusters around the player's halls — and by the time a
+    // script asks for StartMeleeAI its starting units already stand. A melee map puts them on
+    // the start location, so nothing changes there; (4)Monolith shuffles its four start REGIONS
+    // in Init Variables and builds each player's town in whichever one it drew, so a computer
+    // seated by the lobby's coordinates put its Farm and Altar on the far side of the map from
+    // its Town Hall, and an Undead one, with no blight there, never built anything at all.
+    const [startX, startY] = this.townFor(player, seat.startX, seat.startY);
     // COMPUTER+ (issue #124) — the lobby's Advanced Options switch, arriving here as the seat's
     // own flag. It is the same seam, the same moment and the same arguments: the map's melee
     // script still decides WHO plays and as what, and only which of the two AI objects the seat
@@ -1224,10 +1305,12 @@ export class RtsController {
     // `startWarChasersAI`, each with its own AI object and its own rules for that one map
     // (docs/candy-war-ai.md, docs/warchasers-ai.md). Neither goes through `StartMeleeAI`,
     // because a scenario runs none of the melee library.
-    if (seat.plus && !this.meleeMap) {
+    // …and in a CAMPAIGN chapter, never at all (`pickAi` answers "melee" with
+    // `plusRefused: "campaign"`, silently — a chapter offers no switch to have ticked).
+    if (pick.ai === "melee" && pick.plusRefused === "custom") {
       this.warnOncePlusOnCustom();
-    } else if (seat.plus) {
-      this.computerPlus?.add(player, race, seat.difficulty, seat.startX, seat.startY, this.meleeSeed);
+    } else if (pick.ai === "plus") {
+      this.computerPlus?.add(player, race, seat.difficulty, startX, startY, this.meleeSeed);
       // Insane Computer+ plays like a skilled player, and a skilled player ANIMATION-CANCELS:
       // it moves out of a blow's backswing and gives its next order the tick a spell goes off
       // (SimWorld.cancelsBackswing). Every other computer plays each animation out.
@@ -1236,7 +1319,7 @@ export class RtsController {
       // docs/computer-plus.md and `AiPlayer.bypassFog`, which it also switches off.
       return;
     }
-    this.meleeAi.add(player, race, seat.difficulty, seat.startX, seat.startY, this.meleeSeed);
+    this.meleeAi.add(player, race, seat.difficulty, startX, startY, this.meleeSeed);
     // The one thing an INSANE computer gets that is the engine's rather than the script's:
     // it is credited TWICE what its workers actually carried home. common.ai never mentions
     // MELEE_INSANE — the difficulty is not in the strategy, it is in the till.
@@ -1254,6 +1337,8 @@ export class RtsController {
     if (seat.difficulty === MELEE_INSANE) this.sim.setHarvestBonus(player, INSANE_HARVEST_FACTOR);
   }
 
+  /** Is this match a campaign chapter? Set by `prepareMeleeAI`; Computer+ is never seated in one. */
+  private campaignMatch = false;
   /** Was this match started on a MELEE map? Set by `prepareMeleeAI`; read by
    *  `startMeleeAIFor`, which refuses Computer+ anywhere else. */
   private meleeMap = false;
@@ -1267,6 +1352,8 @@ export class RtsController {
   }
 
   private meleeAi: MeleeAi | null = null;
+  /** Computers running a script of their MAP's own (src/ai/scriptAi.ts) — (4)Monolith's creeps. */
+  private scriptAi: ScriptAi | null = null;
   /** The Computer+ seats (issue #124, src/ai/plus/). A separate object from `meleeAi` on
    *  purpose: the two AIs share no mutable state, and a seat is in exactly one of them. */
   private computerPlus: ComputerPlusAi | null = null;
@@ -1359,6 +1446,27 @@ export class RtsController {
    * follows is the map's. Nothing here decides any of it.
    */
   onPlayerLeft: ((player: number) => void) | null = null;
+
+  /** A cheat was used — the replay recorder's tap (game/replay.ts). */
+  onCheat: ((player: number, kind: CheatKind) => void) | null = null;
+  /** …and a selection cheat, with the units it acted on. */
+  onCheatSelected: ((kind: "hp" | "mp" | "cooldown" | "kill", ids: readonly number[]) => void) | null = null;
+
+  /**
+   * Inside the AI block of a step (`tick`) — what a replay stamps an input's PHASE with, since a
+   * computer decides after the inputs that arrived between frames and before the world steps.
+   */
+  inAiPhase = false;
+
+  /**
+   * PLAYBACK of a replay (issue #158): the computers are seated as usual — seating may itself
+   * set things on the world — but never THINK. Their decisions are in the file, handed back
+   * at exactly the point of the step they were made (`replayAiInputs`).
+   */
+  replayAiInputs: (() => void) | null = null;
+
+  /** Inside a map AI script's tick — see the AI block in `tick`. */
+  inScriptAi = false;
 
   /**
    * Has this seat been REMOVED from the match — `RemovePlayer`, defeated or left? Answered by
@@ -1918,6 +2026,17 @@ export class RtsController {
    *  in the game as well (see VisionSet.setStartFog). */
   setLocalRevealAll(on: boolean): void {
     this.local.setRevealAll(on);
+  }
+
+  /** Rebuild every viewpoint's sight NOW rather than at its next 10 Hz turn — for a change a
+   *  watcher makes while the world is stopped (a paused replay's Fog of War box). */
+  rebuildVision(): void {
+    const rebuilt = this.viewpoints.rebuildAll();
+    for (const vp of rebuilt) this.ghosts.forgetSeen(vp.player, vp);
+    if (rebuilt.includes(this.local)) this.pruneFogged();
+    // …and every entry's own `hidden`, which the bars and the picker read — refreshed by the
+    // entry sync, which a stopped world does not run (the held start's `settleHeld` does the same).
+    this.syncEntries(0, 1);
   }
 
   /** Install the fog's line-of-sight height field + tree blockers, so vision is
@@ -2791,6 +2910,9 @@ export class RtsController {
     // The score screen counts what a script hands a player too — the melee starting units are
     // exactly this, and are what each race's opening Unit Score is made of (sim/matchStats.ts).
     if (!creep && !passive) this.sim.noteGained(simId);
+    // …and a computer on a script of its own gives what a trigger hands it a GUARD POST where it
+    // stands, as it does its preplaced units (src/ai/scriptAi.ts GuardPosts).
+    if (!creep && !passive) this.scriptAi?.unitCreated(simId);
     const su = this.sim.units.get(simId);
     if (su && creep) {
       // The same guard behaviour a map-placed creep gets: it holds the ground it was made on,
@@ -3506,7 +3628,21 @@ export class RtsController {
    *  empty selection leaves the existing group untouched (WC3). */
   assignGroup(key: string): void {
     const { ids } = this.ownSelectionByKind();
-    if (ids.length) this.groups.set(key, ids);
+    if (ids.length) {
+      this.groups.set(key, ids);
+      this.onGroup?.("set", key, ids);
+    }
+  }
+
+  /** A control group was set, added to or recalled — the replay's input track
+   *  (game/inputTrack.ts). Null when nobody is taking one. */
+  onGroup: ((op: "set" | "add" | "recall", key: string, ids: readonly number[]) => void) | null = null;
+  /** The local player issued a command — the same track, for where it came from. */
+  onLocalCommand: ((cmd: Command) => void) | null = null;
+
+  /** The unit type of the selection's ACTIVE subgroup ("" with nothing selected). */
+  activeSubgroupType(): string {
+    return this.primary !== null ? (this.sim.units.get(this.primary)?.typeId ?? "") : "";
   }
 
   /** Shift+N: append the current selection to group N, keeping the group's kind
@@ -3525,13 +3661,17 @@ export class RtsController {
       merged.push(id);
       seen.add(id);
     }
-    if (merged.length) this.groups.set(key, merged);
+    if (merged.length) {
+      this.groups.set(key, merged);
+      this.onGroup?.("add", key, merged);
+    }
   }
 
   /** N (tap): recall group N as the active selection. Returns false if empty. */
   recallGroup(key: string): boolean {
     const ids = this.livingGroup(key);
     if (!ids.length) return false;
+    this.onGroup?.("recall", key, ids);
     this.selected.clear();
     for (const id of ids) this.selected.add(id);
     this.selectedMine = null;
@@ -5088,11 +5228,28 @@ export class RtsController {
       // Sub-phases of `sim`, for the session log (src/dev/perfLog.ts). Dotted, so they are a
       // breakdown of the span they sit inside rather than siblings of it.
       perfLog.begin("sim.ai");
-      if (this.meleeAi?.active && this.seeded) this.meleeAi.tick(dt);
-      if (this.computerPlus?.active && this.seeded) this.computerPlus.tick(dt);
-      if (this.candyWar?.active && this.seeded) this.candyWar.tick(dt);
-      if (this.warChasers?.active && this.seeded) this.warChasers.tick(dt);
-      if (this.dota?.active && this.seeded) this.dota.tick(dt);
+      this.inAiPhase = true;
+      if (this.replayAiInputs) this.replayAiInputs();
+      else {
+        if (this.meleeAi?.active && this.seeded) this.meleeAi.tick(dt);
+        if (this.computerPlus?.active && this.seeded) this.computerPlus.tick(dt);
+        if (this.candyWar?.active && this.seeded) this.candyWar.tick(dt);
+        if (this.warChasers?.active && this.seeded) this.warChasers.tick(dt);
+        if (this.dota?.active && this.seeded) this.dota.tick(dt);
+      }
+      // A map's OWN AI script (a campaign's `o03_blue.ai`, Monolith's creep players) is part of
+      // the MAP, like its triggers: it orders through the same engine hooks they do rather than
+      // through `execute`, so a replay could not carry its decisions — it runs on playback as it
+      // ran in the match, and what it does pass through `execute` is not recorded (`inScriptAi`).
+      if (this.scriptAi?.active && this.seeded) {
+        this.inScriptAi = true;
+        try {
+          this.scriptAi.tick(dt);
+        } finally {
+          this.inScriptAi = false;
+        }
+      }
+      this.inAiPhase = false;
       // …and the map's own creeps think here too (src/ai/creeps.ts): Neutral Hostile is a
       // player with no seat, and its casting is the same authority-only pass as a computer's.
       if (this.seeded) (this.creepCaster ??= new CreepCaster(this.sim, this.abilities)).tick(dt);
@@ -6250,16 +6407,20 @@ export class RtsController {
 
   /** A summoned/raised unit materializes: play its birth clip and lock it out of
    *  acting (sim `spawning`) until the clip finishes. No birth clip → acts at once. */
-  beginSummonBirth(simId: number): void {
+  beginSummonBirth(simId: number, lock = true): number | null {
     const e = this.byId.get(simId);
     const u = this.sim.units.get(simId);
-    if (!e || !u || e.birthSeq < 0) return;
+    if (!e || !u || e.birthSeq < 0) return null;
     const durMs = e.birthEnd - e.birthStart;
-    u.spawning = durMs > 0 ? durMs / 1000 : 1;
+    // The SPAWN LOCK — sim state read off the model. Not written while a replay is watched
+    // (`lock` false): the file says when it landed and how long it was (game/replay.ts).
+    const secs = durMs > 0 ? durMs / 1000 : 1;
+    if (lock) u.spawning = secs;
     e.unit.instance.setSequence(e.birthSeq);
     e.unit.instance.setSequenceLoopMode(SequenceLoopMode.ModelDefined);
     e.unit.state = WidgetState.WALK; // keep the picker from auto-standing over the birth clip
     e.curSeq = e.birthSeq;
+    return secs;
   }
 
   /** Left-click a unit selects it. Clicking empty ground does NOT deselect (WC3
@@ -9005,6 +9166,10 @@ export class RtsController {
     // by the renderer, which owns the seat facts the table is built with.
     link.onScoresAsked = (player) => this.onScoresAsked?.(player);
     link.onScores = (scores) => this.onScores?.(scores);
+    // The match's replay, sent by the host when the game ends (issue #158).
+    link.onReplay = (bytes) => this.onReplay?.(bytes);
+    // …and each client's input track on its way to the host's recording (game/inputTrack.ts).
+    link.onInputs = (player, scheme, samples) => this.onInputs?.(player, scheme, samples);
     if (setup.isHost) {
       // The host is the only party that judges an arriving command. `CommandRouter` resolves
       // the relay's `from` stamp — which no client can forge — to a slot, and a command whose
@@ -9091,6 +9256,39 @@ export class RtsController {
   /** HOST: answer a client's ask. */
   sendScores(player: number, scores: ScoreTable): void {
     if (this.matchLink && this.matchLinkIsHost) this.matchLink.sendScores(player, scores);
+  }
+
+  /** Which of `players` have eyes on this unit right now, one bit per player slot — the replay
+   *  state track's fog bits (game/replayState.ts): what each player KNEW, not what was true. */
+  seenByMask(unitId: number, players: readonly number[]): number {
+    let mask = 0;
+    for (const p of players) if (this.viewpoints.unitVisibleTo(p, unitId)) mask |= 1 << p;
+    return mask;
+  }
+
+  /** HOST: a batch of a client's input track arrived (MatchLink `inputs`). */
+  onInputs: ((player: number, scheme: string, samples: unknown[]) => void) | null = null;
+
+  /** CLIENT: send the host a batch of our own input track. False when there is no host. */
+  sendInputs(scheme: string, samples: unknown[]): boolean {
+    if (!this.matchLink || this.matchLinkIsHost) return false;
+    this.matchLink.sendInputs(scheme, samples);
+    return true;
+  }
+
+  /** CLIENT: the replay the host sent at the end of the game (MatchLink `replaypart`). */
+  onReplay: ((bytes: Uint8Array) => void) | null = null;
+
+  /** HOST of a LAN match with its wire still up — the one machine that hands out the replay. */
+  get hostsLanMatch(): boolean {
+    return !!this.matchLink && this.matchLinkIsHost;
+  }
+
+  /** HOST: hand every peer the replay. False when there is nobody to hand it to. */
+  sendReplay(bytes: Uint8Array): boolean {
+    if (!this.matchLink || !this.matchLinkIsHost) return false;
+    this.matchLink.sendReplay(bytes);
+    return true;
   }
 
   /** Is a LAN match's wire attached? The renderer's background pump keys on this: a
@@ -9697,6 +9895,7 @@ export class RtsController {
         // A neutral shop is nobody's, so this errand cannot go through the order funnel; the
         // authority maps the TYPE to the shop that serves the player (see its method).
         issueNeutralImmediateOrder: (p, u, t) => this.authority.issueNeutralImmediateOrder(p, u, t),
+        issueNeutralOrder: (p, shop, oid, k) => this.authority.issueNeutralOrder(p, shop, oid, k),
         // The mine handle is a JASS fiction (MINE_ID_BASE), so it is resolved here, on the
         // side of the seam that holds both the world and the fiction's own decoder.
         entangleInstant: (id, mineHandle) => {
@@ -9716,8 +9915,14 @@ export class RtsController {
       // Here rather than in a sub-module because the brains are the CONTROLLER's: they issue
       // their orders through `execute`, the same door a click goes through.
       startMeleeAI: (player, script) => this.startMeleeAIFor(player, script),
+      commandAi: (player, command, data) => this.scriptAi?.command(player, command, data),
+      // A chapter's `StartCampaignAI(p, "o03_blue.ai")` — the same seat, the same runner.
+      startCampaignAI: (player, script) => this.startMeleeAIFor(player, script),
+      guardPosition: (unitId, op) => this.scriptAi?.guardPosition(unitId, op),
+      removeAllGuardPositions: (player) => this.scriptAi?.ignoreAllGuardPositions(player),
       pauseCompAi: (player, pause) => {
         this.meleeAi?.setPaused(player, pause);
+        this.scriptAi?.setPaused(player, pause);
         this.computerPlus?.setPaused(player, pause);
       },
       // The `BlzSetAbility…` / `BlzSetItemExtendedTooltip` words and art (docs/map-compatibility.md
@@ -9763,6 +9968,21 @@ export class RtsController {
    * command reaches the same `Authority.execute` without passing through this object at all,
    * which is the point of having moved it.
    */
+  /** Tap every command offered to the authority — the replay recorder (game/replay.ts). */
+  setCommandTap(tap: ((player: number, cmd: Command) => ((took: boolean) => void) | undefined) | null): void {
+    this.authority.onCommand = tap;
+  }
+
+  /**
+   * Hand a REPLAY's recorded command back to the authority (issue #158). Straight to
+   * `Authority.execute`, as a LAN peer's is: what was recorded is what reached that door, after
+   * this controller's own adjustments (`channelSpared`) had already been made, and nothing here
+   * may forward it anywhere.
+   */
+  executeReplay(player: number, cmd: Command): boolean {
+    return this.authority.execute(player, cmd);
+  }
+
   execute(player: number, cmd: Command): boolean {
     // A channeller given an order AS PART OF A GROUP keeps channelling (developer request): an
     // Archmage raining Blizzard among five Footmen the player moves does not drop the storm to
@@ -9774,6 +9994,7 @@ export class RtsController {
       // that well) have no queued form to wait in, so the channeller simply sits them out.
       else return false;
     }
+    if (player === this.localPlayer) this.onLocalCommand?.(cmd);
     const applied = this.authority.execute(player, cmd);
     // On a CLIENT, forward the local player's accepted commands to the host's authoritative
     // sim (item 9b). We still applied it locally just above — sequencing B keeps the client
@@ -9922,14 +10143,17 @@ export class RtsController {
    *
    *  SINGLE PLAYER ONLY: a networked match refuses every cheat here, whoever asks — the
    *  panel and the chat both gate on it too, and this is the last door. */
-  cheat(kind: CheatKind): boolean {
+  cheat(kind: CheatKind, player = this.localPlayer): boolean {
     if (this.networked) return false;
+    // A cheat changes the match, so a replay carries it (game/replay.ts) — for the player who
+    // typed it, which on playback is not the machine's own seat.
+    this.onCheat?.(player, kind);
     if (kind === "godmode") {
       // `whosyourdaddy` — invulnerable, one-hit kills (SimWorld.godPlayers).
       const gods = this.sim.godPlayers;
-      if (gods.has(this.localPlayer)) gods.delete(this.localPlayer);
-      else gods.add(this.localPlayer);
-      return gods.has(this.localPlayer);
+      if (gods.has(player)) gods.delete(player);
+      else gods.add(player);
+      return gods.has(player);
     }
     if (kind === "day" || kind === "night") {
       // `riseandshine` / `lightsout`: wind the clock to the morning or the evening — the
@@ -9944,13 +10168,13 @@ export class RtsController {
     }
     if (kind === "upgrades") {
       // `sharpandshiny`: every upgrade in the game, at its last level (SimWorld.researchAll).
-      this.sim.researchAll(this.localPlayer);
+      this.sim.researchAll(player);
       return false;
     }
     if (kind === "food") {
-      this.authority.addFoodBonus(this.localPlayer, 100);
+      this.authority.addFoodBonus(player, 100);
     } else {
-      const stash = this.sim.stashOf(this.localPlayer);
+      const stash = this.sim.stashOf(player);
       if (kind === "gold") stash.gold += 5000;
       else stash.lumber += 5000;
     }
@@ -9961,10 +10185,11 @@ export class RtsController {
    *  ability (and item) cooldown, or KILL it, on each selected living unit. A kill is the
    *  sim's own `killUnit` (JASS KillUnit: the Death clip, a corpse, drops, a building's
    *  collapse), whoever owns it — an enemy or a creep selected by a click is fair game. */
-  cheatSelected(kind: "hp" | "mp" | "cooldown" | "kill"): void {
+  cheatSelected(kind: "hp" | "mp" | "cooldown" | "kill", ids: readonly number[] = [...this.selected]): void {
     if (this.networked) return;
+    this.onCheatSelected?.(kind, ids);
     // A copy: a death takes the body out of the selection while we walk it.
-    for (const id of [...this.selected]) {
+    for (const id of ids) {
       const u = this.sim.units.get(id);
       if (!u || u.hp <= 0) continue;
       if (kind === "kill") this.sim.killUnit(id);
@@ -11076,7 +11301,7 @@ export class RtsController {
       // type's own `Avul` (what `SimUnit.baseInvulnerable` is seeded from), so a player's
       // building a SCRIPT has made invulnerable keeps its bar.
       if (u.building && ((u.neutralPassive && u.invulnerable) || this.registry.get(e.typeId)?.abilities.includes("Avul"))) continue;
-      const row = this.allyAbilityRow(u);
+      const row = this.allyAbilityRow(u, e.typeId);
       specs.push({
         x: u.x,
         y: u.y,
@@ -11185,7 +11410,12 @@ export class RtsController {
    *  • **Learned spells only.** A hero carries every one of its four rows from birth at rank 0
    *    (`buildAbilitiesFor` — `heroAbilities` come in unlearned), and rank 0 is "not picked".
    *    Its INNATE abilities are not spells at all — a hero's `abilList` is Inventory and kin —
-   *    so the row is `AbilityDef.isHero`, which is the same `hero=1` column the learn page is.
+   *    so the row is what the LEARN PAGE is: the type's own `heroAbilList` (`SimWorld.learnable`).
+   *    The `hero=1` column of AbilityData.slk says the same thing in the stock table and is
+   *    still honoured (a hero spell a script ADDED is in no type's list), but it cannot be the
+   *    only test — it is an editor column the game never needs, so a map optimizer drops it
+   *    whole: DotA 6.77b ships 5606 ability rows and not one `hero` cell, and no hero on that
+   *    map wore a row at all.
    *  • **Why it can't be cast is drawn as the CARD draws it.** The two facts are the two the
    *    command card already shows, so the row shows them the same way and the player learns
    *    one language: a cooldown is the clockwise wedge with its seconds printed in it, and
@@ -11193,17 +11423,18 @@ export class RtsController {
    *    DIS* twin — that art means "unavailable", which is a different word, and it can say
    *    neither how long is left nor which of the two is the matter.
    */
-  private allyAbilityRow(u: RenderUnit): { list: BarAbility[]; sig: string } | null {
+  private allyAbilityRow(u: RenderUnit, typeId: string): { list: BarAbility[]; sig: string } | null {
     const icon = this.iconUrl;
     if (!icon || !u.isHero) return null;
     // Neutral heroes (a Tavern's, a creep camp's) are nobody's ally; your own is on your card.
     if (u.owner < 0 || u.owner === this.localPlayer || !this.localAlly(u.owner)) return null;
+    const learnable = this.registry.get(typeId)?.heroAbilities;
     let list: BarAbility[] | null = null;
     let sig = "";
     for (const ab of u.abilities) {
       if (ab.level < 1) continue; // never picked — the row shows nothing at all for it
       const def = this.abilities.get(ab.id);
-      if (!def || !def.isHero || !def.icon) continue;
+      if (!def || !def.icon || !(def.isHero || learnable?.includes(ab.id))) continue;
       const lvl = def.levelData[Math.min(ab.level, def.levelData.length) - 1];
       // The two things that stop a press, and the only two the row draws: the clock, and the
       // mana this RANK costs (a rank 3 Blizzard is not a rank 1 one). Read exactly as the
