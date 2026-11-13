@@ -1,7 +1,7 @@
 // SQLite schema for the site. Kept in TypeScript so both the app and the CLI scripts
 // (run with Node's native TypeScript support) share one definition.
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS settings (
@@ -31,6 +31,18 @@ CREATE TABLE IF NOT EXISTS downloads (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_platform ON downloads(platform, enabled, sort);
+
+CREATE TABLE IF NOT EXISTS resources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  code TEXT,
+  oss_key TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  sort INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_resources_enabled_sort ON resources(enabled, sort);
 
 CREATE TABLE IF NOT EXISTS maps (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,6 +120,17 @@ export interface DownloadRow {
   size: number | null;
   format: string | null;
   url: string;
+  oss_key: string | null;
+  enabled: number;
+  sort: number;
+  updated_at: string;
+}
+
+export interface ResourceRow {
+  id: number;
+  name: string;
+  url: string;
+  code: string | null;
   oss_key: string | null;
   enabled: number;
   sort: number;

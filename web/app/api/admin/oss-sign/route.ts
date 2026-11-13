@@ -7,9 +7,22 @@ export const runtime = "nodejs";
 
 const IMAGE_EXT = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 const MAP_EXT = new Set(["w3x", "w3m", "zip"]);
+/** 安装包：各平台的发布产物。 */
+const DOWNLOAD_EXT = new Set([
+  "exe", "msi", "dmg", "pkg", "zip", "7z", "tar", "gz", "tgz", "xz",
+  "appimage", "deb", "rpm", "apk", "hap",
+]);
+/** 资料下载：源码包、文档、表格等。 */
+const RESOURCE_EXT = new Set([
+  "zip", "7z", "tar", "gz", "tgz", "xz", "rar",
+  "pdf", "txt", "md", "json",
+  "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+]);
 const IMAGE_MAX = 16 * 1024 * 1024;
 const MAP_MAX = 512 * 1024 * 1024;
 const LANGUAGE_MAX = 8 * 1024 * 1024;
+const DOWNLOAD_MAX = 4096 * 1024 * 1024;
+const RESOURCE_MAX = 1024 * 1024 * 1024;
 /** A map language sidecar's locale, as in `DotA v6.83d.w3x.zhCN.json`. */
 const LOCALE = /^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{2,8})?$/;
 
@@ -31,7 +44,15 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as SignRequest | null;
   const filename = body?.filename ?? "";
   const kind =
-    body?.kind === "language" ? "language" : body?.kind === "map" ? "map" : "image";
+    body?.kind === "language"
+      ? "language"
+      : body?.kind === "map"
+        ? "map"
+        : body?.kind === "download"
+          ? "download"
+          : body?.kind === "resource"
+            ? "resource"
+            : "image";
   const extension = filename.split(".").pop()?.toLowerCase() ?? "";
   const contentType = body?.contentType || "application/octet-stream";
   const size = Number(body?.size ?? 0);
@@ -66,13 +87,21 @@ export async function POST(request: Request) {
     });
   }
 
-  const allowed = kind === "map" ? MAP_EXT : IMAGE_EXT;
+  const allowed =
+    kind === "map"
+      ? MAP_EXT
+      : kind === "download"
+        ? DOWNLOAD_EXT
+        : kind === "resource"
+          ? RESOURCE_EXT
+          : IMAGE_EXT;
+  const limit = kind === "map" ? MAP_MAX : kind === "download" ? DOWNLOAD_MAX : kind === "resource" ? RESOURCE_MAX : IMAGE_MAX;
 
   if (!allowed.has(extension)) {
     return Response.json({ error: `不支持的文件类型：.${extension || "?"}` }, { status: 400 });
   }
-  if (size > (kind === "map" ? MAP_MAX : IMAGE_MAX)) {
-    return Response.json({ error: "文件超出大小限制" }, { status: 413 });
+  if (size > limit) {
+    return Response.json({ error: `文件超出 ${Math.round(limit / 1024 / 1024)} MB 上限` }, { status: 413 });
   }
   if (kind === "image" && !contentType.startsWith("image/")) {
     return Response.json({ error: "封面必须是图片" }, { status: 400 });

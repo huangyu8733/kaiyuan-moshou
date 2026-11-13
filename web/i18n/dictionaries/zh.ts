@@ -43,6 +43,9 @@ export const zh = {
     updated: "更新于",
     download: "下载",
     unavailable: "暂不可用",
+    resourcesTitle: "资料下载",
+    resourceName: "名称",
+    extractCode: "提取码",
     platforms: {
       windows: "Windows",
       linux: "Linux",

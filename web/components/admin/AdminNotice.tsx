@@ -7,10 +7,11 @@ const OK: Record<string, string> = {
 
 const ERROR: Record<string, string> = {
   slug: "Slug 只能包含小写字母、数字和连字符，例如 dota-683d。",
-  url: "下载地址必须是 http(s) 链接。",
+  url: "下载地址必须是 http(s) 链接，或上传一个文件。",
   platform: "请选择有效的平台。",
+  name: "名称不能为空。",
   "duplicate-slug": "Slug 已被其他地图使用。",
-  "file-missing": "地图文件未在 OSS 找到，请重新上传。",
+  "file-missing": "没有找到上传的文件，请重新上传。",
 };
 
 export function AdminNotice({ ok, error }: { ok?: string | string[]; error?: string | string[] }) {

@@ -22,7 +22,7 @@ export function UploadField({
   maxMB,
 }: {
   name: "cover" | "file";
-  kind: "image" | "map";
+  kind: "image" | "map" | "download" | "resource";
   accept: string;
   label: string;
   initialUrl?: string | null;
@@ -106,7 +106,7 @@ export function UploadField({
       {error ? <p className="form-message form-message--error">{error}</p> : null}
       <input type="hidden" name={`${name}_url`} value={url} />
       <input type="hidden" name={`${name}_key`} value={key} />
-      {kind === "map" ? <input type="hidden" name="file_size" value={size || ""} /> : null}
+      {kind !== "image" ? <input type="hidden" name="file_size" value={size || ""} /> : null}
     </div>
   );
 }

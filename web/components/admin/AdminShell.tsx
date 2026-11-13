@@ -4,6 +4,7 @@ import { logoutAction } from "@/lib/actions/auth";
 const NAV = [
   { href: "/admin", label: "概览" },
   { href: "/admin/downloads", label: "游戏下载" },
+  { href: "/admin/resources", label: "资料下载" },
   { href: "/admin/maps", label: "地图管理" },
   { href: "/admin/contact", label: "联系信息" },
   { href: "/admin/languages", label: "语言" },

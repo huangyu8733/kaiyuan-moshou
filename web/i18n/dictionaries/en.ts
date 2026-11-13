@@ -44,6 +44,9 @@ export const en: Messages = {
     updated: "Updated",
     download: "Download",
     unavailable: "Unavailable",
+    resourcesTitle: "Resources",
+    resourceName: "Name",
+    extractCode: "Access code",
     platforms: {
       windows: "Windows",
       linux: "Linux",

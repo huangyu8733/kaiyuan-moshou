@@ -1008,6 +1008,20 @@ a:hover {
   padding: 20px 22px;
   overflow-x: auto;
 }
+.download-table-panel + .download-table-panel {
+  margin-top: 20px;
+}
+.download-table-title {
+  margin: 0 0 14px;
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+}
+.form-sources {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .data-table {
   width: 100%;
   border-collapse: collapse;
