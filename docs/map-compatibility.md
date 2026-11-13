@@ -6,7 +6,7 @@ newer than 1.30.4 — [`src/world/mapInfo.ts`](../src/world/mapInfo.ts),
 [`src/data/objectData.ts`](../src/data/objectData.ts), or the parser hunks in
 [`patches/mdx-m3-viewer@5.12.0.patch`](../patches/mdx-m3-viewer@5.12.0.patch).
 
-OpenWar3 targets **TFT 1.30.4** and that does not change: the version gate in
+Warcraft Open targets **TFT 1.30.4** and that does not change: the version gate in
 [`src/vfs/version.ts`](../src/vfs/version.ts) is about the INSTALL, and every number, table and
 asset still comes out of a 1.30.4 install. What this document is about is the other half — the
 **map file**, which a player downloads from Hive or EpicWar and which has been saved by an editor

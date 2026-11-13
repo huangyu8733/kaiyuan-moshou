@@ -6,12 +6,12 @@ import { getDb, nowIso } from "../lib/db/index.ts";
 // 1) 最新 GitHub Release 的三个桌面安装包 → downloads（已有同平台记录时跳过）；
 // 2) 仓库内 Warcraft III zhCN/Maps/hhkj/*.w3x.zhCN.json 的 name/description → 地图草稿。
 const ROOT = join(import.meta.dirname, "..", "..");
-const REPO = "elevchyt/openwar3";
+const REPO = "elevchyt/warcraft-open";
 const db = getDb();
 
 const headers: Record<string, string> = {
   Accept: "application/vnd.github+json",
-  "User-Agent": "openwar3-web-seed",
+  "User-Agent": "warcraft-open-web-seed",
 };
 if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
 

@@ -1,6 +1,6 @@
 import { currentLocale } from ".";
 
-// Chinese for the labels OpenWar3 ADDS to the game's own FDF screens (`src/overrides/ui/GlobalStrings.fdf`).
+// Chinese for the labels Warcraft Open ADDS to the game's own FDF screens (`src/overrides/ui/GlobalStrings.fdf`).
 //
 // Those keys have no counterpart in the player's install — the 2003 game never had a "Healthbars:"
 // row or a gamepad button — so the install's own localization cannot translate them. The English
@@ -30,7 +30,7 @@ const ZH: Readonly<Record<string, string>> = {
   DOWNLOADING_VOICE_CONTROL: "正在下载语音控制",
   VOICE_CONTROL_TITLE: "语音控制",
   VSYNC: "垂直同步",
-  VSYNC_RESTART: "更改垂直同步需要重启开源魔兽争霸。现在重启吗？",
+  VSYNC_RESTART: "更改垂直同步需要重启魔兽争霸开源版。现在重启吗？",
   LOW_PERFORMANCE_MODE: "低性能模式",
   MENUS_4_3: "4:3 菜单",
   COLON_SERVER: "服务器：",

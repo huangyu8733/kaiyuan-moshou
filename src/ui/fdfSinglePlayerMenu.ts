@@ -122,7 +122,7 @@ export function mountSinglePlayerMenu(
   vfs: DataSource,
   h: SinglePlayerHandlers,
 ): Promise<FdfScreen> {
-  const log = (name: string) => () => console.log(`[OpenWar3] single player: ${name}`);
+  const log = (name: string) => () => console.log(`[Warcraft Open] single player: ${name}`);
   const move: MovePanel = h.movePanel ?? (() => 0);
   let lib: FdfLibrary | null = null;
   /** The screen, once built — and again after every resize rebuild. */

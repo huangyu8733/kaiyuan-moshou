@@ -5214,7 +5214,7 @@ races written the way a player types them.
 ## The UI, and the overrides layer
 
 Two new controls, neither of which the 2003 UI has a frame for. They are **not** added by editing
-the install — `UI\FrameDef\` is the player's and OpenWar3 ships zero Blizzard assets — but by a
+the install — `UI\FrameDef\` is the player's and Warcraft Open ships zero Blizzard assets — but by a
 layer of our own FrameDef files in [`src/overrides/`](../src/overrides/), applied at mount through
 `mountFdfScreen`'s `overrides` option. Read that directory's README before adding a third.
 

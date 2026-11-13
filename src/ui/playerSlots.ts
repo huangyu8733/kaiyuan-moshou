@@ -26,7 +26,7 @@ export const PLAYER_SLOT_FDF = "UI\\FrameDef\\Glue\\PlayerSlot.fdf";
  * One entry of an empty slot's name menu.
  *
  * A computer appears once per `MeleeDifficulty()` (src/ai/ids.ts) — and, since issue #124,
- * once per AI as well: Blizzard's ported melee scripts and OpenWar3's own Computer+
+ * once per AI as well: Blizzard's ported melee scripts and Warcraft Open's own Computer+
  * (src/ai/plus/) are two different opponents at the same three difficulties.
  *
  * All of them share ONE controller. Neither the difficulty nor the AI is a different kind of
@@ -41,7 +41,7 @@ export interface SlotOption {
   controller: Controller;
   /** `MeleeDifficulty()` for a computer row; absent on Open/Closed. */
   ai?: number;
-  /** This computer runs **Computer+**, OpenWar3's own improved melee AI (src/ai/plus/), rather
+  /** This computer runs **Computer+**, Warcraft Open's own improved melee AI (src/ai/plus/), rather
    *  than Blizzard's ported scripts. Six computer entries exist rather than three because the
    *  Advanced Options checkbox swaps which trio a row's menu offers — see `slotOptionsFor`. */
   plus?: boolean;

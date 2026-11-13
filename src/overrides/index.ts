@@ -15,10 +15,10 @@ import optionsMenuFdf from "./ui/OptionsMenu.fdf?raw";
 import escMenuOptionsPanelFdf from "./ui/EscMenuOptionsPanel.fdf?raw";
 import escMenuTemplatesFdf from "./ui/EscMenuTemplates.fdf?raw";
 
-// OpenWar3's own layer on top of the game's UI files (issue #124). Read `README.md` first.
+// Warcraft Open's own layer on top of the game's UI files (issue #124). Read `README.md` first.
 //
 // The rule this exists to keep: **`UI\FrameDef\` is the player's install and we never write to
-// it.** A control OpenWar3 needs that the 2003 UI has no frame for is declared HERE, in a small
+// it.** A control Warcraft Open needs that the 2003 UI has no frame for is declared HERE, in a small
 // file in the game's own FrameDef language, and laid over the screen at mount time. Nothing in
 // this repository is a copy of a Blizzard file, and no Blizzard file is edited.
 //
@@ -211,7 +211,7 @@ export const ESC_OPTIONS_OVERRIDE: FdfOverride = {
     // printing back at the player the one thing about the chapter they chose themselves.
     "CustomKeysLabel", "CustomKeysValue",
     "DifficultyLabel", "DifficultyValue",
-    // …and the Network category, whose panel sets a turn latency an OpenWar3 LAN match has not
+    // …and the Network category, whose panel sets a turn latency an Warcraft Open LAN match has not
     // got. The button is the only thing that reaches its panel, so the panel needs no entry.
     "NetworkButton",
   ],
@@ -313,7 +313,7 @@ export const LAN_JOIN_OVERRIDE: FdfOverride = {
 
 /**
  * LAN → Create Game: the Server row — which relay the game is announced on (this computer, the
- * OpenWar3 server, or another server the Servers List watches).
+ * Warcraft Open server, or another server the Servers List watches).
  *
  * Nothing is retired and nothing is re-anchored: both frames hang under the map list, in the
  * settings panel that already holds it. See `ui/LocalMultiplayerCreate.fdf`.
@@ -333,7 +333,7 @@ export const LAN_CREATE_OVERRIDE: FdfOverride = {
 };
 
 /**
- * OpenWar3's own dialog: the relay addresses this machine watches for games.
+ * Warcraft Open's own dialog: the relay addresses this machine watches for games.
  *
  * Not a layer over anything — the install has no FrameDef for it, so the whole frame is ours
  * (`ui/JoinAddressDialog.fdf`, built from the game's templates and art) and it is mounted as a

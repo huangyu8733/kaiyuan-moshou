@@ -82,7 +82,7 @@ contextBridge.exposeInMainWorld("ow3native", {
    *  general write primitive the note above rules out. */
   saveCustomKeys: (bytes) => ipcRenderer.invoke("ow3:customkeys-save", bytes),
   /**
-   * The MATCH LOG (src/game/matchLog.ts): `begin(map)` opens a file in the OpenWar3 data folder's
+   * The MATCH LOG (src/game/matchLog.ts): `begin(map)` opens a file in the Warcraft Open data folder's
    * `.logs/` and resolves to its id (null if the disk said no), `append(id, text)` adds whole
    * lines to it, and `end(id)` closes it. The page names a map, never a path — the shell picks
    * the file, and rolls it over at about a megabyte (electron/logStore.mjs).
@@ -124,7 +124,7 @@ contextBridge.exposeInMainWorld("ow3native", {
   },
 
   /**
-   * The OpenWar3s this machine can hear on the local network (electron/beacon.mjs), pushed as
+   * The Warcraft Opens this machine can hear on the local network (electron/beacon.mjs), pushed as
    * the set changes. Each is `{ id, url }`, the url being one `LanLobby.addRelay` takes.
    *
    * A page cannot send or receive a datagram, which is the whole reason this call exists: it is

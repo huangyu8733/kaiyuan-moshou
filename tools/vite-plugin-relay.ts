@@ -71,7 +71,7 @@ export function relay(): Plugin {
   };
 
   return {
-    name: "openwar3-relay",
+    name: "warcraft-open-relay",
     apply: "serve",
     // Both hooks, so `pnpm preview` — the build served the way an export will be — is LAN-
     // playable too. That is the launcher's job in miniature, and the shape the Electron main

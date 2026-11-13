@@ -60,7 +60,7 @@ function parseJassConstants(text) {
   return out;
 }
 
-/** The pre-1.29 literals these natives replaced — and still what OpenWar3's engine answers. */
+/** The pre-1.29 literals these natives replaced — and still what Warcraft Open's engine answers. */
 const ENGINE_ANSWERS = new Map([
   ["bj_MAX_PLAYERS", "12"],
   ["bj_MAX_PLAYER_SLOTS", "16"],

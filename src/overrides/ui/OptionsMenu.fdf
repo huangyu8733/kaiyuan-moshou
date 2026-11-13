@@ -1,4 +1,4 @@
-// OpenWar3 override — `UI\FrameDef\Glue\OptionsMenu.fdf`, Gameplay panel.
+// Warcraft Open override — `UI\FrameDef\Glue\OptionsMenu.fdf`, Gameplay panel.
 //
 // Issue #124 asks for three changes to this panel, and all three are about options that mean
 // nothing to this engine being replaced by one that does:
@@ -220,7 +220,7 @@ Frame "TEXT" "VsyncLabel" INHERITS "StandardInfoTextTemplate" {
 // ---------------------------------------------------------------------------------------------
 // Video panel: "4:3 Menus", the glue screens boxed to 4:3 with black bars at the sides — which
 // is how 1.30.4 itself draws its menus on a wide screen (checked against the real client at
-// 1920x1080: the main menu fills the middle 1440x1080 and nothing else). Out of the box OpenWar3
+// 1920x1080: the main menu fills the middle 1440x1080 and nothing else). Out of the box Warcraft Open
 // spreads them to the window's edges instead (src/ui/widescreen.ts); this row is the way back to
 // the original. It touches the MENUS only — a match keeps the stage's own aspect (src/ui/stage.ts).
 //

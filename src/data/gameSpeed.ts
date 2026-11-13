@@ -3,7 +3,7 @@
 // The 2003 game's slider has three steps (`SliderMaxValue 2` in both
 // `UI\FrameDef\UI\EscMenuOptionsPanel.fdf` and `UI\FrameDef\Glue\LocalMultiplayerCreate.fdf`,
 // worded Slow / Normal / Fast). Ours has FOUR, and the rungs and their rates are the
-// developer's, not the game's: Fast is the speed OpenWar3 has always run at and stays the
+// developer's, not the game's: Fast is the speed Warcraft Open has always run at and stays the
 // default, Fastest is half as fast again, Slow takes 1.5 times as long as Fast and Medium sits
 // halfway between them (1.25 times as long — which lands it on 0.8, the rate the real client's
 // Normal is usually quoted at against its Fast). Each label is a GlobalStrings word (SLOW,
@@ -31,7 +31,7 @@ export enum GameSpeed {
   Fastest = 3,
 }
 
-/** Fast, always: the speed OpenWar3 ran at before the slider was live. */
+/** Fast, always: the speed Warcraft Open ran at before the slider was live. */
 export const DEFAULT_GAME_SPEED = GameSpeed.Fast;
 
 /** The slider's range on OUR scale — 0 Slow … 3 Fastest. */

@@ -47,7 +47,7 @@ export function windowAspect(): number {
 
 // Options → Video → "4:3 Menus". 1.30.4 draws its glue screens in a 4:3 box with black bars at
 // the sides on a wide screen — measured off the real client at 1920x1080, where the main menu
-// fills the middle 1440x1080 and the rest is black — while OpenWar3 spreads them to the window's
+// fills the middle 1440x1080 and the rest is black — while Warcraft Open spreads them to the window's
 // edges and lets the corrections above take up the extra width. The row puts the original back.
 // The box itself is CSS (`body.menus-4x3` in style.css, the same rule a window narrower than 4:3
 // already gets); this flag is the half that tells `windowAspect` so.

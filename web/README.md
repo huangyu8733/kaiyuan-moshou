@@ -30,14 +30,14 @@ npm run dev                    # http://localhost:3000 → 自动跳转 /zh
 
 | 变量 | 说明 |
 |---|---|
-| `DATABASE_PATH` | SQLite 文件路径，默认 `./data/openwar3.sqlite`（相对 `web/`） |
+| `DATABASE_PATH` | SQLite 文件路径，默认 `./data/warcraft-open.sqlite`（相对 `web/`） |
 | `ADMIN_PASSWORD` | 后台登录密码 |
 | `ADMIN_SECRET` | 会话签名密钥，生产环境必须设置 32 位以上随机串 |
 | `OSS_REGION` / `OSS_BUCKET` | 阿里云 OSS 区域与 Bucket |
 | `OSS_ENDPOINT` | 可选，自定义 endpoint |
 | `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | OSS 密钥，只在服务端使用 |
 | `OSS_PUBLIC_BASE_URL` | OSS 公网访问前缀，例如 `https://bucket.oss-cn-hangzhou.aliyuncs.com` |
-| `OSS_KEY_PREFIX` | 对象 key 前缀，默认 `openwar3/` |
+| `OSS_KEY_PREFIX` | 对象 key 前缀，默认 `warcraft-open/` |
 | `NEXT_PUBLIC_SITE_URL` | 站点正式地址（canonical / sitemap） |
 | `GITHUB_TOKEN` | 可选，提高 GitHub API 限额 |
 
@@ -62,7 +62,7 @@ npm start                      # 默认 3000 端口，可用 PORT 覆盖
 ```
 
 - 使用 nginx/Caddy 反向代理并启用 HTTPS。
-- 保持**单实例**运行（SQLite 写入不适合多进程/多副本），并定期备份 `data/openwar3.sqlite`。
+- 保持**单实例**运行（SQLite 写入不适合多进程/多副本），并定期备份 `data/warcraft-open.sqlite`。
 - `data/` 必须位于持久化磁盘；构建机不需要数据库文件（页面按请求渲染）。
 
 ## 目录速览

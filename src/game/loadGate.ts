@@ -78,7 +78,7 @@ export class LoadGate {
     return new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => {
         this.resolveAll = null;
-        console.warn(`[OpenWar3] starting without ${this.waitingOn.size} player(s) who never finished loading`);
+        console.warn(`[Warcraft Open] starting without ${this.waitingOn.size} player(s) who never finished loading`);
         resolve(false);
       }, timeoutMs);
       this.resolveAll = () => { clearTimeout(timer); this.resolveAll = null; resolve(true); };

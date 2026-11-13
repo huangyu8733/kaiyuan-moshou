@@ -219,7 +219,7 @@ export class GlueManager {
       next.setInteractive(true);
       return next;
     } catch (err) {
-      console.error("[OpenWar3] couldn't open that menu:", err);
+      console.error("[Warcraft Open] couldn't open that menu:", err);
       leaving?.setAllDisabled(false); // give the player their screen back
       if (wentBlack) await this.toBlack(false); // never leave the player staring at black
       return null;
@@ -258,7 +258,7 @@ export class GlueManager {
       next.setInteractive(true);
       return next;
     } catch (err) {
-      console.error("[OpenWar3] couldn't switch editions:", err);
+      console.error("[Warcraft Open] couldn't switch editions:", err);
       if (black) await this.toBlack(false, WORLD_FADE_MS);
       return null;
     } finally {

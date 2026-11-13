@@ -1,11 +1,11 @@
-// OpenWar3 override — `UI\FrameDef\Glue\LocalMultiplayerCreate.fdf`.
+// Warcraft Open override — `UI\FrameDef\Glue\LocalMultiplayerCreate.fdf`.
 //
 // One row the 2003 screen has no frame for: WHERE the game is announced.
 //
 // Real WC3 created a LAN game on the one network there was — it broadcast, and the game was
-// wherever the host sat. OpenWar3 has two kinds of place to put one: this machine's own relay,
+// wherever the host sat. Warcraft Open has two kinds of place to put one: this machine's own relay,
 // which only the local network can reach, and the servers the Servers List watches — the
-// OpenWar3 server (src/net/officialServer.ts) first among them, which every copy of the game can
+// Warcraft Open server (src/net/officialServer.ts) first among them, which every copy of the game can
 // see. A game goes up on exactly ONE of them, and it has to be chosen before the room exists, so
 // the choice belongs on the screen that announces the room.
 //
@@ -21,7 +21,7 @@ Frame "TEXT" "HostServerLabel" INHERITS "StandardLabelTextTemplate" {
     Text "COLON_SERVER",
 }
 
-// Wider than the pane's 0.145: the entries are server NAMES ("OpenWar3 Server (EU)") and
+// Wider than the pane's 0.145: the entries are server NAMES ("Warcraft Open Server (EU)") and
 // addresses, not the pane's one-word settings.
 Frame "POPUPMENU" "HostServerMenu" INHERITS WITHCHILDREN "AdvancedPopupMenuTemplate" {
     Width 0.21,

@@ -35,7 +35,7 @@ export function writeSettings(patch) {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
   } catch (err) {
-    console.warn("[OpenWar3] could not save settings:", err?.message ?? err);
+    console.warn("[Warcraft Open] could not save settings:", err?.message ?? err);
   }
   return next;
 }

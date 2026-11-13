@@ -1,4 +1,4 @@
-// The OpenWar3 servers — the relays every copy of the game watches out of the box.
+// The Warcraft Open servers — the relays every copy of the game watches out of the box.
 //
 // Each is `server/relay.mjs` deployed exactly as it is to Railway (`.railway/railway.ts`: one
 // service per region, ONE replica each — the room table lives in memory, and two replicas would be
@@ -34,9 +34,8 @@ export interface OfficialServer {
  * harness driving two windows against one relay (src/main.ts `officialServerAddresses`).
  */
 export const OFFICIAL_SERVERS: readonly OfficialServer[] = [
-  { name: "OpenWar3 Server (EU)", address: "openwar3-eu.up.railway.app" },  // Amsterdam
-  { name: "OpenWar3 Server (US)", address: "openwar3-us.up.railway.app" },  // Virginia
-  { name: "OpenWar3 Server (Asia)", address: "openwar3-asia.up.railway.app" }, // Singapore
+  // Our own relay: nginx on warcraft.hhkj.me forwards `/relay` to it (server/relay.mjs).
+  { name: "Warcraft Open", address: "warcraft.hhkj.me" },
 ];
 
 /** What an official server whose address is not one of ours (a `VITE_OFFICIAL_SERVER` build) is

@@ -63,7 +63,7 @@ export interface SlotConfig {
    */
   aiDifficulty?: number;
   /**
-   * This computer is a **Computer+** — OpenWar3's own improved melee AI (src/ai/plus/,
+   * This computer is a **Computer+** — Warcraft Open's own improved melee AI (src/ai/plus/,
    * docs/computer-plus.md) rather than Blizzard's ported one.
    *
    * Set on every computer seat by the Custom Game screen's Advanced Options checkbox, which is

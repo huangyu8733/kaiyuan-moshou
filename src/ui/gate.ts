@@ -7,7 +7,7 @@ import { DEFAULT_PROFILE } from "../vfs/profiles";
 import type { DataSource } from "../vfs/types";
 import { t } from "../i18n";
 import { createLanguagePicker } from "../i18n/switch";
-import { bindHotkeys, createGlueButton, createPanel, createProgressBar } from "@openwar3/ui/dom";
+import { bindHotkeys, createGlueButton, createPanel, createProgressBar } from "@warcraft-open/ui/dom";
 
 // The load-files gate (issue #54). WC3's menus are constructed from the game's own
 // UI\FrameDef\*.fdf files and textures, so the install must be mounted before the
@@ -306,7 +306,7 @@ export function mountLoadGate(
           try {
             if (auto) return mount(await readInstallDir(remembered));
           } catch (err) {
-            console.warn("[OpenWar3] the remembered install could not be read:", err);
+            console.warn("[Warcraft Open] the remembered install could not be read:", err);
           }
         }
         // Restored in a new session: the click below is the gesture that can ask again.

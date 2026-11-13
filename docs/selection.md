@@ -179,7 +179,7 @@ target: green `(0,255,0)` ours or an ally's, yellow `(255,255,0)` neutral, red `
 | Set Rally Point | ground | our unit, our building, Gold Mine |
 | Unsummon | ground, a unit, enemy building | our building |
 
-So an A-click over open ground is teal, not red: it was red in OpenWar3 until this was measured.
+So an A-click over open ground is teal, not red: it was red in Warcraft Open until this was measured.
 A Haunted or Entangled Gold Mine is yellow whoever owns it.
 A spell or item uses its own refusal (`castRefusal`, `itemUseError`). Repair, Gather, Load and the
 shop's purchaser pick were not measured and tint over anything hovered; Attack Ground, Unload and

@@ -1,4 +1,4 @@
-// OpenWar3 override — `UI\FrameDef\Glue\AdvancedOptionsDisplay.fdf`.
+// Warcraft Open override — `UI\FrameDef\Glue\AdvancedOptionsDisplay.fdf`.
 //
 // The game LOBBY's summary of a hosted game's Advanced Options (the "Advanced Options" block
 // under the map on GameChatroom.fdf), which the game's file lays out as seven label/value rows.

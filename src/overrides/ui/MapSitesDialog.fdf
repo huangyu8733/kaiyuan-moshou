@@ -1,4 +1,4 @@
-// OpenWar3's own glue dialog — maps from the map sites (src/ui/mapSitesPanel.ts).
+// Warcraft Open's own glue dialog — maps from the map sites (src/ui/mapSitesPanel.ts).
 //
 // **Why it exists.** 1.30.4 had no way to fetch a map from anywhere but a lobby's host; a player
 // who wanted one went to a website. The map list's download panel brings three of them to the

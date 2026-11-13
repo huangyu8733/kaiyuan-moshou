@@ -44,7 +44,7 @@ const EDGE_TILE = { L: 0, R: 1, T: 2, B: 3, UL: 4, UR: 5, LL: 6, LR: 7 };
  * screen (see backgroundInsets). So the plate is drawn here instead, inside the inset, and
  * only for the frames that ask. `ui/cinematicPanel.ts` is the only thing that asks.
  */
-export const OPAQUE_BACKDROP = "OpenWar3OpaqueBackdrop";
+export const OPAQUE_BACKDROP = "WarcraftOpenOpaqueBackdrop";
 
 /** Font stack for menu text: Warcraft III's own Friz Quadrata TT, read out of the
  *  player's archives at runtime (ui/gameFont.ts) — the glue screens use the same
@@ -155,7 +155,7 @@ export interface FdfScreenOptions {
    *  the old DOM away; this is the hook that puts the contents back. */
   onBuild?: (screen: FdfScreen) => void;
   /**
-   * OpenWar3's OWN FrameDef layers on top of this screen's files — see `src/overrides/`.
+   * Warcraft Open's OWN FrameDef layers on top of this screen's files — see `src/overrides/`.
    *
    * The install's `UI\FrameDef\` belongs to the player and is never modified, so a control
    * the 2003 UI has no frame for (the Computer+ checkbox of issue #124) arrives this way

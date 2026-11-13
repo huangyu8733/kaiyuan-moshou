@@ -6,7 +6,7 @@ Read this before touching `packaging/windows-installer.nsh`, the `win`/`nsis` bl
 ## One installer, two architectures
 
 `pnpm dist:win` (and `pnpm release:win`, which also uploads) builds **one**
-`OpenWar3-Setup-<version>.exe` holding a 64-bit and a 32-bit app. electron-builder packs both
+`Warcraft Open-Setup-<version>.exe` holding a 64-bit and a 32-bit app. electron-builder packs both
 archives into the installer and extracts the one the running Windows can execute, so there is no
 "which download do I want" question on the landing page. It builds on Linux, with ONE Windows
 program that has to run: `makensis` ships with electron-builder and the executable's icon/version
@@ -21,8 +21,8 @@ printf '#!/bin/sh\nexec flatpak run --user --filesystem=home org.winehq.Wine "$@
 ```
 
 Under Wine the installer is only good for checking PAGES and FILES, not for trusting its "is
-OpenWar3 running?" check: Wine's `powershell.exe` and `findstr.exe` stubs both answer "yes", so
-every install stops on "OpenWar3 is running". Run it with
+Warcraft Open running?" check: Wine's `powershell.exe` and `findstr.exe` stubs both answer "yes", so
+every install stops on "Warcraft Open is running". Run it with
 `WINEDLLOVERRIDES="findstr.exe,powershell.exe=d"` to get past that. It is a Wine artifact, not a
 bug in the installer.
 
@@ -41,7 +41,7 @@ states 1536 MiB for `ia32` instead.
 
 `packaging/windows-installer.nsh` is an `include` into electron-builder's assisted installer. The
 directory page is relabelled to ask for the **Warcraft III folder**, pre-filled with the first
-1.30.4 install it can find, and the app lands in `<Warcraft III>\OpenWar3\`. What counts as the
+1.30.4 install it can find, and the app lands in `<Warcraft III>\Warcraft Open\`. What counts as the
 folder is the same rule the app asks at every launch (`electron/install.mjs` `looksLikeInstall`):
 a `Data` folder and a `.build.info` whose version row says 1.30.4. `pnpm app:test` checks the
 installer's `OW3_REQUIRED_VERSION` against `install.mjs` and `src/vfs/version.ts`.
@@ -69,8 +69,8 @@ makes that line the one that could delete somebody's Warcraft III, so `$INSTDIR`
 game folder three times over, and each guard covers a path the others do not:
 
 1. **After the directory page** (`ow3InstallInsideWarcraft`, an invisible custom page): the
-   template only appends `\OpenWar3` when the path does not already *contain* "OpenWar3", so a
-   game folder under `D:\OpenWar3 stuff\` would otherwise be installed into directly. A
+   template only appends `\Warcraft Open` when the path does not already *contain* "Warcraft Open", so a
+   game folder under `D:\Warcraft Open stuff\` would otherwise be installed into directly. A
    directory page's own leave function cannot fix this — `$INSTDIR` is re-read from the text box
    after it — but a later page's can.
 2. **In `.onInit`** (`customInit`): a silent install (`/S /D=…`) is shown no page at all.
@@ -82,7 +82,7 @@ game folder three times over, and each guard covers a path the others do not:
 On a fresh install the app never shows the folder picker. Before the window opens,
 `electron/main.mjs` asks `detectInstall` whenever nothing valid is remembered, and remembers what
 it finds exactly as a picked folder is remembered. The first place it looks is the executable's
-own grandparent (`<Warcraft III>\OpenWar3\OpenWar3.exe`) — the installer guaranteed that is the
+own grandparent (`<Warcraft III>\Warcraft Open\Warcraft Open.exe`) — the installer guaranteed that is the
 game — and then the registry list above through `reg.exe` (no native module, which would have to be
 built for both architectures). The same "beside the app" look works for an AppImage dropped into a
 game folder, where it is the AppImage FILE's folder (`APPIMAGE`) and not its mount that counts.

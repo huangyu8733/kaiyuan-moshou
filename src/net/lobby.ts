@@ -44,7 +44,7 @@ export interface RelayInfo {
   /** Where the address came from. A `typed` one is the player's and only they take it off the
    *  list; a `found` one is the network's (the desktop app's beacon) and comes and goes with the
    *  machine that is broadcasting it, so it is not theirs to remove — it would be back within
-   *  two seconds. The `official` ones are the OpenWar3 servers every copy of the game watches
+   *  two seconds. The `official` ones are the Warcraft Open servers every copy of the game watches
    *  out of the box (src/net/officialServer.ts), and nobody removes them. */
   source: RelaySource;
 }
@@ -123,7 +123,7 @@ const EMPTY: LobbyState = {
  * dev server is reached by people who know they are on 5173 and can say so.
  *
  * Except a PUBLIC hostname with no port, which is a server on the internet rather than a machine
- * on the desk. The OpenWar3 server is one (src/net/officialServer.ts): a cloud host terminates
+ * on the desk. The Warcraft Open server is one (src/net/officialServer.ts): a cloud host terminates
  * TLS and serves WebSockets on 443, and nothing at all on 8787 — Railway's "Specs & Limits" page
  * redirects even plain port-80 HTTP to HTTPS. So a dotted name that is neither an IPv4 address
  * nor a name a home network hands out (`LOCAL_SUFFIXES`) is dialled `wss://` on the default

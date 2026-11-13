@@ -1,8 +1,8 @@
-# OpenWar3 — Build Plan
+# Warcraft Open — Build Plan
 
 A browser-first, asset-compatible re-creation of the Warcraft III engine, in **TypeScript**.
 **Base version: 1.30.4**, **The Frozen Throne first** (Reign of Chaos supported later as a content
-profile, not a fork). Players supply their own legally-owned game files; **OpenWar3 ships and hosts no
+profile, not a fork). Players supply their own legally-owned game files; **Warcraft Open ships and hosts no
 Blizzard assets** — and is **playable with zero assets** via placeholders (see §2). The UI is a
 **faithful, asset-driven recreation** of the original menus and HUD (see §10).
 
@@ -13,7 +13,7 @@ Blizzard assets** — and is **playable with zero assets** via placeholders (see
 
 ## Progress snapshot (2026-07-03)
 
-Repo: `elevchyt/openwar3` (private). Package manager: **pnpm**. Renderer: mdx-m3-viewer 5.12.0,
+Repo: `elevchyt/warcraft-open` (private). Package manager: **pnpm**. Renderer: mdx-m3-viewer 5.12.0,
 patched via `pnpm patch` (`patches/mdx-m3-viewer@5.12.0.patch`) — see notes below.
 
 **Done:**
@@ -719,8 +719,8 @@ which campaign set. Profiles, not forks:
   loads a campaign archive and runs its scripts; RoC/TFT campaign differences are data/script, not
   structural. So targeting TFT now costs you nothing toward RoC later.
 
-### Legal framing — the rule that keeps OpenWar3 alive
-Follows the OpenMW / OpenRA / Warsmash model: **OpenWar3 is original code containing zero copyrighted
+### Legal framing — the rule that keeps Warcraft Open alive
+Follows the OpenMW / OpenRA / Warsmash model: **Warcraft Open is original code containing zero copyrighted
 assets.**
 - **Never bundle, upload, host, or serve Blizzard's assets** — not from Vercel, Render, S3, a CDN, or
   anywhere you control, **and not behind an "ownership verification" gate.** Ownership does not grant
@@ -740,7 +740,7 @@ You **assemble a stack of libraries, one per layer**. You use a rendering engine
 reuse WC3 parsers (won't build those), and build the simulation/pathfinding/netcode yourself — that
 layer is custom in *any* engine.
 
-| Layer | Build or borrow | OpenWar3 choice |
+| Layer | Build or borrow | Warcraft Open choice |
 |---|---|---|
 | 3D rendering | **borrow** | mdx-m3-viewer renderer (thin interface in front) |
 | Asset parsing | **borrow** | mdx-m3-viewer parsers |
@@ -1044,7 +1044,7 @@ The **primary UI reference** is the developer-provided screenshot of the **TFT m
   the MDX pipeline in the WebGL layer behind the menu.
 - **Buttons (top→bottom):** `Single Player`, **`Online`**, `Local Area Network`, `Options`, `Credits`,
   and a separate framed **`Quit`** below.
-- **Intentional deviation:** the original **"Battle.net" is renamed to "Online"** — OpenWar3's
+- **Intentional deviation:** the original **"Battle.net" is renamed to "Online"** — Warcraft Open's
   multiplayer targets *your* Render server, not Blizzard's Battle.net (also avoids the trademark).
 - **FDF is approved as the source of truth:** Claude may read the real **`UI\FrameDef\Glue\MainMenu.fdf`**
   (and referenced templates/textures/fonts) from the user's install to reproduce exact layout, spacing,
@@ -1060,7 +1060,7 @@ A gameplay screenshot (TFT, Undead vs …) is the canonical in-game HUD referenc
   centre; **inventory** (2×3) right-of-centre; **command card** (4×3 ability/order buttons) far right.
 - Skinned from real BLPs when an install is present (`UI\Widgets\Console\<race>\...` — the console
   texture is race-specific), resolver placeholders otherwise.
-- **Font:** original is **Friz Quadrata TT**; OpenWar3 bundles **Nowar Sans**
+- **Font:** original is **Friz Quadrata TT**; Warcraft Open bundles **Nowar Sans**
   (github.com/nowar-fonts/Nowar-Sans-War3, OFL 1.1, `public/fonts/NowarSans.ttf`) for multi-language
   coverage — font stack prefers locally-installed Friz Quadrata, falls back to Nowar Sans.
   (TTF is ~9.7 MB; converting to woff2/subsets is a later optimization.)

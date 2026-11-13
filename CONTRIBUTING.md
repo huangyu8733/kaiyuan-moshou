@@ -1,6 +1,6 @@
-# Contributing to OpenWar3
+# Contributing to Warcraft Open
 
-Thanks for wanting to help. OpenWar3 re-creates the **Warcraft III: The Frozen Throne 1.30.4**
+Thanks for wanting to help. Warcraft Open re-creates the **Warcraft III: The Frozen Throne 1.30.4**
 engine in TypeScript, and the goal of every change is to be **as close to the original game as
 possible** — its behaviour, timings, layout, names and feel.
 
@@ -41,7 +41,7 @@ install from somewhere else.
 
 ## The legal boundary
 
-OpenWar3 ships **zero Blizzard assets or code**. Game files are read from the player's *own*
+Warcraft Open ships **zero Blizzard assets or code**. Game files are read from the player's *own*
 install at runtime and never committed, uploaded or bundled.
 
 - Never commit anything out of `Warcraft III/` — no models, textures, sounds, maps, `.slk`/`.txt`
@@ -49,7 +49,7 @@ install at runtime and never committed, uploaded or bundled.
 - Reverse-engineering notes in `docs/reverse-engineering/` document **behaviour and naming only**.
   Never lift Blizzard binaries or decompiled code.
 - GPL reference projects (Warsmash, AMAI, …) are for *studying*, never for copying code or numbers
-  — OpenWar3 is MIT.
+  — Warcraft Open is MIT.
 
 ## Before you open a pull request
 

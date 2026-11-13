@@ -88,7 +88,7 @@ const OPTIONS_PANEL_SIZE = { width: 0.288, height: 0.384 };
 
 /**
  * …and how much TALLER the Gameplay one is than that. Ours: the 2003 panel's rows filled it to
- * the OK button, and OpenWar3's Gameplay panel carries one more than it ever did — the Voice
+ * the OK button, and Warcraft Open's Gameplay panel carries one more than it ever did — the Voice
  * Control row (src/voice/), which with "Detect Gamepad" in the band above OK/Cancel has nowhere
  * left to stand. One checkbox step (0.024 box + the panel's 0.00375 tuck, rounded up to 0.03 so
  * the band keeps its own clearance). The stone frame is a nine-slice and stretches; the other

@@ -7,7 +7,7 @@ import type { DataSource } from "../vfs/types";
 // The Battle.net PROGRESS BAR — the bar the game's own "Downloading Update" box fills while it
 // fetches a patch (`UI\FrameDef\Glue\MainMenu.fdf` `BattleNetPatchDialog`, sprite
 // `PatchProgressBar`, BackgroundArt `UI\Glues\BattleNet\ProgressBar\BattlenetProgressBar.mdl`).
-// OpenWar3 downloads exactly one thing from inside a dialog — Voice Control's speech model
+// Warcraft Open downloads exactly one thing from inside a dialog — Voice Control's speech model
 // (ui/voiceDownload.ts) — so that is where it is drawn.
 //
 // It is the load bar's little brother, and it fills itself the same way (render/loadingScene.ts

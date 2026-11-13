@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outArg = process.argv.indexOf("--out");
 const OUT = outArg >= 0 ? path.resolve(process.argv[outArg + 1]) : path.join(REPO, ".cdn-cache", "extract");
-const UA = { "User-Agent": "openwar3-patch-checkpoints" };
+const UA = { "User-Agent": "warcraft-open-patch-checkpoints" };
 
 /** version → sources, applied in order; a later source only adds files the earlier ones lack. */
 const CHECKPOINTS = {

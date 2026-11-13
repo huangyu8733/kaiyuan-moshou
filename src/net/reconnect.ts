@@ -37,7 +37,7 @@ export interface SessionStore {
   save(session: RejoinSession | null): void;
 }
 
-const KEY = "openwar3.rejoin";
+const KEY = "warcraft-open.rejoin";
 
 /**
  * localStorage-backed, degrading to a no-op where there is no localStorage — a Node test that

@@ -30,7 +30,7 @@ function relay(name: string, region: string) {
   return service(name, {
     // The repo, and only its `server/` folder: a relay whose one dependency is `ws`. The repo
     // root's install would pull an Electron binary.
-    source: github("elevchyt/openwar3", { branch: "main", rootDirectory: "/server" }),
+    source: github("elevchyt/warcraft-open", { branch: "main", rootDirectory: "/server" }),
     build: {
       builder: "RAILPACK",
       // Only a change to the relay redeploys it. A deploy drops the in-memory room table and every
@@ -58,11 +58,11 @@ function relay(name: string, region: string) {
 
 export default defineRailway(() => {
   // Region identifiers: docs.railway.com/deployments/regions. The EU one is the original server
-  // and the client's default; the domains are `openwar3-eu`, `openwar3-us` and `openwar3-asia`
+  // and the client's default; the domains are `warcraft-open-eu`, `warcraft-open-us` and `warcraft-open-asia` (or the relay we run at `warcraft.hhkj.me`)
   // `.up.railway.app` (the EU one was `openwar3.up.railway.app` until 0.3.61).
-  const eu = relay("openwar3-eu", "europe-west4-drams3a");       // EU West, Amsterdam
-  const us = relay("openwar3-us", "us-east4-eqdc4a");           // US East, Virginia
-  const asia = relay("openwar3-asia", "asia-southeast1-eqsg3a"); // Southeast Asia, Singapore
+  const eu = relay("warcraft-open-eu", "europe-west4-drams3a");       // EU West, Amsterdam
+  const us = relay("warcraft-open-us", "us-east4-eqdc4a");           // US East, Virginia
+  const asia = relay("warcraft-open-asia", "asia-southeast1-eqsg3a"); // Southeast Asia, Singapore
 
-  return project("openwar3", { resources: [eu, us, asia] });
+  return project("warcraft-open", { resources: [eu, us, asia] });
 });

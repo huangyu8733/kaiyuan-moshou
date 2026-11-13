@@ -10,7 +10,7 @@ import {
 // On the web the folder is picked every session and lives behind the File System Access API,
 // with OPFS quota and a permission dance around it. The desktop app has none of that: it asks
 // the operating system once, remembers the answer, and reads the folder straight off disk —
-// which is most of the reason the export is Electron at all (OpenWar3_PLAN.md §8).
+// which is most of the reason the export is Electron at all (Warcraft-Open_PLAN.md §8).
 //
 // The bytes arrive over `ow3-install://`, this app's own scheme, which is not a server: it
 // exists inside the app's session only, so nothing outside the process can address it. That
@@ -104,7 +104,7 @@ export const downloadUpdate = (): void => void bridge()?.update?.download();
 export const installUpdate = (): void => void bridge()?.update?.install();
 
 /**
- * Subscribe to the OpenWar3s this machine can hear on the network (electron/beacon.mjs). A no-op
+ * Subscribe to the Warcraft Opens this machine can hear on the network (electron/beacon.mjs). A no-op
  * returning a no-op in a browser, which has no way to hear anything.
  *
  * It ASKS as well as subscribing. The push only fires when the set changes, and this is called

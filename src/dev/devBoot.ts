@@ -29,7 +29,7 @@ import { DirectLinks } from "../net/directLink";
  * `import.meta.env.DEV`, which Vite folds to `false` in a build, so the whole branch and this
  * module with it are dropped from the bundle. It talks to `tools/vite-plugin-dev-install.ts`,
  * which carries `apply: "serve"` and likewise cannot exist in a build. Two independent gates,
- * both structural: OpenWar3 ships zero Blizzard bytes (CLAUDE.md).
+ * both structural: Warcraft Open ships zero Blizzard bytes (CLAUDE.md).
  *
  * Fog is invisible to every headless test — `sim:test` cannot tell a correct vision refactor
  * from one that shows an enemy base through the fog. So Phase D is verified by driving the
@@ -211,7 +211,7 @@ export async function devBoot(hooks: DevBootHooks): Promise<void> {
 
   log("fetching manifest…");
   const res = await fetch("/wc3/manifest.json");
-  if (!res.ok) throw new Error("no dev install served — is OPENWAR3_INSTALL set?");
+  if (!res.ok) throw new Error("no dev install served — is WARCRAFT_OPEN_INSTALL set?");
   const manifest = (await res.json()) as InstallManifest;
 
   // Only the archives the profile actually mounts, plus the one map we intend to play. The
@@ -319,7 +319,7 @@ export async function devBoot(hooks: DevBootHooks): Promise<void> {
   // `devStartMap` takes any map mounted by `?map=`/`?maps=`, because the thing worth watching
   // is the change of map: a second game on the SAME one cannot show the first one's terrain
   // still on screen. Dev-server-only with the rest of this module — see the header.
-  const api = ((window as unknown as { openwar3: Record<string, unknown> }).openwar3 ??= {});
+  const api = ((window as unknown as { warcraftOpen: Record<string, unknown> }).warcraftOpen ??= {});
   api.devStartChapter = (name: string, difficulty = "normal"): Promise<void> =>
     hooks.startChapter(name, difficulty);
   api.devStartMap = async (name: string): Promise<void> => {

@@ -100,7 +100,7 @@ export async function mountLanScreen(
   let serversDialog: JoinAddressDialog | null = null;
 
   // The name you appear as. WC3 remembers this between sessions; so do we.
-  const savedName = localStorage.getItem("openwar3.playerName") || t("lan.playerDefault");
+  const savedName = localStorage.getItem("warcraft-open.playerName") || t("lan.playerDefault");
   const playerName = (): string => screen.editBox("PlayerNameEditBox")?.value?.trim() || savedName;
 
   /** Read the map a room is advertising, out of OUR install. */
@@ -153,7 +153,7 @@ export async function mountLanScreen(
         h.onCreateGame(); // pick a map first — the room is announced on the way into the lobby
       },
       JoinButton: () => join(),
-      // The machines we watch for games — OpenWar3's own dialog, because the game we are
+      // The machines we watch for games — Warcraft Open's own dialog, because the game we are
       // copying broadcast and never needed one (src/ui/joinAddressDialog.ts).
       ServersListButton: () => {
         void showJoinAddressDialog({
@@ -169,7 +169,7 @@ export async function mountLanScreen(
     onBuild: (s) => render(s, lobby.snapshot),
   });
 
-  const remember = (): void => localStorage.setItem("openwar3.playerName", playerName());
+  const remember = (): void => localStorage.setItem("warcraft-open.playerName", playerName());
 
   /** Join the highlighted game. A map we lack is about to be downloaded and kept, and the
    *  browser grants the right to write it only out of a click — this one (assets/downloadedMaps.ts). */
@@ -221,7 +221,7 @@ export async function mountLanScreen(
         return text && text !== key ? text : null;
       },
     }).catch((err: unknown) => {
-      console.warn("[OpenWar3] map download dialog failed:", err);
+      console.warn("[Warcraft Open] map download dialog failed:", err);
       lobby.leave();
       return null;
     });
@@ -331,7 +331,7 @@ export async function mountLanScreen(
  *  a joiner appears as in the lobby's rows. Kept in localStorage, as WC3 keeps it between
  *  sessions, so every LAN screen reads the same answer without threading it between them. */
 export function savedPlayerName(): string {
-  return localStorage.getItem("openwar3.playerName") || "Player";
+  return localStorage.getItem("warcraft-open.playerName") || "Player";
 }
 
 /**
@@ -431,7 +431,7 @@ const PANE_H = 0.223125;
 /**
  * Put a string on the clipboard, by whichever route this page is allowed.
  *
- * `navigator.clipboard` is gated on a SECURE CONTEXT, and the two ways OpenWar3 is served fall
+ * `navigator.clipboard` is gated on a SECURE CONTEXT, and the two ways Warcraft Open is served fall
  * on opposite sides of that line: the desktop app's window is `http://127.0.0.1`, which browsers
  * treat as trustworthy, while a second machine reaching the dev server at `http://192.168.x.x`
  * is not — and that is exactly the player who most needs to copy an address. So the old

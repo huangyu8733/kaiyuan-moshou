@@ -1,8 +1,8 @@
 # Multiplayer — authority, transport, and the road to it
 
-How OpenWar3 gets two browsers playing the same match, why the authority runs on the **host** rather
+How Warcraft Open gets two browsers playing the same match, why the authority runs on the **host** rather
 than on a cloud box, and what has to change in the engine first. This supersedes the sketch in
-[`OpenWar3_PLAN.md`](../OpenWar3_PLAN.md) §7–8 on two points (hosting and server-side data); the rest
+[`Warcraft-Open_PLAN.md`](../Warcraft-Open_PLAN.md) §7–8 on two points (hosting and server-side data); the rest
 of §7 — delta snapshots, area-of-interest culling, no client prediction in v1 — stands.
 
 **This file is also the progress tracker** — see [Where we are](#where-we-are) for what has landed,
@@ -25,7 +25,7 @@ what is next, and what was deferred on purpose. Update that table when a phase m
 The plan originally put the authoritative sim on a paid Render instance. Two constraints kill that
 for v1, and one design resolves both.
 
-**Constraint 1 — free hosting.** [`OpenWar3_PLAN.md`](../OpenWar3_PLAN.md):1000 already says it:
+**Constraint 1 — free hosting.** [`Warcraft-Open_PLAN.md`](../Warcraft-Open_PLAN.md):1000 already says it:
 Render's free tier "spins down after 15 min + shared CPU — unsuitable for live authoritative matches."
 That is correct. A free instance is roughly a tenth of a shared vCPU; [`src/sim/world.ts`](../src/sim/world.ts)
 runs several per-unit passes per tick over a 9,600-line `SimWorld`. It will not carry a 20 Hz match.
@@ -33,7 +33,7 @@ Railway's free offering is a one-time credit, not an ongoing plan. **"Server-aut
 hosting" is not reachable as literally stated.**
 
 **Constraint 2 — the legal boundary, which the plan contradicts itself on.**
-[`OpenWar3_PLAN.md`](../OpenWar3_PLAN.md):1000 forbids "copyrighted assets on any server you control"
+[`Warcraft-Open_PLAN.md`](../Warcraft-Open_PLAN.md):1000 forbids "copyrighted assets on any server you control"
 and rates the risk **Critical**. But an authoritative sim needs unit stats to run, and
 [`src/data/`](../src/data/) holds **SLK loaders, not tables** — `loadUnitRegistry(vfs)` reads
 `Units\UnitBalance.slk` and friends out of the user's MPQs at runtime. A cloud authority therefore
@@ -96,7 +96,7 @@ deployments differ only in who is at that origin:
 | `pnpm preview` | Vite preview | same, same plugin | `ws://<host>:4173/relay` |
 | Exported game (Electron) | its own process | its own process, beside it | `ws://<host>:<port>/relay` |
 | Internet | a static host (Vercel) | a cloud box (`server/relay.mjs`) | **`VITE_RELAY_URL`** — the one case where the two are not the same box |
-| The OpenWar3 servers | any of the above | Railway (`server/`, see below — EU, US and Asia), watched by every client as well as its own | `wss://openwar3-eu.up.railway.app/relay` (EU, the default), `openwar3-us…`, `openwar3-asia…` — `src/net/officialServer.ts` |
+| The Warcraft Open servers | any of the above | Railway (`server/`, see below — EU, US and Asia), watched by every client as well as its own | `wss://warcraft-open-eu.up.railway.app/relay` (EU, the default), `warcraft-open-us…`, `warcraft-open-asia…` — `src/net/officialServer.ts` |
 
 That collapses LAN play to **one command and one firewall hole**: `pnpm dev --host` on the host
 machine, `http://<its ip>:5173` on the other. It also makes the second machine's success follow
@@ -119,17 +119,17 @@ vite-hmr` at the HMR path and ignores the rest, so the two coexist without eithe
 other — but a listener here that claimed too broadly would eat HMR and turn every source edit into a
 manual reload.
 
-### The OpenWar3 server (Railway)
+### The Warcraft Open server (Railway)
 
 `server/` is a deployable of its own: `server/package.json` (`ws` and nothing else — the repo
-root's install would pull an Electron binary). It runs in the Railway project `openwar3` as THREE
+root's install would pull an Electron binary). It runs in the Railway project `warcraft-open` as THREE
 services, one per region (issue #225):
 
 | Service | Region | Domain |
 |---|---|---|
-| `openwar3-eu` | EU West, Amsterdam (`europe-west4-drams3a`) — **the default** | `openwar3-eu.up.railway.app` (`openwar3.up.railway.app`, and a service named `openwar3`, up to 0.3.61) |
-| `openwar3-us` | US East, Virginia (`us-east4-eqdc4a`) | `openwar3-us.up.railway.app` |
-| `openwar3-asia` | Southeast Asia, Singapore (`asia-southeast1-eqsg3a`) | `openwar3-asia.up.railway.app` |
+| `warcraft-open-eu` | EU West, Amsterdam (`europe-west4-drams3a`) — **the default** | `warcraft-open-eu.up.railway.app` (`warcraft-open.up.railway.app`, and a service named `warcraft-open`, up to 0.3.61) |
+| `warcraft-open-us` | US East, Virginia (`us-east4-eqdc4a`) | `warcraft-open-us.up.railway.app` |
+| `warcraft-open-asia` | Southeast Asia, Singapore (`asia-southeast1-eqsg3a`) | `warcraft-open-asia.up.railway.app` |
 
 Their settings are declared in **`.railway/railway.ts`** — Railway's Infrastructure as Code,
 written against the `railway` dev dependency, one `relay(name, region)` per service and identical
@@ -177,7 +177,7 @@ does). `VITE_OFFICIAL_SERVER` points a build at other servers (comma-separated),
 ### Snapshot cadence — 20 Hz, and the pose buffer
 
 The host sends each player a snapshot every `SNAPSHOT_INTERVAL` = 1/20 s (`src/game/matchLink.ts`),
-down from 60. With the OpenWar3 server every payload is relayed and the relay's egress is billed,
+down from 60. With the Warcraft Open server every payload is relayed and the relay's egress is billed,
 and the host's own upload carries one stream per player — a third of the cadence is a third of
 both. Measured through a stand-in server, an Echo Isles opening averaged ~1.9 KB a payload: about
 0.9 Mbit/s per player at 60 Hz, a third of that now. The gate needed an epsilon on the way: three
@@ -301,7 +301,7 @@ only a native shell can do — and with the native install path it is what decid
 renderer is the system webview, a different engine per platform, and this is a WebGL2 engine with
 shader patches.
 
-The beacon is deliberately the smaller half. It carries "an OpenWar3 speaking protocol N is at this
+The beacon is deliberately the smaller half. It carries "an Warcraft Open speaking protocol N is at this
 address, and its relay is on this port" — no game state travels in a broadcast, and it is never
 trusted for anything but WHERE TO KNOCK. Everything after that is the relay conversation the Join
 Server work already built: `LanLobby` watches N machines, merges their rooms under a key that tells
@@ -336,7 +336,7 @@ quits and comes back, so `onServersFound` asks as well as subscribing.
 
 ### Direct links (WebRTC)
 
-Over the OpenWar3 server every message hairpinned: player → Amsterdam → host → Amsterdam →
+Over the Warcraft Open server every message hairpinned: player → Amsterdam → host → Amsterdam →
 player. Two players in Greece saw 130–150 ms in game against ~64 ms to the relay, because the
 probe made two round trips to the relay, and every order did the same before the pose buffer
 added its own delay. So once a match starts, each client opens an `RTCDataChannel` to the HOST
@@ -366,7 +366,7 @@ which path a message took. The rules that make that true:
   that drops UDP) or dies mid-match leaves that peer on the relay, exactly as before. A client
   offers three times in a match (at once, then 2 s and 10 s after a failure); the host only ever
   answers, and an offer replaces whatever link that peer had. There is no TURN server on
-  purpose: TURN relays every byte, which is what the OpenWar3 server already does. Public STUN
+  purpose: TURN relays every byte, which is what the Warcraft Open server already does. Public STUN
   (Google's and Cloudflare's) is enough for a cone NAT.
 - **Identity is the relay's.** A link is bound to the peer id the relay stamped on its offer,
   and the host answers only peers seated in its match, so a direct message is attributed exactly
@@ -1137,7 +1137,7 @@ creeps currently aggro through fog and will stop), so it is last and gets its ow
 
    ~~**Open, and needs the real client:** `minimapIcons()` has no fog gate at all — gold-mine
    and neutral-building glyphs draw on pitch-black unexplored ground.~~ **Answered by
-   [issue #71](https://github.com/elevchyt/openwar3/issues/71): the gate is EXPLORED, and
+   [issue #71](https://github.com/elevchyt/warcraft-open/issues/71): the gate is EXPLORED, and
    `minimapIcons` takes a `Viewpoint` now.** The Phase E item 4 close that said "no gate" was
    measured under the dev default `?dev&fog=explored`, where every fog gate is invisible; see
    that item for the settled rule and for the half of it that is still open.
@@ -1643,7 +1643,7 @@ enumerated by body rather than by name.
    Take it when the machine is free.
 
 4. ~~**Decide whether `minimapIcons()` should have a fog gate.**~~ ~~**Closed: no gate.**~~
-   **Reopened and settled the other way by [issue #71](https://github.com/elevchyt/openwar3/issues/71):
+   **Reopened and settled the other way by [issue #71](https://github.com/elevchyt/warcraft-open/issues/71):
    the gate is EXPLORED.** The close above recorded a measurement — both glyph types "were
    plainly visible over unexplored ground in a fresh melee game" — and the measurement was
    taken in a session booted with the dev default `?dev&fog=explored`, where the whole map is
@@ -3508,7 +3508,7 @@ refactor can pass every suite while showing an enemy base through the fog.
   after the first real internet test (2026-09-12):
 
   *Why.* Every message in a relayed match hairpins through the server. Two players in Greece on the
-  OpenWar3 server (Amsterdam) saw an in-game ping of 130–150 ms, although one round trip to the
+  Warcraft Open server (Amsterdam) saw an in-game ping of 130–150 ms, although one round trip to the
   relay measured ~64 ms: the probe goes player → Amsterdam → host → Amsterdam → player, two round
   trips, before the pose buffer adds its ~70 ms of drawn delay. Players connected directly would pay
   their own distance only — tens of milliseconds within a country — and the server's egress, the one

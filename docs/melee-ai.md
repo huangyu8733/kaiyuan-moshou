@@ -3,7 +3,7 @@
 > Read this before touching anything in [`src/ai/`](../src/ai/), the `MeleeStartingAI` path, or
 > a computer player's behaviour. Issue #119.
 >
-> This is **Blizzard's** melee AI, ported. OpenWar3's own second one — Computer+, seated by a
+> This is **Blizzard's** melee AI, ported. Warcraft Open's own second one — Computer+, seated by a
 > checkbox in Advanced Options — is [`computer-plus.md`](computer-plus.md). The two share
 > `aiPlayer.ts` (the library and the natives) and nothing else; a seat is in exactly one of them,
 > and nothing in `src/ai/*.ts` imports from `src/ai/plus/`.

@@ -1,5 +1,5 @@
-/* OpenWar3 landing page — the page's own layout. The glue buttons, panels, tooltips and headings
- * are the shared kit, @openwar3/ui (packages/ui), imported ahead of this file in app/layout.tsx;
+/* Warcraft Open landing page — the page's own layout. The glue buttons, panels, tooltips and headings
+ * are the shared kit, @warcraft-open/ui (packages/ui), imported ahead of this file in app/layout.tsx;
  * everything here is only how this page arranges them. */
 
 :root {
@@ -278,7 +278,7 @@ a:hover {
   gap: 10px;
   background:
     radial-gradient(ellipse at 50% 45%, rgb(20 36 80 / 0.7), rgb(0 0 0 / 0.95) 75%),
-    url("@openwar3/ui/frames/marble.svg") 0 0 / 256px 256px;
+    url("@warcraft-open/ui/frames/marble.svg") 0 0 / 256px 256px;
   color: var(--text-dim);
   font-size: 0.85rem;
   letter-spacing: 0.02em;
@@ -770,7 +770,7 @@ a:hover {
   letter-spacing: 0.08em;
   background:
     radial-gradient(ellipse at 50% 40%, rgb(24 46 100 / 0.65), rgb(0 0 0 / 0.95) 75%),
-    url("@openwar3/ui/frames/marble.svg") 0 0 / 256px 256px;
+    url("@warcraft-open/ui/frames/marble.svg") 0 0 / 256px 256px;
 }
 .map-card__body {
   display: flex;

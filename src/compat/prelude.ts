@@ -2,7 +2,7 @@ import { fieldConstantsJass } from "./blzFields";
 
 // The JASS a later-format map expects and 1.30.4's own `common.j` does not declare.
 //
-// **This is OUR file, not Blizzard's.** OpenWar3 ships zero Blizzard code (CLAUDE.md's legal
+// **This is OUR file, not Blizzard's.** Warcraft Open ships zero Blizzard code (CLAUDE.md's legal
 // boundary), and the install's `Scripts\common.j` is read from the player's own folder like
 // every other asset. What is written here is the small set of declarations a map built
 // against a 1.31+ editor refers to and a 1.30.4 install has never heard of — written from
@@ -27,9 +27,9 @@ import { fieldConstantsJass } from "./blzFields";
  */
 const PRELUDE_BODY = `
 //============================================================================
-// OpenWar3 compatibility prelude — see src/compat/prelude.ts.
+// Warcraft Open compatibility prelude — see src/compat/prelude.ts.
 // Declarations a map saved by a 1.31+ World Editor expects, which the
-// 1.30.4 common.j does not carry. OpenWar3's own file; no Blizzard code.
+// 1.30.4 common.j does not carry. Warcraft Open's own file; no Blizzard code.
 //============================================================================
 
 // --- damage events (1.31) ---------------------------------------------------

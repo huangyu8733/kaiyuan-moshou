@@ -25,8 +25,8 @@ import { profileKey } from "./profiles";
 
 // The BASE keys. Never read one directly — `profileKey` suffixes it with the profile in play,
 // and these two are listed in that module's PROFILE_OWNED so a deleted profile takes them with it.
-const STORAGE_KEY = "openwar3.campaigns";
-const DIFFICULTY_KEY = "openwar3.campaignDifficulty";
+const STORAGE_KEY = "warcraft-open.campaigns";
+const DIFFICULTY_KEY = "warcraft-open.campaignDifficulty";
 
 /**
  * common.j's `gamedifficulty` rungs, by name — MAP_DIFFICULTY_EASY / NORMAL / HARD.

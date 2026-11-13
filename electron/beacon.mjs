@@ -1,12 +1,12 @@
 // Announcing this game on the local network, and hearing everyone else's.
 //
 // This is the half of LAN play a browser cannot do at all: a page cannot send a datagram, so two
-// copies of OpenWar3 on one network could never find each other and somebody had to type an
+// copies of Warcraft Open on one network could never find each other and somebody had to type an
 // address. Real Warcraft III has never asked that — it broadcasts on the subnet and the games
 // appear — and this is the same trick in the one place we can play it, the desktop app's own
 // process.
 //
-// It is deliberately SMALL. All a beacon carries is "an OpenWar3 speaking protocol N is on this
+// It is deliberately SMALL. All a beacon carries is "an Warcraft Open speaking protocol N is on this
 // address, and its relay is on this port"; everything after that is the relay's own conversation
 // (src/net/lobby.ts `addRelay`), which already knows how to watch another machine and merge its
 // games into the list. So discovery adds an ADDRESS and nothing else — no game state travels in
@@ -84,7 +84,7 @@ export function startBeacon({ port, protocol, beaconPort = DEFAULT_BEACON_PORT, 
     // Anything that is not our own beacon shape is somebody else's traffic on a port we happen
     // to share. A datagram is unauthenticated by nature, which is exactly why nothing here is
     // believed except an address to knock at.
-    if (!msg || msg.app !== "openwar3" || msg.id === id) return;
+    if (!msg || msg.app !== "warcraft-open" || msg.id === id) return;
     // A build that speaks another protocol would be refused at the relay's handshake anyway;
     // dropping it here means it is never even listed, rather than listed and unjoinable.
     if (msg.protocol !== protocol) return;
@@ -100,7 +100,7 @@ export function startBeacon({ port, protocol, beaconPort = DEFAULT_BEACON_PORT, 
     // A refused bind is a machine where discovery cannot work (a firewall, a port in use). It is
     // not a reason to fail to start a GAME — the address box still exists — so it is reported and
     // the rest of the app carries on.
-    console.warn("[OpenWar3] beacon unavailable:", err?.message ?? err);
+    console.warn("[Warcraft Open] beacon unavailable:", err?.message ?? err);
     try { socket.close(); } catch { /* already gone */ }
     if (timer) { clearInterval(timer); timer = null; }
   });
@@ -108,7 +108,7 @@ export function startBeacon({ port, protocol, beaconPort = DEFAULT_BEACON_PORT, 
   socket.bind(beaconPort, () => {
     socket.setBroadcast(true);
     const beat = () => {
-      const payload = Buffer.from(JSON.stringify({ app: "openwar3", protocol, id, port: port() }));
+      const payload = Buffer.from(JSON.stringify({ app: "warcraft-open", protocol, id, port: port() }));
       for (const target of broadcastAddresses()) {
         socket.send(payload, beaconPort, target, () => { /* a send that fails is one lost beat */ });
       }

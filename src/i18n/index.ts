@@ -1,4 +1,4 @@
-// OpenWar3's own UI language (i18n).
+// Warcraft Open's own UI language (i18n).
 //
 // The GAME's text — unit names, tooltips, menu captions built from the install's FDFs —
 // already follows the player's Warcraft III install (src/data/text.ts). This module covers
@@ -9,7 +9,7 @@
 // One locale at a time, resolved in this order:
 //   1. `?lang=zhCN` / `?lang=enUS` on the URL — an explicit override, and the only way to
 //      look at the other language without changing what the machine remembers;
-//   2. `localStorage["openwar3.language"]` — what the language button last chose;
+//   2. `localStorage["warcraft-open.language"]` — what the language button last chose;
 //   3. the browser's own language (`navigator.language`), so a Chinese browser opens in
 //      Chinese and an English one in English;
 //   4. English.
@@ -26,7 +26,7 @@ export const LOCALES: ReadonlyArray<{ id: Locale; label: string }> = [
   { id: "zhCN", label: "中文（简体）" },
 ];
 
-const STORAGE_KEY = "openwar3.language";
+const STORAGE_KEY = "warcraft-open.language";
 const URL_PARAM = "lang";
 
 // The engine's own messages. Every key exists in both catalogues — `zhCN` is typed as
@@ -34,7 +34,7 @@ const URL_PARAM = "lang";
 // English sentence in the middle of a Chinese screen.
 const EN = {
   // The product name; the window/tab title and the brand the gate prints.
-  "app.title": "OpenWar3",
+  "app.title": "Warcraft Open",
   "update.downloading": "Downloading {app} {version}…",
   "update.downloadingGeneric": "Downloading the update…",
   "gate.subtitleNative":
@@ -52,13 +52,13 @@ const EN = {
   "gate.loadFailed": "Couldn't load that folder: {error}",
   "gate.folderMissing": "Your Warcraft III folder is no longer at {path}.",
   "gate.wrongVersion":
-    "That folder is Warcraft III {version}. OpenWar3 plays {required} — every player has to be on the same game data, so this is checked every launch.",
+    "That folder is Warcraft III {version}. Warcraft Open plays {required} — every player has to be on the same game data, so this is checked every launch.",
   "gate.unknownVersion":
-    "That folder does not say which Warcraft III it is. OpenWar3 plays {required} (The Frozen Throne).",
+    "That folder does not say which Warcraft III it is. Warcraft Open plays {required} (The Frozen Throne).",
   "gate.noGameData":
     "That folder has no Warcraft III game data in it (no Data folder). Select the Warcraft III {required} folder itself — the one with Warcraft III.exe in it.",
   "gate.oldVersion":
-    "That folder is a Warcraft III older than {required}. OpenWar3 plays {required} (The Frozen Throne) — every player has to be on the same game data, so this is checked every launch.",
+    "That folder is a Warcraft III older than {required}. Warcraft Open plays {required} (The Frozen Throne) — every player has to be on the same game data, so this is checked every launch.",
   // The launcher the load screen is dressed as (ui/gate.ts).
   "gate.tagline": "Warcraft III",
   "gate.edition": "Warcraft III · The Frozen Throne",
@@ -68,7 +68,7 @@ const EN = {
   "gate.pointVersion": "Needs Warcraft III: The Frozen Throne, the build every player shares.",
   "gate.pointPlay": "Campaign, custom games and LAN are all here; online play joins the server's room list.",
   "gate.downloadHint": "No Warcraft III folder on this machine? Download one from the cloud storage link — Chinese or English — then point the game at it.",
-  "gate.footer": "OpenWar3 is an unofficial fan reimplementation. No game files are included.",
+  "gate.footer": "Warcraft Open is an unofficial fan reimplementation. No game files are included.",
 
   "menu.singlePlayer": "Single Player",
   "menu.online": "Online",
@@ -82,11 +82,11 @@ const EN = {
   "menu.loadingArchives": "Loading archives…",
   "menu.mounted": "{profile}: mounted {mounted}",
   "menu.missing": " — missing {missing}",
-  "menu.fileCount": " — {count} files. Try openwar3.vfs.list() in the console.",
+  "menu.fileCount": " — {count} files. Try warcraftOpen.vfs.list() in the console.",
   "menu.importFailed": "Import failed: {error}",
 
   // Our own captions on the game's FDF menu, carrying the accelerator markup the other
-  // buttons carry. "Online" is ours: OpenWar3 multiplayer targets our own service.
+  // buttons carry. "Online" is ours: Warcraft Open multiplayer targets our own service.
   "menu.onlineCaption": "O|Cffffffffn|Rline",
   "menu.editionTft": "The Frozen Throne",
   "menu.editionRoc": "Reign of Chaos",
@@ -440,7 +440,7 @@ const EN = {
   "home.kicker": "Warcraft III · The Frozen Throne",
   "home.tagline": "Enter the battlefield",
   "home.lede":
-    "OpenWar3 is an open-source re-creation of Warcraft III. Point it at your own game files, press play, and download community maps straight into your game folder.",
+    "Warcraft Open is an open-source re-creation of Warcraft III. Point it at your own game files, press play, and download community maps straight into your game folder.",
   "home.play": "Launch Game",
   "home.changeFolder": "Change Game Folder",
   "home.folder": "Game folder · Warcraft III {version} · {path}",
@@ -493,7 +493,7 @@ const EN = {
   "home.deleteFailed": "Couldn't delete the map: {error}",
   "home.about": "About",
   "home.aboutText":
-    "OpenWar3 is an unofficial fan re-creation. No Blizzard game files are bundled: the game reads the Warcraft III folder on your own disk, and every player has to be on the same game data.",
+    "Warcraft Open is an unofficial fan re-creation. No Blizzard game files are bundled: the game reads the Warcraft III folder on your own disk, and every player has to be on the same game data.",
 
   "language.label": "Language",
   "language.switch": "Language: {language}",
@@ -503,7 +503,7 @@ const EN = {
 export type MessageKey = keyof typeof EN;
 
 const ZH: Record<MessageKey, string> = {
-  "app.title": "开源魔兽争霸",
+  "app.title": "魔兽争霸开源版",
   "update.downloading": "正在下载{app} {version}…",
   "update.downloadingGeneric": "正在下载更新…",
   "gate.subtitleNative":
@@ -521,12 +521,12 @@ const ZH: Record<MessageKey, string> = {
   "gate.loadFailed": "无法加载该文件夹：{error}",
   "gate.folderMissing": "你的《魔兽争霸 III》文件夹已不在 {path}。",
   "gate.wrongVersion":
-    "该文件夹是《魔兽争霸 III》{version}。开源魔兽争霸 使用 {required}——所有玩家必须使用相同的游戏数据，因此每次启动都会检查。",
-  "gate.unknownVersion": "无法确定该文件夹是哪个版本的《魔兽争霸 III》。开源魔兽争霸 使用 {required}（冰封王座）。",
+    "该文件夹是《魔兽争霸 III》{version}。魔兽争霸开源版 使用 {required}——所有玩家必须使用相同的游戏数据，因此每次启动都会检查。",
+  "gate.unknownVersion": "无法确定该文件夹是哪个版本的《魔兽争霸 III》。魔兽争霸开源版 使用 {required}（冰封王座）。",
   "gate.noGameData":
     "该文件夹中没有《魔兽争霸 III》游戏数据（缺少 Data 文件夹）。请选择《魔兽争霸 III》{required} 文件夹本身——即包含 Warcraft III.exe 的那个文件夹。",
   "gate.oldVersion":
-    "该文件夹是早于 {required} 的《魔兽争霸 III》。开源魔兽争霸 使用 {required}（冰封王座）——所有玩家必须使用相同的游戏数据，因此每次启动都会检查。",
+    "该文件夹是早于 {required} 的《魔兽争霸 III》。魔兽争霸开源版 使用 {required}（冰封王座）——所有玩家必须使用相同的游戏数据，因此每次启动都会检查。",
   // 载入页的对战平台外观（ui/gate.ts）。
   "gate.tagline": "魔兽争霸 III",
   "gate.edition": "魔兽争霸 III · 冰封王座",
@@ -536,7 +536,7 @@ const ZH: Record<MessageKey, string> = {
   "gate.pointVersion": "需要《魔兽争霸 III：冰封王座》，所有玩家必须使用同一份游戏数据。",
   "gate.pointPlay": "战役、自定义游戏与局域网都在这里；联机从大厅的服务器列表进入。",
   "gate.downloadHint": "本机没有《魔兽争霸 III》文件夹？可从网盘下载中文版或英文版，再用上面的按钮选择该文件夹。",
-  "gate.footer": "开源魔兽争霸 是非官方粉丝重制，不附带任何游戏文件。",
+  "gate.footer": "魔兽争霸开源版 是非官方粉丝重制，不附带任何游戏文件。",
 
   "menu.singlePlayer": "单人游戏",
   "menu.online": "在线",
@@ -549,7 +549,7 @@ const ZH: Record<MessageKey, string> = {
   "menu.loadingArchives": "正在加载档案…",
   "menu.mounted": "{profile}：已挂载 {mounted}",
   "menu.missing": "——缺少 {missing}",
-  "menu.fileCount": "——{count} 个文件。可在控制台尝试 openwar3.vfs.list()。",
+  "menu.fileCount": "——{count} 个文件。可在控制台尝试 warcraftOpen.vfs.list()。",
   "menu.importFailed": "导入失败：{error}",
 
   // No white letter to gild: a Chinese caption carries no Latin accelerator, and the
@@ -886,7 +886,7 @@ const ZH: Record<MessageKey, string> = {
   "home.kicker": "魔兽争霸 III · 冰封王座",
   "home.tagline": "进入战场",
   "home.lede":
-    "开源魔兽争霸是《魔兽争霸 III》的开源重制。选择你本机的游戏目录，一键启动，并可直接把社区地图下载到游戏地图文件夹。",
+    "魔兽争霸开源版是《魔兽争霸 III：冰封王座》的开源重制。选择你本机的游戏目录即可一键启动，还能浏览并直接把社区地图（含多语言文件）下载到游戏地图文件夹。",
   "home.play": "启动游戏",
   "home.changeFolder": "更换游戏目录",
   "home.folder": "游戏目录 · 魔兽争霸 III {version} · {path}",
@@ -939,7 +939,7 @@ const ZH: Record<MessageKey, string> = {
   "home.deleteFailed": "删除地图失败：{error}",
   "home.about": "关于",
   "home.aboutText":
-    "开源魔兽争霸是非官方的爱好者重制项目。程序不包含任何暴雪游戏文件：游戏读取你自己磁盘上的《魔兽争霸 III》目录，所有玩家必须使用相同的游戏数据。",
+    "魔兽争霸开源版是非官方的爱好者重制项目，使用 TypeScript 重写引擎并直接读取原版游戏资源。程序不包含任何暴雪游戏文件：游戏读取你自己磁盘上的《魔兽争霸 III》目录，所有玩家必须使用相同的游戏数据。支持局域网与在线联机、地图库、Computer+ 电脑 AI 和中英文界面。",
 
   "language.label": "语言",
   "language.switch": "语言：{language}",

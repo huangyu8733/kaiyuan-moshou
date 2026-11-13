@@ -11,14 +11,14 @@ import { profileKey } from "./profiles";
 // So a cache is (a) a FILE, named by the script, and (b) **per profile** — which is exactly
 // what `PROFILE_MESSAGE` promises the player on the Single Player screen ("Each profile will
 // hold information for your campaign progress…"). Both halves land here: the store is
-// localStorage under `profileKey`, and `openwar3.gamecache` is in profiles.ts's `PROFILE_OWNED`
+// localStorage under `profileKey`, and `warcraft-open.gamecache` is in profiles.ts's `PROFILE_OWNED`
 // so deleting a profile takes every cache with it.
 //
 // **All of a profile's cache files live in ONE storage key**, keyed by file name inside it,
 // rather than one key per file. That is not tidiness: `deleteProfile` and `adoptOrphaned` sweep
 // `PROFILE_OWNED` by exact key, and a scheme that hung `<base>.<profile>.<file>` off the base
-// would need a prefix sweep in which `openwar3.gamecache.campaigns.w3v` (no profile) and
-// `openwar3.gamecache.Bob.campaigns.w3v` are indistinguishable without knowing every profile
+// would need a prefix sweep in which `warcraft-open.gamecache.campaigns.w3v` (no profile) and
+// `warcraft-open.gamecache.Bob.campaigns.w3v` are indistinguishable without knowing every profile
 // name. One blob per profile keeps profiles.ts's rule exactly as it is.
 //
 // The file NAME is the whole of the separation between the two editions, and it is the game's
@@ -31,7 +31,7 @@ import { profileKey } from "./profiles";
 // (`SimWorld.storeUnitState`).
 
 /** The one key a profile's caches live under. Listed in profiles.ts `PROFILE_OWNED`. */
-export const GAME_CACHE_KEY = "openwar3.gamecache";
+export const GAME_CACHE_KEY = "warcraft-open.gamecache";
 
 /** One cache file, as it sits in storage: missionKey → key → the typed slots under it.
  *  Kept as plain JSON so a cache written by one build is readable by the next. */

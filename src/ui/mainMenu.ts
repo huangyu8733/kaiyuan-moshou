@@ -13,7 +13,7 @@ import { createLanguageSwitch } from "../i18n/switch";
 // Captions are i18n keys, not literals, because this screen is entirely ours — see src/i18n/.
 //
 // Button set per §10.1 — note "Battle.net" is intentionally renamed "Online":
-// OpenWar3 multiplayer targets our own server, not Blizzard's Battle.net.
+// Warcraft Open multiplayer targets our own server, not Blizzard's Battle.net.
 const BUTTONS = [
   "menu.singlePlayer",
   "menu.online",
@@ -73,7 +73,7 @@ async function importInstall(resolver: AssetResolver, status: HTMLElement): Prom
     resolver.setInstall(vfs);
     // Expose the mounted VFS so files can be enumerated/extracted by path from
     // the console — the Phase 1 exit criterion (plan §1).
-    ((window as unknown as { openwar3: Record<string, unknown> }).openwar3 ??= {}).vfs = vfs;
+    ((window as unknown as { warcraftOpen: Record<string, unknown> }).warcraftOpen ??= {}).vfs = vfs;
     status.textContent =
       t("menu.mounted", { profile: DEFAULT_PROFILE.name, mounted: mounted.join(", ") }) +
       (missing.length ? t("menu.missing", { missing: missing.join(", ") }) : "") +
@@ -90,7 +90,7 @@ function onSelect(label: MessageKey, handlers: MenuHandlers, _status: HTMLElemen
     handlers.onSinglePlayer();
     return;
   }
-  console.log(`[OpenWar3] menu: ${label}`);
+  console.log(`[Warcraft Open] menu: ${label}`);
 }
 
 function makeButton(label: string, onClick: () => void): HTMLButtonElement {

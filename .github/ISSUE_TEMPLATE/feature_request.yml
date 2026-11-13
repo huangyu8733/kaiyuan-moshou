@@ -1,5 +1,5 @@
 name: Feature request
-description: Something from Warcraft III that OpenWar3 does not do yet, or an idea of our own.
+description: Something from Warcraft III that Warcraft Open does not do yet, or an idea of our own.
 labels: ["enhancement"]
 body:
   - type: textarea

@@ -455,7 +455,7 @@ export interface HostSources {
  *  The march 10 → 20 → 30 → 60 tracked playtests calling the client sluggish, and what held it
  *  at 30 for a while was the WIRE — until the binary hot lane (`snapshotWire.ts`,
  *  PROTOCOL_VERSION 10) shrank a payload 7–9x and 60 Hz cost less than 30 Hz JSON had. It came
- *  back DOWN to 20 when the OpenWar3 server (src/net/officialServer.ts) made the wire a BILL:
+ *  back DOWN to 20 when the Warcraft Open server (src/net/officialServer.ts) made the wire a BILL:
  *  every payload a player has no direct link for (src/net/directLink.ts) goes host → relay →
  *  player, the relay's egress is what Railway charges for, and the host's own upload carries one
  *  stream per player either way — a third of the cadence is a third of both.

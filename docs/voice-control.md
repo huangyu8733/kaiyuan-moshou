@@ -187,7 +187,7 @@ files (`onnx-community/whisper-small.en`, ~250 MB), run by transformers.js in a 
   were the part cut off.
 - Everything is fog-honest: "the enemy hero" is the nearest one this player can SEE.
 
-`window.openwar3.voiceSay("train three footmen")` runs a sentence through the same path with no
+`window.warcraft-open.voiceSay("train three footmen")` runs a sentence through the same path with no
 microphone — the way to test the mapping in a live match.
 
 ## The menus and the in-game panels
@@ -218,5 +218,5 @@ WeakMap the widget fills). So "click single player", "select lost temple", "set 
 - **Chat**: "say good game to all", "tell allies push mid", "send message … to my team", "open
   chat". The message is the rest of the sentence as Whisper heard it. "And" inside a chat line is
   the message's own.
-- `window.openwar3.voiceSay(text)` works on the menus too (it asks whichever host is active), and
-  `window.openwar3.voiceHear(samples16k)` runs recorded speech through the recogniser itself.
+- `window.warcraft-open.voiceSay(text)` works on the menus too (it asks whichever host is active), and
+  `window.warcraft-open.voiceHear(samples16k)` runs recorded speech through the recogniser itself.

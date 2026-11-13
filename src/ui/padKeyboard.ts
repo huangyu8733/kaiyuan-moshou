@@ -11,7 +11,7 @@ import { dressAsGameTip } from "./gameTipSkin";
 // real mouse can use it too.
 //
 // Nothing in Warcraft III is a keyboard, so the LOOK is borrowed from the one slab the game
-// draws for OpenWar3's own hints: the tooltip's slate fill in its gold border (`dressAsGameTip`,
+// draws for Warcraft Open's own hints: the tooltip's slate fill in its gold border (`dressAsGameTip`,
 // placeholder chrome until an install is mounted), the game's font, and the D-pad's gold frame
 // on the key that X will type. It is small and off to the side of the field it is typing into —
 // a keyboard that covers the screen it is filling in is one the player has to put away to read.

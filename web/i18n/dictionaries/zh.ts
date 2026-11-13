@@ -3,7 +3,7 @@ export const zh = {
   meta: {
     title: "魔兽争霸开源版 · 魔兽争霸 III 开源重制",
     description:
-      "用 TypeScript 重写的魔兽争霸 III：冰封王座引擎。使用你自己的游戏文件，我们只提供引擎与地图下载。",
+      "魔兽争霸开源版是用 TypeScript 重写的《魔兽争霸 III：冰封王座》开源引擎：自带游戏目录即可开战，支持局域网与在线联机、地图库下载、Computer+ 电脑 AI 和中英文界面。",
   },
   common: {
     siteName: "魔兽争霸开源版",
@@ -24,7 +24,7 @@ export const zh = {
     kicker: "魔兽争霸 III：冰封王座 · 开源重制",
     tagline: "艾泽拉斯，重新开启",
     lede:
-      "一个用 TypeScript 重写的魔兽争霸 III 引擎。自备游戏文件，我们提供引擎、联机与地图。",
+      "用 TypeScript 从零重写的《魔兽争霸 III：冰封王座》引擎。选择你本机的游戏目录即可开战，支持局域网与在线联机、社区地图库、Computer+ 电脑 AI 与中英文界面。",
     latest: "最新版本 {version}",
     allReleases: "全部版本",
     requires: "需要魔兽争霸 III：冰封王座",

@@ -1,4 +1,4 @@
-// The hover HINTS that are OpenWar3's own — the idle-worker button, the XP bar's numbers, the
+// The hover HINTS that are Warcraft Open's own — the idle-worker button, the XP bar's numbers, the
 // day/night clock, the build and queue icons, a list row's action button — drawn in the game's
 // tooltip slab instead of the browser's `title` bubble.
 //

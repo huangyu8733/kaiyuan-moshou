@@ -1,4 +1,4 @@
-// OpenWar3's own glue dialog — the CustomKeys.txt editor (issue #156).
+// Warcraft Open's own glue dialog — the CustomKeys.txt editor (issue #156).
 //
 // **Why it exists.** Options → Gameplay → "Hotkeys:" → Custom reads the player's CustomKeys.txt
 // (issue #142), and until now the only way to write one was a text editor or one of the

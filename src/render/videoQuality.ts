@@ -102,7 +102,7 @@ const bridge = (): VideoBridge => {
  */
 const POSE_BUCKET_MS = 1000 / 30;
 
-/** What OpenWar3 has always rendered at, and what `ui/stage.ts` calls the game frame. */
+/** What Warcraft Open has always rendered at, and what `ui/stage.ts` calls the game frame. */
 const DEFAULT_WIDTH = 1920;
 const DEFAULT_HEIGHT = 1080;
 
@@ -150,7 +150,7 @@ const MIP_DROP: Record<Quality, number> = { high: 0, medium: 1, low: 2 };
  * depending on the particles setting. High seems to double the emission"* — and ships
  * `SETTING_PARTICLES_HIGH = 2`, which every emitter object multiplies its authored rate by. So
  * the authored rate IS Warcraft III's Medium, and High is twice it. We keep that hard-wired 2
- * and scale it here, which makes `high` = 2× authored (what OpenWar3 has always drawn) and
+ * and scale it here, which makes `high` = 2× authored (what Warcraft Open has always drawn) and
  * `medium` = 1× authored (the game's own middle rung). `low` at a quarter is OURS: the game has
  * a third rung and nothing we have says what it is worth.
  */
@@ -175,7 +175,7 @@ const ANIM_STRIDE: Record<Quality, number> = { high: 1, medium: 2, low: 4 };
 /**
  * Point lights uploaded to the shader. OURS.
  *
- * The reach is narrow and worth stating: the only dynamic lights OpenWar3 has are the `LITE`
+ * The reach is narrow and worth stating: the only dynamic lights Warcraft Open has are the `LITE`
  * omni lights the GLUE screens' own backdrop models carry (docs/lighting.md — the menus are lit
  * by the diorama, the world is lit by its tileset's day/night pair). So this dials the main menu
  * and the screens behind it, where a weak machine is also asked to draw a 3D scene, and does

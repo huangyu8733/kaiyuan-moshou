@@ -74,7 +74,7 @@ console.log("\na stored value of the wrong shape is ignored (defaults stand)");
 {
   store.clear();
   // A hand-edited / stale store puts a string where a number belongs, and a stray key.
-  store.set("openwar3.options", JSON.stringify({ musicVolume: "loud", bogus: 1, soundVolume: 55 }));
+  store.set("warcraft-open.options", JSON.stringify({ musicVolume: "loud", bogus: 1, soundVolume: 55 }));
   const back = loadOptions();
   check("bad-typed value rejected", back.musicVolume, 70);
   check("well-typed value accepted", back.soundVolume, 55);
@@ -86,12 +86,12 @@ console.log("\na store from before issue #141 does not turn the health bars off"
   store.clear();
   // What every pre-#141 OK button wrote: the checkbox's own default, which nothing read, and
   // no `healthBarStyle` beside it because that row did not exist yet.
-  store.set("openwar3.options", JSON.stringify({ healthBars: false, musicVolume: 20 }));
+  store.set("warcraft-open.options", JSON.stringify({ healthBars: false, musicVolume: 20 }));
   check("the unchosen value is dropped", loadOptions().healthBars, true);
   check("…and the rest of the store is kept", loadOptions().musicVolume, 20);
 
   // Once the player has committed the new row, an off IS a choice and is honoured.
-  store.set("openwar3.options", JSON.stringify({ healthBars: false, healthBarStyle: "team" }));
+  store.set("warcraft-open.options", JSON.stringify({ healthBars: false, healthBarStyle: "team" }));
   check("a deliberate off survives", loadOptions().healthBars, false);
 }
 
@@ -134,7 +134,7 @@ console.log("\nthe video applier turns the panel's words into the renderer's num
 
   applyVideoOptions(defaultOptions());
   check("defaults are the top rung", [videoSettings().particles, videoSettings().textureQuality], ["high", "high"]);
-  // High is what OpenWar3 has always drawn: the emitter object's own SETTING_PARTICLES_HIGH = 2,
+  // High is what Warcraft Open has always drawn: the emitter object's own SETTING_PARTICLES_HIGH = 2,
   // unscaled. Medium is therefore the rate the MDX author actually wrote.
   check("high leaves the viewer's rate alone", bridge().particleScale, 1);
   check("high uploads the full mip chain", bridge().textureMipDrop, 0);
@@ -284,7 +284,7 @@ console.log("\nLow Performance Mode forces every rung but the pixels and the bri
 console.log("\nthe Gameplay panel's two health-bar rows (issue #141)");
 {
   // Both are ON-by-default questions, and the checkbox's default is the one a player who never
-  // opens this screen lives with: WC3 ships it off, OpenWar3 ships it ON.
+  // opens this screen lives with: WC3 ships it off, Warcraft Open ships it ON.
   applyHealthBarOptions(defaultOptions());
   check("bars are shown by default", healthBarsAlways(), true);
   check("…in the game's own colouring", healthBarStyle(), "default");

@@ -3,10 +3,10 @@
 > **Source:** https://www.hiveworkshop.com/threads/reverse-engineer-game-dll.268718/ (3 pages)
 > **Scraped:** 2026-07-03 (hiveworkshop 403s plain fetchers — pulled with a browser User-Agent; see `docs/REFERENCES.md`).
 > **Why it's here:** the user asked us to archive this thread locally, **especially the posts by "A Void"**, as a
-> reference for making OpenWar3 behave like the real engine. A Void extracted the C++ **source-file strings** and the
+> reference for making Warcraft Open behave like the real engine. A Void extracted the C++ **source-file strings** and the
 > **`Game.pdb` internal source tree** out of `Game.dll`, which exposes Blizzard's real class names and module layout.
 
-## Why this matters for OpenWar3
+## Why this matters for Warcraft Open
 
 The single most useful artifact here is A Void's **post 1**: a dump of the literal strings compiled into `Game.dll`.
 Two things fall out of it that we can build against:
@@ -31,7 +31,7 @@ Two things fall out of it that we can build against:
    and UI art like `ReplaceableTextures\Selection\SpellAreaOfEffect.blp` and `ReplaceableTextures\CommandButtons\BTNTemp.blp`.
 
 > ⚠️ **Legal / usage boundary (echoed by A Void and Dr Super Good in-thread):** modifying or redistributing `Game.dll`
-> is against Blizzard's EULA. OpenWar3 does **not** use, ship, or derive from Blizzard binaries. We treat these strings
+> is against Blizzard's EULA. Warcraft Open does **not** use, ship, or derive from Blizzard binaries. We treat these strings
 > as *documentation of behaviour and naming* only — a map of what to build cleanly ourselves — never as code to lift.
 
 ## Thread technical summary (all participants)

@@ -4,7 +4,7 @@ This directory is a **compatibility layer**, and the whole of its value is that 
 build does not learn about it. Read [`docs/map-compatibility.md`](../../docs/map-compatibility.md)
 first; this file is the contract.
 
-OpenWar3 plays **TFT 1.30.4** and that does not change — every number, table and asset comes out
+Warcraft Open plays **TFT 1.30.4** and that does not change — every number, table and asset comes out
 of a 1.30.4 install, and the gate in [`src/vfs/version.ts`](../vfs/version.ts) still says so. What
 lives here is about the other half: a **map file** a player downloaded, which a 1.31 / 1.36 /
 Reforged 2.0 World Editor wrote with fields the 2003 formats did not have.

@@ -88,7 +88,7 @@ export function parseBuildInfo(text: string): Map<string, string> {
 }
 
 /**
- * The version string of the ACTIVE branch — "1.30.4.11274" on the install OpenWar3 targets.
+ * The version string of the ACTIVE branch — "1.30.4.11274" on the install Warcraft Open targets.
  *
  * `.build.info` is the only file in a CASC store that says which build it is, and it says it in
  * plain text before anything is mounted, which is what makes it usable as a gate (src/vfs/version.ts).

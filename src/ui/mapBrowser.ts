@@ -381,7 +381,7 @@ export class MapBrowser {
     // room to draw (a folder still being read shows the ring instead).
     if (ready && rows.length === 0 && !this.emptyLogged) {
       this.emptyLogged = true;
-      console.info("[OpenWar3] map list is empty", {
+      console.info("[Warcraft Open] map list is empty", {
         maps: this.maps.size,
         entries: this.entries.length,
         foldersRead: readFolders.size,
@@ -481,7 +481,7 @@ export class MapBrowser {
         e.unsupported = unsupportedReason(info.format) ?? undefined;
       } catch (err) {
         e.invalid = true;
-        console.warn(`[OpenWar3] couldn't read ${e.path}:`, err);
+        console.warn(`[Warcraft Open] couldn't read ${e.path}:`, err);
       }
     }
     if (this.alive) readFolders.add(folder);

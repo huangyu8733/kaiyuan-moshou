@@ -1,6 +1,6 @@
 # Patches after 1.30.4 — the ledger (issue #160)
 
-OpenWar3 reads the game data of **1.30.4** (build 11274, 2019-01-14; the install's own
+Warcraft Open reads the game data of **1.30.4** (build 11274, 2019-01-14; the install's own
 `.build.info` says `1.30.4.11274`). Blizzard has kept patching Warcraft III since, and issue #160
 is how we catch up: our OWN patch files, laid over the install's tables, so a melee game can play
 on a later balance without a byte of Blizzard's later data in this repository.
@@ -321,7 +321,7 @@ edition overlay uses — so no reader has to know a patch exists.
 - **No Blizzard text.** A value is a number, an id, a path or our own words. A number a tooltip
   spells out is corrected with a replacement (`{"replace": [["300", "150"]]}`) made at runtime in
   the player's own file, and a NEW object's name and tooltips are ours.
-- **Our own art.** Objects the patches added with art a 1.30.4 install lacks carry OpenWar3's own
+- **Our own art.** Objects the patches added with art a 1.30.4 install lacks carry Warcraft Open's own
   icons (`src/patches/art/*.png`, the Ritual Dagger and Sundering Blades), converted to BLP by
   `node tools/patch-art.mjs` and served at the path the later game uses —
   `BTNSacrificialDagger.blp`, `BTNSunderingBlades.blp`, `PASBTNSunderingBlades.blp` — so a map

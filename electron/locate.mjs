@@ -3,8 +3,8 @@
 // fallback for everything this cannot find.
 //
 // **The strongest clue is where WE are.** The Windows installer (build/installer.nsh) will only
-// install into a 1.30.4 folder and puts the app in an `OpenWar3` folder INSIDE it, so a packaged
-// Windows app's own executable sits at `<Warcraft III>\OpenWar3\OpenWar3.exe` and the install is
+// install into a 1.30.4 folder and puts the app in an `Warcraft Open` folder INSIDE it, so a packaged
+// Windows app's own executable sits at `<Warcraft III>\Warcraft Open\Warcraft Open.exe` and the install is
 // its grandparent. The same holds for an AppImage a player drops into (or beside) their game
 // folder, which is why this is not a Windows-only rule.
 //
@@ -44,7 +44,7 @@ function readRegistry(key, value) {
   });
 }
 
-/** The folders the packaged app itself lives in: `<install>\OpenWar3\OpenWar3.exe` names both the
+/** The folders the packaged app itself lives in: `<install>\Warcraft Open\Warcraft Open.exe` names both the
  *  app folder and its parent. On Linux the executable is inside the AppImage's own mount, so the
  *  AppImage FILE's folder is the one that means anything (`APPIMAGE`, set by its runtime). */
 function besideTheApp(execPath, env) {

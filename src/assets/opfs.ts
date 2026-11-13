@@ -212,7 +212,7 @@ function emptyCasc(): CascFiles {
  * browser session has lost its grant, and ui/gate.ts re-asks on the click that owns the
  * gesture rather than failing silently.
  */
-const HANDLE_DB = "openwar3.install";
+const HANDLE_DB = "warcraft-open.install";
 const HANDLE_STORE = "install";
 /** The pre-binding key. Still READ (as the last fallback) so an install picked before the
  *  language binding existed keeps working. */

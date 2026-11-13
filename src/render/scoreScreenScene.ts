@@ -202,7 +202,7 @@ export class ScoreScreenScene {
     try {
       return (await this.viewer.load(await this.vfs.read(mdx), this.solver)) as MdxModel ?? null;
     } catch (err) {
-      console.warn(`[OpenWar3] score screen art unavailable: ${mdx}`, err);
+      console.warn(`[Warcraft Open] score screen art unavailable: ${mdx}`, err);
       return null;
     }
   }

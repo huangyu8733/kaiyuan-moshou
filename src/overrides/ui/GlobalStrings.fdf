@@ -1,4 +1,4 @@
-// OpenWar3 override — strings the game has no key for.
+// Warcraft Open override — strings the game has no key for.
 //
 // Layered onto `UI\FrameDef\GlobalStrings.fdf` (src/overrides/index.ts), which is where every
 // other label on these two screens comes from. Blizzard never shipped a second melee AI, and
@@ -75,7 +75,7 @@ StringList {
     // such row. It is a Chromium LAUNCH switch there (electron/main.mjs), so OK asks the second
     // string -- in the menus' own Yes/No box -- and Yes relaunches the game to apply it.
     VSYNC                       "Vertical Sync",
-    VSYNC_RESTART               "OpenWar3 must restart to change Vertical Sync. Restart now?",
+    VSYNC_RESTART               "Warcraft Open must restart to change Vertical Sync. Restart now?",
 
     // ...and the row directly under "Resolution:" (issue #161): one switch for every rung on
     // this panel that costs something, at its cheapest, for a machine that cannot afford them.

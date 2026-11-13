@@ -2,12 +2,12 @@ import type { Messages } from "./zh";
 
 export const en: Messages = {
   meta: {
-    title: "Warcraft III Open · Warcraft III, rebuilt in the open",
+    title: "Warcraft Open · Warcraft III, rebuilt in the open",
     description:
       "A modern, open-source reimplementation of the Warcraft III: The Frozen Throne engine. Bring your own install — we provide the engine and maps.",
   },
   common: {
-    siteName: "Warcraft III Open",
+    siteName: "Warcraft Open",
     starOnGitHub: "Star on GitHub",
     stars: "{count} stars",
     language: "Language",
@@ -104,7 +104,7 @@ export const en: Messages = {
   },
   footer: {
     disclaimer:
-      "Warcraft III Open is an independent open-source project, not affiliated with or endorsed by Blizzard Entertainment. Warcraft is a trademark of Blizzard Entertainment, Inc. You need a legitimate copy of Warcraft III: The Frozen Throne to play.",
+      "Warcraft Open is an independent open-source project, not affiliated with or endorsed by Blizzard Entertainment. Warcraft is a trademark of Blizzard Entertainment, Inc. You need a legitimate copy of Warcraft III: The Frozen Throne to play.",
     license: "MIT License",
     setIn: "Set in Nowar Sans (SIL OFL 1.1)",
   },

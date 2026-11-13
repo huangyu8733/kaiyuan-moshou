@@ -29,7 +29,7 @@ importers:
         specifier: ^8.21.1
         version: 8.21.1
     devDependencies:
-      '@openwar3/ui':
+      '@warcraft-open/ui':
         specifier: link:packages/ui
         version: link:packages/ui
       '@types/node':

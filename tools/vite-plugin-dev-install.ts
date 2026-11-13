@@ -7,14 +7,14 @@ import type { Plugin } from "vite";
  * Dev-only: serve the developer's own Warcraft III install over HTTP so a browser can boot
  * the game without a human at the folder picker (docs/multiplayer.md Phase D item 1).
  *
- * **Why a plugin and not an env var.** CLAUDE.md's hard constraint is that OpenWar3 ships and
+ * **Why a plugin and not an env var.** CLAUDE.md's hard constraint is that Warcraft Open ships and
  * hosts zero Blizzard content. `apply: "serve"` means Vite never even loads this module for
  * `pnpm build` — the route is not code that got switched off, it is code that was never
  * emitted. An env var would leave the middleware in the production code path and make the
  * constraint a property of the CI configuration rather than of the artifact, and an
  * accidentally-shipped asset route is not recoverable by a follow-up commit.
  *
- * The install is read from `OPENWAR3_INSTALL`, defaulting to `Warcraft III/` beside the repo
+ * The install is read from `WARCRAFT_OPEN_INSTALL`, defaulting to `Warcraft III/` beside the repo
  * (which is where it already sits, and where `pnpm data:extract` looks). Two endpoints:
  *
  *   GET /wc3/manifest.json          → { archives, maps, casc, customKeys }
@@ -86,15 +86,15 @@ async function collectCasc(root: string): Promise<CascManifest | null> {
 
 export function devInstall(): Plugin {
   return {
-    name: "openwar3-dev-install",
+    name: "warcraft-open-dev-install",
     apply: "serve", // never present in a build — see the note above
     configureServer(server) {
-      const root = resolve(process.env.OPENWAR3_INSTALL ?? "Warcraft III");
+      const root = resolve(process.env.WARCRAFT_OPEN_INSTALL ?? "Warcraft III");
       const ok = existsSync(root);
       if (!ok) {
         server.config.logger.warn(
           `[dev-install] no install at ${root} — ?dev boot is unavailable. ` +
-            `Set OPENWAR3_INSTALL to your Warcraft III folder.`,
+            `Set WARCRAFT_OPEN_INSTALL to your Warcraft III folder.`,
         );
       }
 

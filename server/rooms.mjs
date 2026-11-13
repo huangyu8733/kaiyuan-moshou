@@ -212,7 +212,7 @@ export class RelayCore {
         const peer = { id: 1, name: msg.playerName || "Player", host: true, conn, token: mkToken(), disconnected: false };
         const room = {
           id,
-          name: msg.name || "OpenWar3 Game",
+          name: msg.name || "Warcraft Open Game",
           hostName: peer.name,
           mapName: msg.mapName || "",
           mapPath: msg.mapPath || "",

@@ -407,7 +407,7 @@ export function createLuaMapScript(interp: Interpreter, seed: number): LuaMapScr
     ${SANDBOX_REMOVE.map((n) => `${n} = nil`).join("\n    ")}
     -- Deterministic by construction: a match is lockstep, so every client seeds the same.
     math.randomseed(${seed | 0})
-  `, "openwar3-lua-prologue");
+  `, "warcraft-open-lua-prologue");
 
   /** The global FUNCTION names defined right now, as a set. */
   function globalFunctionNames(): string[] {
@@ -419,7 +419,7 @@ export function createLuaMapScript(interp: Interpreter, seed: number): LuaMapScr
       table.sort(names)
       return table.concat(names, '\\n')
     `;
-    if (lauxlib.luaL_loadbuffer(L, to_luastring(src), null, to_luastring("@openwar3-lua-globals")) !== lua.LUA_OK) {
+    if (lauxlib.luaL_loadbuffer(L, to_luastring(src), null, to_luastring("@warcraft-open-lua-globals")) !== lua.LUA_OK) {
       lua.lua_pop(L, 1);
       return [];
     }

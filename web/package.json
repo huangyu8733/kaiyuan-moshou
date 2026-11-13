@@ -1,5 +1,5 @@
 {
-  "name": "openwar3-web",
+  "name": "warcraft-open-web",
   "version": "0.1.0",
   "private": true,
   "description": "The OpenWar3 site (Next.js + SQLite): game downloads, map library and an admin panel.",
@@ -15,7 +15,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@openwar3/ui": "file:../packages/ui",
+    "@warcraft-open/ui": "file:../packages/ui",
     "ali-oss": "^6.23.0",
     "next": "16.3.5",
     "react": "19.3.0",

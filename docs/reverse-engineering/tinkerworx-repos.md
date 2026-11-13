@@ -2,7 +2,7 @@
 
 Two reference repos the user added as sources. Both document how the **real** engine is structured. As with every
 reference in [`../REFERENCES.md`](../REFERENCES.md): **treat as hypotheses, verify against the real game data / observed
-behaviour before building on them.** OpenWar3 contains zero Blizzard code — we use these to name and shape our own
+behaviour before building on them.** Warcraft Open contains zero Blizzard code — we use these to name and shape our own
 clean implementations, never to copy binaries or lifted code.
 
 ---
@@ -25,7 +25,7 @@ derives from `CWidget`; polymorphism is via the `*_VTable` structs.
 - **`CUnit`** — the engine hangs one *ability object per order category* off each unit:
   `attackAbility`, `moveAbility`, `heroAbility`, `buildAbility`, `inventoryAbility` (all `void*` → `CAbility`).
   Also `float defense`, `int userData`, `Vector3 position` at offset **[0x284]**.
-  - **Direct relevance to OpenWar3:** this is exactly how our command card is organised — Move/Attack/Build and the
+  - **Direct relevance to Warcraft Open:** this is exactly how our command card is organised — Move/Attack/Build and the
     **Hero Abilities (learn-skill) button map 1:1 to `moveAbility` / `attackAbility` / `buildAbility` / `heroAbility`**.
     When we grow the order system, model orders as ability objects on the unit, not ad-hoc branches.
 - **`CAbility`** — `CUnit* owner` (the unit that has the ability) + `int abilityId` (the rawcode).

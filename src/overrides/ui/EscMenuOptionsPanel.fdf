@@ -1,4 +1,4 @@
-// OpenWar3 override — `UI\FrameDef\UI\EscMenuOptionsPanel.fdf`, the panel behind F10 → Options.
+// Warcraft Open override — `UI\FrameDef\UI\EscMenuOptionsPanel.fdf`, the panel behind F10 → Options.
 //
 // The in-game Options panel is the glue Options screen's smaller twin: the same settings, minus
 // everything the 2003 engine could not change without a device reset (which it prints as
@@ -7,14 +7,14 @@
 // the same three edits to it that `OptionsMenu.fdf` makes to the glue one:
 //
 //   · "Enhanced Tooltips", "Subgroup order modifier key" and "Enable Formation Movement toggle"
-//     GO. All three are simply how OpenWar3 behaves — see src/data/options.ts, where the glue
+//     GO. All three are simply how Warcraft Open behaves — see src/data/options.ts, where the glue
 //     screen's copies of the same three rows were retired by issue #142 — and a setting whose
 //     only honest value is ON is not a setting.
 //   · "Custom Keyboard Shortcuts:" GOES, and the "Hotkeys:" pulldown takes its place. That row
 //     is the one of the three rungs a checkbox could say (data/hotkeys.ts), and on this panel
 //     it was a read-only VALUE rather than a control at all.
 //   · "Network" GOES, with its whole panel. It set the turn latency of a Battle.net game, and
-//     an OpenWar3 LAN match has no such knob to offer (docs/multiplayer.md).
+//     an Warcraft Open LAN match has no such knob to offer (docs/multiplayer.md).
 //   · "Difficulty:" GOES. It was a readout of the campaign screen's own dropdown, printing back
 //     at the player the one thing about the chapter they chose themselves.
 //

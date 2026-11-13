@@ -44,7 +44,7 @@ recording off for one boot.
 **Why the dev server writes the file.** A browser cannot append to a file in the project, and
 everything it *can* write to (localStorage, IndexedDB, a download) is somewhere you cannot
 grep, diff, or hand to a script. Like `devInstall`, the plugin carries `apply: "serve"`, so the
-route is not in a build at all — a published OpenWar3 has no endpoint that writes to disk
+route is not in a build at all — a published Warcraft Open has no endpoint that writes to disk
 because there is no endpoint. The client half goes inert with it: `ON` is
 `import.meta.env.DEV && __OW3_PERF_MS__ > 0`, and both halves of that are compile-time
 constants a build folds to `false`, so every entry point returns before it takes a timestamp.

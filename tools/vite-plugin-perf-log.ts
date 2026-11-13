@@ -9,7 +9,7 @@ import type { Plugin } from "vite";
  * the project, and everything it *can* write to (localStorage, IndexedDB, a download) is a
  * place you cannot grep, diff, or hand to a script. The whole point of the log is to be a
  * plain file next to the code, so the writer has to be the dev server. Like `devInstall` it
- * carries `apply: "serve"`, so the route is not in a build at all — a published OpenWar3 has
+ * carries `apply: "serve"`, so the route is not in a build at all — a published Warcraft Open has
  * no endpoint that writes to disk, because there is no endpoint.
  *
  * **Opt-in, per dev-server run.** Recording is off unless the server was started with the flag:
@@ -50,7 +50,7 @@ const KEEP = 40;
 const MIN_LINES = 4;
 
 /**
- * Read the recording flag: `OPENWAR3_PERF`, set by `pnpm dev:log` (tools/dev-log.mjs).
+ * Read the recording flag: `WARCRAFT_OPEN_PERF`, set by `pnpm dev:log` (tools/dev-log.mjs).
  *
  * It arrives as an env var rather than a command-line option because Vite's CLI is CAC with
  * unknown-option checking on — `vite --log` is a hard error, not an argument a config could
@@ -58,7 +58,7 @@ const MIN_LINES = 4;
  * seconds).
  */
 export function perfFlag(): { on: boolean; sampleMs: number; snapshotMs: number } {
-  const env = process.env.OPENWAR3_PERF;
+  const env = process.env.WARCRAFT_OPEN_PERF;
   const on = !!env && env !== "0" && env !== "false";
   const spec = env && env !== "1" ? env : "";
   const [sample, snapshot] = spec.split(",").map((n) => Number(n.trim()));
@@ -137,7 +137,7 @@ export function perfLog(): Plugin {
   let seq = 0;
 
   return {
-    name: "openwar3-perf-log",
+    name: "warcraft-open-perf-log",
     apply: "serve", // never present in a build — see the note above
     configureServer(server) {
       const flag = perfFlag();

@@ -17,18 +17,18 @@
 // (data/options.ts) — and reads are best-effort for the same reason: a disabled or corrupt
 // store should leave a player at the "no profiles yet" screen, not break the menu.
 
-const STORAGE_KEY = "openwar3.profiles";
+const STORAGE_KEY = "warcraft-open.profiles";
 
 /** Every key whose value belongs to a PROFILE rather than to the install. `deleteProfile`
  *  clears all of them for the profile it removes, which is what PROFILE_MESSAGE promises.
  *  Add a key here the moment something new is stored per profile. */
 const PROFILE_OWNED = [
-  "openwar3.campaigns", "openwar3.campaignDifficulty", "openwar3.saves",
+  "warcraft-open.campaigns", "warcraft-open.campaignDifficulty", "warcraft-open.saves",
   // …and the campaign's GAME CACHES — a hero's level and inventory on their way from one
   // chapter to the next — which are per-profile by common.j's own account of them ("stored in
   // the current campaign profile dir"). Every cache FILE a profile has is inside this one key,
   // which is what keeps the two sweeps below exact-match (see data/gameCache.ts).
-  "openwar3.gamecache",
+  "warcraft-open.gamecache",
 ];
 
 /**
@@ -191,7 +191,7 @@ export function profileKey(base: string, profile = activeProfile()): string {
 /**
  * Hand any pre-profile data to `profile`, once.
  *
- * Progress made before this issue landed sits under the bare keys (`openwar3.campaigns`), and
+ * Progress made before this issue landed sits under the bare keys (`warcraft-open.campaigns`), and
  * a player who had half a campaign done would otherwise watch it vanish the moment they made
  * the profile the screen now insists on. Called by `createProfile`'s caller for the FIRST
  * profile only — after that the bare keys are gone and there is nothing to adopt.

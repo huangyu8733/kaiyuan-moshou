@@ -144,7 +144,7 @@ export async function mountSkirmish(
      *  its w3i says so (every melee map does), else the black mask (advancedOptions.ts `visibilityFog`). */
     visibility: "DEFAULT" as Visibility,
     /**
-     * **Computer+** — play the computer seats with OpenWar3's own improved melee AI
+     * **Computer+** — play the computer seats with Warcraft Open's own improved melee AI
      * (src/ai/plus/, docs/computer-plus.md) rather than Blizzard's ported scripts.
      *
      * The pane's ninth row, and the only one on it that is not the game's own (its frames come

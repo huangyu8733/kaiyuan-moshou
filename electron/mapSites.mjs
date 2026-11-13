@@ -48,7 +48,7 @@ export async function fetchMapSite(url, signal) {
     const res = await fetch(at, {
       redirect: "manual",
       signal,
-      headers: { "user-agent": "OpenWar3 map browser", accept: "*/*" },
+      headers: { "user-agent": "Warcraft Open map browser", accept: "*/*" },
     });
     if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
       at = new URL(res.headers.get("location"), at).href;

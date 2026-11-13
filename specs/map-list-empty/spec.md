@@ -58,7 +58,7 @@
 ### F4. 空白但「就绪」时的诊断与兜底
 文件：`src/ui/mapBrowser.ts`。
 
-- `fillList()` 在 `ready && rows.length === 0` 时输出一次 `console.info("[OpenWar3] map list empty", { maps: this.maps.size, folders: readFolders.size, cwd: this.cwd, entries: this.entries.length })`（同一账本只打一次，避免重建刷屏）。
+- `fillList()` 在 `ready && rows.length === 0` 时输出一次 `console.info("[Warcraft Open] map list empty", { maps: this.maps.size, folders: readFolders.size, cwd: this.cwd, entries: this.entries.length })`（同一账本只打一次，避免重建刷屏）。
   - 这是给玩家反馈「为什么空」的证据，不改变界面。
 - 不新增任何 UI 文案（避免与 FDF 版面冲突）。
 

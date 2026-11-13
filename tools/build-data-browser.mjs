@@ -54,7 +54,7 @@ const DOCS = [
   [/^Units\/ItemData\.slk$/i, 'Items & Upgrades', 'Items: cost, charges, classification, drop rules, which abilities they grant.'],
   [/^Units\/Item(Func|Strings)\.txt$/i, 'Items & Upgrades', 'Item art and strings: icon, name, tooltip.'],
   [/^Units\/ItemAbility(Func|Strings)\.txt$/i, 'Items & Upgrades', 'Art and strings for item-granted abilities.'],
-  [/^Units\/UpgradeData\.slk$/i, 'Items & Upgrades', 'Researches: cost per level, what the level modifies, requirements. Not yet consumed by OpenWar3.'],
+  [/^Units\/UpgradeData\.slk$/i, 'Items & Upgrades', 'Researches: cost per level, what the level modifies, requirements. Not yet consumed by Warcraft Open.'],
   [/^Units\/UpgradeEffectMetaData\.slk$/i, 'Items & Upgrades', 'What an upgrade level actually modifies (the effect schema).'],
   [/^Units\/\w+Upgrade(Func|Strings)\.txt$/i, 'Items & Upgrades', 'Per-race upgrade art and strings: icon, name, tooltip, hotkey.'],
   [/^Units\/DestructableData\.slk$/i, 'Items & Upgrades', 'Trees, gates, breakable rocks: HP, pathing footprint, model, what can harvest or destroy them.'],
@@ -64,7 +64,7 @@ const DOCS = [
 
   // --- Constants ---------------------------------------------------------
   [/^Units\/MiscData\.txt$/i, 'Game constants', 'Gameplay constants that live nowhere else: `CloseEnoughRange`, `BuildingUnblightRadius`, creep notification radii, acquisition ranges. Read by src/sim/world.ts.'],
-  [/^Units\/MiscGame\.txt$/i, 'Game constants', 'Rule switches and creep/AI constants: `MagicImmunesResistDamage`, guard leash and return-home behaviour, spell target clustering. This is why OpenWar3’s creep AI uses real WC3 numbers instead of invented ones.'],
+  [/^Units\/MiscGame\.txt$/i, 'Game constants', 'Rule switches and creep/AI constants: `MagicImmunesResistDamage`, guard leash and return-home behaviour, spell target clustering. This is why Warcraft Open’s creep AI uses real WC3 numbers instead of invented ones.'],
   [/^UI\/MiscData\.txt$/i, 'Game constants', 'Presentation constants: floating gold/lumber text colour, velocity and lifetime; buff fade alphas.'],
   [/^UI\/MiscUI\.txt$/i, 'Game constants', 'UI chrome constants.'],
   [/^Units\/CommandFunc\.txt$/i, 'Game constants', 'The command card: icon + grid position for Move / Attack / Stop / Hold / Patrol / Build.'],
@@ -105,7 +105,7 @@ const DOCS = [
   [/^UI\/FrameDef\/Glue\//i, 'UI (FDF)', 'An out-of-game “glue” screen — main menu, Battle.net panels, options. FDF is the engine’s UI layout language, read by CGameUI.'],
   [/^UI\/FrameDef\/.*InfoPanelStrings\.fdf$/i, 'UI (FDF)', 'The info-panel strings, including the armor-type and attack-type tooltip text the game shows for each combination.'],
   [/^UI\/FrameDef\/GlobalStrings\.fdf$/i, 'UI (FDF)', 'Globally available UI strings.'],
-  [/^UI\/FrameDef\//i, 'UI (FDF)', 'An in-game HUD layout: frames, textures, fonts and strings. OpenWar3 does not read FDF (the HUD is hand-built DOM in src/ui/hud.ts) — these are the layout, proportion and naming reference.'],
+  [/^UI\/FrameDef\//i, 'UI (FDF)', 'An in-game HUD layout: frames, textures, fonts and strings. Warcraft Open does not read FDF (the HUD is hand-built DOM in src/ui/hud.ts) — these are the layout, proportion and naming reference.'],
   [/^UI\/war3skins\.txt$/i, 'UI (FDF)', 'Skin definitions — which textures dress the UI frames.'],
   [/^UI\/WorldEditStrings\.txt$/i, 'World Editor', 'Resolves every `WESTRING_*` key. This is how you turn AbilityMetaData’s field ids into human names — the DataA..DataI decoder. Earns its keep even though the rest of the World Editor data does not.'],
   [/^UI\/TriggerData\.txt$/i, 'World Editor', 'The complete GUI-trigger vocabulary: every event, condition and action, its parameter types, and the JASS function it compiles to. If you ever implement triggers, this is the spec.'],
@@ -278,7 +278,7 @@ function page(manifest, payload) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenWar3 · WC3 Data Codex</title>
+<title>Warcraft Open · WC3 Data Codex</title>
 <style>
 :root{
   --stone-900:#0b0a09; --stone-850:#100e0c; --stone-800:#15120f; --stone-750:#1b1713;

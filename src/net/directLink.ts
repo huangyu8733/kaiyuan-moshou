@@ -1,7 +1,7 @@
 // A match's wire, carried DIRECT between each client and the host where the network allows it
 // (docs/multiplayer.md "Direct links (WebRTC)").
 //
-// Over the OpenWar3 server every message hairpins: player → relay → host → relay → player, two
+// Over the Warcraft Open server every message hairpins: player → relay → host → relay → player, two
 // round trips to Amsterdam for what is one round trip between two machines that may sit in the
 // same city. Two players in Greece measured 130–150 ms in game against ~64 ms to the relay. So
 // once a match starts, every client opens an `RTCDataChannel` to the HOST — the only machine
@@ -42,7 +42,7 @@ export const DirectLinks = { enabled: true };
 /**
  * Public STUN only: enough for each end to learn the address its NAT shows the world, which is
  * all a cone NAT needs. There is deliberately no TURN — a TURN server relays every byte, which is
- * what the OpenWar3 server already does, so a link ICE cannot open simply stays on that.
+ * what the Warcraft Open server already does, so a link ICE cannot open simply stays on that.
  */
 const ICE_SERVERS: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"] }];
 

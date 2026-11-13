@@ -152,14 +152,14 @@ export function mountMenuDebug(root: HTMLElement, scene: MenuScene): { dispose()
       for (const [path, t] of scene.tunedBackdrops) {
         const line = BACKDROP_SLIDERS.map((s) => `${s.key}: ${Number(t[s.key].toFixed(4))}`).join(", ");
         // eslint-disable-next-line no-console
-        console.log(`[OpenWar3 backdrop tuning] ${path} { ${line} }`);
+        console.log(`[Warcraft Open backdrop tuning] ${path} { ${line} }`);
       }
       return;
     }
     const t = scene.tuning;
     const line = MENU_SLIDERS.map((s) => `${s.key}: ${Number(t[s.key].toFixed(4))}`).join(", ");
     // eslint-disable-next-line no-console
-    console.log(`[OpenWar3 menu tuning] { ${line} }`);
+    console.log(`[Warcraft Open menu tuning] { ${line} }`);
   };
 
   const hide = document.createElement("button");

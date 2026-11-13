@@ -1,6 +1,6 @@
 {
-  "name": "kaiyuan-moshou",
-  "version": "0.3.82",
+  "name": "warcraft-open",
+  "version": "0.3.83",
   "private": true,
   "description": "Browser-first, asset-compatible re-creation of the Warcraft III engine (TypeScript). Ships zero Blizzard assets.",
   "type": "module",
@@ -29,7 +29,7 @@
     "data:audit": "node tools/audit-abilities.mjs",
     "perf:report": "node tools/perf-report.mjs",
     "app": "electron electron/main.mjs",
-    "app:dev": "OPENWAR3_DEV=1 electron electron/main.mjs",
+    "app:dev": "WARCRAFT_OPEN_DEV=1 electron electron/main.mjs",
     "app:test": "node tools/electron-server-test.mjs && node tools/beacon-test.mjs",
     "icon": "node tools/make-icon.mjs",
     "dist": "pnpm build && node tools/make-icon.mjs && electron-builder",
@@ -54,7 +54,7 @@
     "ws": "^8.21.1"
   },
   "devDependencies": {
-    "@openwar3/ui": "link:packages/ui",
+    "@warcraft-open/ui": "link:packages/ui",
     "@types/node": "^24.13.3",
     "electron": "^44.3.0",
     "electron-builder": "^26.15.3",
@@ -110,7 +110,7 @@
       "executableName": "warcraft-open",
       "desktop": {
         "entry": {
-          "Name": "Warcraft-Open"
+          "Name": "Warcraft Open"
         }
       }
     },
@@ -132,8 +132,8 @@
       "allowToChangeInstallationDirectory": true,
       "include": "packaging/windows-installer.nsh",
       "artifactName": "Warcraft-Open-Setup-${version}.${ext}",
-      "shortcutName": "Warcraft-Open",
-      "uninstallDisplayName": "Warcraft-Open"
+      "shortcutName": "Warcraft Open",
+      "uninstallDisplayName": "Warcraft Open"
     },
     "mac": {
       "target": [

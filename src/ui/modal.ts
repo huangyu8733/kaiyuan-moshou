@@ -1,6 +1,6 @@
 // "Is a modal up?" — asked in one place, by everything that listens to the keyboard.
 //
-// OpenWar3 has two families of modal and they put up two different scrims: the IN-GAME dialogs
+// Warcraft Open has two families of modal and they put up two different scrims: the IN-GAME dialogs
 // (`fdf-dialog-scrim` — the F10 menu, Allies, Messaging, the Quest log, a script's own dialog)
 // and the GLUE ones (`glue-dialog-scrim` — the game's message box, Join Server, the update
 // prompt). Both mean the same thing to a key handler, and a handler that knows about one of them

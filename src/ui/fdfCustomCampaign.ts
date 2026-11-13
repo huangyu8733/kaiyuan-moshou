@@ -27,7 +27,7 @@ import { widescreen } from "./widescreen";
 //
 // THE LIST IS EMPTY on a stock install, and that is the reference's own behaviour rather than
 // a stub: a custom campaign is a `.w3n` the player drops into Maps\Download, this install has
-// none, and OpenWar3 does not open `.w3n` archives yet. Play Campaign stays greyed exactly as
+// none, and Warcraft Open does not open `.w3n` archives yet. Play Campaign stays greyed exactly as
 // it does there with nothing picked.
 
 const LIST_FDF = "UI\\FrameDef\\Glue\\ListBoxWar3.fdf";

@@ -1,9 +1,9 @@
-# `src/patches/` — the game's later patches, as OpenWar3's own data
+# `src/patches/` — the game's later patches, as Warcraft Open's own data
 
 (Not to be confused with the repository's top-level `patches/`, which holds pnpm patches to
 npm packages.)
 
-OpenWar3 reads a **1.30.4** install. Blizzard patched Warcraft III many times after that; each
+Warcraft Open reads a **1.30.4** install. Blizzard patched Warcraft III many times after that; each
 release that changed the game is written down here as one JSON file, and `PatchDataSource`
 ([`src/vfs/patch.ts`](../vfs/patch.ts)) lays the whole chain over the install's tables, so every
 reader sees the patched game. The ledger of releases, with sources, is

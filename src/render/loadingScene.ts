@@ -252,7 +252,7 @@ export class LoadingScene {
     try {
       return (await this.viewer.load(await this.vfs.read(path), this.solver)) as MdxModel ?? null;
     } catch (err) {
-      console.warn(`[OpenWar3] loading screen art unavailable: ${path}`, err);
+      console.warn(`[Warcraft Open] loading screen art unavailable: ${path}`, err);
       return null;
     }
   }

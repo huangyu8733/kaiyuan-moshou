@@ -46,7 +46,7 @@ import { widescreen } from "./widescreen";
 //
 // Under the map list is a row of OURS, "Server:" (src/overrides/ui/LocalMultiplayerCreate.fdf):
 // which relay the room is announced on — this computer, which only the local network can reach,
-// or a server the Servers List watches, the OpenWar3 servers first (src/net/officialServer.ts).
+// or a server the Servers List watches, the Warcraft Open servers first (src/net/officialServer.ts).
 // It opens on wherever the host last put a game (`HOST_SERVER_KEY`) while that still answers,
 // and otherwise on the DEFAULT official server — EU — or the next one that answers.
 
@@ -60,7 +60,7 @@ const PANEL_FACES = { info: "MapInfoPanel", advanced: "AdvancedOptionsPanel" } a
 
 /** Where the host last announced a game (a `HostTarget.url`, "" for this computer). The Server
  *  menu opens on it again, as long as it is still answering. */
-const HOST_SERVER_KEY = "openwar3.hostServer";
+const HOST_SERVER_KEY = "warcraft-open.hostServer";
 
 export interface LanCreateHandlers {
   /** The host settled on a map: announce the room and drop into the game lobby (issue #77).
@@ -105,7 +105,7 @@ export async function mountLanCreateScreen(
 
   /**
    * Where the game would be announced right now: the pick, while it is still answering; else an
-   * OpenWar3 server, because a game there is one every player can see — the default (EU) first,
+   * Warcraft Open server, because a game there is one every player can see — the default (EU) first,
    * in OFFICIAL_SERVERS' order, whichever of them we happen to be standing on; else whatever
    * answers at all, which is this computer. Null only while nothing is answering yet.
    */

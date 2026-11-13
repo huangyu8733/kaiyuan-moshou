@@ -92,7 +92,7 @@ export async function showUpdateOverlay(
   // The bar alone — no background. If its model cannot be read the overlay still stands, with
   // the caption and the percentage doing the whole job: a failure to load ART must not leave the
   // player with no sign that the game is busy replacing itself.
-  await scene.load(null).catch((err) => console.warn("[OpenWar3] update bar unavailable:", err));
+  await scene.load(null).catch((err) => console.warn("[Warcraft Open] update bar unavailable:", err));
   scene.start();
   scene.setProgress(0);
 

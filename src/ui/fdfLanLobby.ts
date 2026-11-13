@@ -573,7 +573,7 @@ export async function mountLanLobbyScreen(
    */
   function paintJoinAddress(s: FdfScreen): void {
     // A game on the OFFICIAL server needs no address at all: it is in the game list of every copy
-    // of OpenWar3, since every copy watches that server. So the row says where the game is, and
+    // of Warcraft Open, since every copy watches that server. So the row says where the game is, and
     // is not a thing to copy.
     const here = lobby.primary;
     if (here?.kind === "official") {

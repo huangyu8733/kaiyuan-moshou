@@ -33,7 +33,7 @@ console.log("a fresh install has no profiles and none in play");
   check("no profiles", P.loadProfiles(), []);
   check("none active", P.activeProfile(), null);
   // With none, a key is un-suffixed — where progress lived before profiles existed.
-  check("bare key", P.profileKey("openwar3.campaigns"), "openwar3.campaigns");
+  check("bare key", P.profileKey("warcraft-open.campaigns"), "warcraft-open.campaigns");
 }
 
 console.log("\ncreating one puts it in play");
@@ -41,7 +41,7 @@ console.log("\ncreating one puts it in play");
   check("created", P.createProfile("Arthas", 1), "Arthas");
   check("in play", P.activeProfile(), "Arthas");
   check("listed", P.loadProfiles().map((p) => p.name), ["Arthas"]);
-  check("its key is suffixed", P.profileKey("openwar3.campaigns"), "openwar3.campaigns.Arthas");
+  check("its key is suffixed", P.profileKey("warcraft-open.campaigns"), "warcraft-open.campaigns.Arthas");
 }
 
 console.log("\nnames are trimmed, capped, and unique case-insensitively");
@@ -77,25 +77,25 @@ console.log("\ndeleting a profile deletes everything it owns (PROFILE_MESSAGE)")
   P.deleteProfile("Arthas");
   check("gone from the list", P.loadProfiles().map((p) => p.name), ["Jaina"]);
   check("the next one takes over", P.activeProfile(), "Jaina");
-  check("its progress key is gone", store.has("openwar3.campaigns.Arthas"), false);
-  check("its difficulty key too", store.has("openwar3.campaignDifficulty.Arthas"), false);
+  check("its progress key is gone", store.has("warcraft-open.campaigns.Arthas"), false);
+  check("its difficulty key too", store.has("warcraft-open.campaignDifficulty.Arthas"), false);
   check("the survivor's is not", C.loadProgress(), { human: 1 });
 
   P.deleteProfile("Jaina");
   check("the last one leaves none in play", P.activeProfile(), null);
-  check("and nothing of its own behind", [...store.keys()], ["openwar3.profiles"]);
+  check("and nothing of its own behind", [...store.keys()], ["warcraft-open.profiles"]);
 }
 
 console.log("\nthe first profile adopts what was played before profiles existed");
 {
   store.clear();
-  store.set("openwar3.campaigns", JSON.stringify({ human: 4 }));
-  store.set("openwar3.campaignDifficulty", "hard");
+  store.set("warcraft-open.campaigns", JSON.stringify({ human: 4 }));
+  store.set("warcraft-open.campaignDifficulty", "hard");
   const name = P.createProfile("Thrall", 9);
   P.adoptOrphanedData(name);
   check("progress came across", C.loadProgress(), { human: 4 });
   check("difficulty too", C.loadDifficulty(), "hard");
-  check("the bare key is gone", store.has("openwar3.campaigns"), false);
+  check("the bare key is gone", store.has("warcraft-open.campaigns"), false);
 }
 
 // The campaign screens offer NORMAL and HARD and nothing else — Easy is reached only by losing
@@ -108,7 +108,7 @@ console.log("\nEasy is not a difficulty any screen offers");
   store.clear();
   const name = P.createProfile("Uther", 1);
   P.selectProfile(name);
-  store.set("openwar3.campaignDifficulty.Uther", "easy");
+  store.set("warcraft-open.campaignDifficulty.Uther", "easy");
   check("a stored Easy reads back as Normal", C.loadDifficulty(), "normal");
   C.saveDifficulty("hard");
   check("…and the two that ARE offered still round-trip", C.loadDifficulty(), "hard");
@@ -117,11 +117,11 @@ console.log("\nEasy is not a difficulty any screen offers");
 console.log("\na corrupt store reads as a fresh install rather than throwing");
 {
   store.clear();
-  store.set("openwar3.profiles", "{not json");
+  store.set("warcraft-open.profiles", "{not json");
   check("no profiles", P.loadProfiles(), []);
   check("none in play", P.activeProfile(), null);
   // An `active` naming a profile that isn't in the list is not a profile in play.
-  store.set("openwar3.profiles", JSON.stringify({ profiles: [{ name: "A", created: 1 }], active: "B" }));
+  store.set("warcraft-open.profiles", JSON.stringify({ profiles: [{ name: "A", created: 1 }], active: "B" }));
   check("a dangling active is dropped", P.activeProfile(), null);
 }
 

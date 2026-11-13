@@ -29,7 +29,7 @@ import { widescreen } from "./widescreen";
 // composes the game's own ListBoxWar3.fdf and MapInfoPane.fdf into them.
 //
 // THE LIST IS EMPTY, and that is not a stub — it is what the reference shows on an install
-// with no saved replays. OpenWar3 records none yet, so nothing can land in it; View Replay
+// with no saved replays. Warcraft Open records none yet, so nothing can land in it; View Replay
 // stays greyed exactly as it does there with nothing picked.
 
 const LIST_FDF = "UI\\FrameDef\\Glue\\ListBoxWar3.fdf";

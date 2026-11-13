@@ -1,10 +1,15 @@
-# 开源魔兽争霸（OpenWar3）
+# 魔兽争霸开源版（Warcraft Open）
 
-<img src="public/demoscreens/game2.avif" width="800">
-<img src="public/demoscreens/game1.avif" width="800">
+<img src="public/demoscreens/launcher-home.avif" width="800">
+<img src="public/demoscreens/game-main-menu.avif" width="800">
+<img src="public/demoscreens/launcher-maps.avif" width="800">
+<img src="public/demoscreens/game-server.avif" width="800">
+
+魔兽争霸开源版是用 TypeScript 重写的《魔兽争霸 III：冰封王座》开源引擎，支持 Windows / Linux / macOS。程序不包含任何暴雪游戏文件，运行时读取你指定目录中的游戏资源；如果还没有游戏文件，可以到官网「资料下载」获取中文版或英文版。内置地图库与多语言文件下载、局域网与在线联机、Computer+ 电脑 AI、快捷键编辑与语音控制。
 
 A recreation of the **Warcraft III** engine in TypeScript. Ships **zero Blizzard assets** — it reads
-your own install at runtime. **The Frozen Throne 1.30.4 is required.**
+the Warcraft III folder you point it at. Game files (Chinese and English) are available from the
+[downloads page](https://warcraft.hhkj.me/zh/downloads).
 
 ## Features
 

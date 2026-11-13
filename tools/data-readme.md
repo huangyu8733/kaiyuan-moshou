@@ -14,7 +14,7 @@ pnpm data:browse     # build + open the data browser
 Re-run any time; `merged/`, `by-archive/`, `_index/`, `index.html` and this README are all regenerated.
 
 > **This folder is gitignored and must stay that way.** It is Blizzard's data, unpacked from *your* local
-> install. OpenWar3 ships zero Blizzard assets or code (see `CLAUDE.md` → "Legal boundary"). Read these
+> install. Warcraft Open ships zero Blizzard assets or code (see `CLAUDE.md` → "Legal boundary"). Read these
 > files to learn *behaviour and numbers*; never copy them into the repo.
 
 For the deeper field guide to the data model — which table holds which field, how `targs1` target flags
@@ -127,7 +127,7 @@ Consequence: any file you cannot find by listing may still be *there*. Probe by 
 Not extracted despite looking text-ish: `Reverb3.flt` is a **PE DLL** (a Miles Sound System filter), and
 `.mrf` is binary `Morf` vertex-animation data (Arthas's cape in a cinematic).
 
-`.slk` and `.txt` are parsed in OpenWar3 by `mdx-m3-viewer`'s `MappedData`, wired through `src/vfs/`.
+`.slk` and `.txt` are parsed in Warcraft Open by `mdx-m3-viewer`'s `MappedData`, wired through `src/vfs/`.
 
 ### Reading a `.slk`
 
@@ -223,7 +223,7 @@ column you don't recognise, this is where you look it up.
 | `UI/MiscUI.txt` | UI chrome constants |
 | `Units/CommandFunc.txt` / `commandstrings.txt` | The **command card**: icon + grid position + tooltip + hotkey for Move / Attack / Stop / Hold / Patrol / Build |
 
-`MiscGame.txt` and `MiscData.txt` are the reason OpenWar3's creep AI has real WC3 constants rather than
+`MiscGame.txt` and `MiscData.txt` are the reason Warcraft Open's creep AI has real WC3 constants rather than
 invented ones. Both are read in `src/sim/world.ts` and `src/game/rts.ts`.
 
 ### Sound
@@ -272,7 +272,7 @@ build the HUD, the command card, the menus (`UI/FrameDef/Glue/*` are the out-of-
 `UI/FrameDef/UI/*` is the in-game HUD. `GlobalStrings.fdf` and `InfoPanelStrings.fdf` hold the strings the
 info panel shows (including the armor/attack-type tooltips).
 
-**OpenWar3 does not read FDF.** The HUD is hand-built DOM in `src/ui/hud.ts` and `src/style.css`. These
+**Warcraft Open does not read FDF.** The HUD is hand-built DOM in `src/ui/hud.ts` and `src/style.css`. These
 files are here as the **layout and naming reference** — use them to get panel proportions, frame names and
 string keys right.
 

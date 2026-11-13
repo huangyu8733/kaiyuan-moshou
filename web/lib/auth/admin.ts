@@ -11,7 +11,7 @@ function secret(): string {
   if (process.env.NODE_ENV === "production") {
     throw new Error("ADMIN_SECRET 未配置：生产环境拒绝使用默认密钥。");
   }
-  return "openwar3-dev-admin-secret-change-me";
+  return "warcraft-open-dev-admin-secret-change-me";
 }
 
 function sign(payload: string): string {

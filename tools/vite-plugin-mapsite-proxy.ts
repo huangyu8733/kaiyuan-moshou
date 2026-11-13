@@ -14,7 +14,7 @@ import { fetchMapSite, MAP_SITE_MAX_BYTES } from "../electron/mapSites.mjs";
  */
 export function mapSiteProxy(): Plugin {
   return {
-    name: "openwar3-mapsite-proxy",
+    name: "warcraft-open-mapsite-proxy",
     apply: "serve",
     configureServer(server) {
       server.middlewares.use("/dev-mapsite", (req, res) => {

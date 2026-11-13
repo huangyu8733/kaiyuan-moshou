@@ -14,7 +14,7 @@ import { t } from "../i18n";
 //
 // **What it is for.** Real WC3 broadcast on the subnet, so a game on the network appeared in the
 // list and nobody typed anything. A browser cannot send a datagram, and the packaged game's
-// window has no address bar, so two copies of OpenWar3 on one network cannot find each other at
+// window has no address bar, so two copies of Warcraft Open on one network cannot find each other at
 // all: somebody has to say where to look. Until the UDP beacon lands (docs/multiplayer.md), this
 // is the whole of discovery.
 //

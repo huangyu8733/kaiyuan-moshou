@@ -330,7 +330,7 @@ from never cross the wire.
 * **Enhanced Tooltips.** The Options panel's `TooltipsCheckBox` (`ENHANCED_TOOLTIPS`,
   `EscMenuOptionsPanel.fdf`) is GONE from the panel as of issue #142 — it was wired
   `applied: false`, a tooltip switch that changed nothing, and what the real option adds has
-  never been established. The slab described above is the one OpenWar3 draws, always. If the
+  never been established. The slab described above is the one Warcraft Open draws, always. If the
   difference is ever established, the row comes back rather than the behaviour changing under
   a setting nobody can see.
 * **`ToolTipStonesIcon`** is unused: nothing in melee spends Mana Stones. A custom map might.

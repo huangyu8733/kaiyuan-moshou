@@ -1,6 +1,6 @@
-// OpenWar3 override — `UI\FrameDef\Glue\AdvancedOptionsPane.fdf`.
+// Warcraft Open override — `UI\FrameDef\Glue\AdvancedOptionsPane.fdf`.
 //
-// Two rows of this pane are OpenWar3's own:
+// Two rows of this pane are Warcraft Open's own:
 //
 //  · "Observer Mode" REPLACES the game's "Observers:" dropdown, in the same place on the pane.
 //    That dropdown offers four ways for OTHER PEOPLE to watch a hosted game (Full Observers,

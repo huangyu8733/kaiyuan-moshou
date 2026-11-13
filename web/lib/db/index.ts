@@ -5,10 +5,10 @@ import { SCHEMA_SQL } from "./schema.ts";
 
 // One connection per process. Next's dev server re-evaluates modules on every edit, so the
 // handle lives on globalThis; without that, each HMR pass would leak another open file.
-type GlobalWithDb = typeof globalThis & { __openwar3Db?: DatabaseSync };
+type GlobalWithDb = typeof globalThis & { __warcraftOpenDb?: DatabaseSync };
 
 export function databasePath(): string {
-  const configured = process.env.DATABASE_PATH || "./data/openwar3.sqlite";
+  const configured = process.env.DATABASE_PATH || "./data/warcraft-open.sqlite";
   return isAbsolute(configured) ? configured : join(/* turbopackIgnore: true */ process.cwd(), configured);
 }
 
@@ -32,8 +32,8 @@ function open(): DatabaseSync {
 
 export function getDb(): DatabaseSync {
   const g = globalThis as GlobalWithDb;
-  if (!g.__openwar3Db) g.__openwar3Db = open();
-  return g.__openwar3Db;
+  if (!g.__warcraftOpenDb) g.__warcraftOpenDb = open();
+  return g.__warcraftOpenDb;
 }
 
 export function nowIso(): string {

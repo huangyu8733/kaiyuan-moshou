@@ -1,8 +1,8 @@
-// OpenWar3's own glue dialog — the addresses this machine is watching for games.
+// Warcraft Open's own glue dialog — the addresses this machine is watching for games.
 //
 // **Why it exists.** The 2003 client broadcast on the subnet, so a game on the network simply
 // appeared and nobody ever typed an address. We cannot broadcast from a page, and the packaged
-// game has no address bar to navigate with, so two copies of OpenWar3 on one network would never
+// game has no address bar to navigate with, so two copies of Warcraft Open on one network would never
 // find each other. Until the UDP beacon lands (docs/multiplayer.md), somebody has to say where
 // to look — and a thing the player MANAGES is a list, not a text field wedged into a corner of
 // the screen behind it.

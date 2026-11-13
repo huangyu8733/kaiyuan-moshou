@@ -143,7 +143,7 @@ export class MatchLog {
     if (!this.sink || this.opening) return;
     this.opening = this.sink.begin(map).then((id) => { this.id = id; }, () => { this.id = null; });
     const now = new Date();
-    this.line(`# OpenWar3 match log — ${map}`);
+    this.line(`# Warcraft Open match log — ${map}`);
     this.line(`# started ${now.toISOString()} (${now.toString()})`);
     for (const [k, v] of Object.entries(header)) this.line(`# ${k}: ${v}`);
     for (const s of this.src.seats()) {

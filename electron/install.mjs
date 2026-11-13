@@ -234,7 +234,7 @@ export async function downloadedMapExists(root, name) {
   }
 }
 
-/** The build OpenWar3 plays by default. Kept for the download/downgrade paths and for the
+/** The build Warcraft Open plays by default. Kept for the download/downgrade paths and for the
  *  message the game shows; it is no longer the only version the picker accepts. */
 export const REQUIRED_VERSION = "1.30.4";
 
@@ -271,7 +271,7 @@ export function installVersion(root) {
 }
 
 /**
- * Is this folder the Warcraft III OpenWar3 plays?
+ * Is this folder the Warcraft III Warcraft Open plays?
  *
  * Asked of what the player picked, so the answer arrives at the moment of choosing rather than as
  * a mount failing three steps later — and, more importantly, so a folder the game would refuse is

@@ -12,7 +12,7 @@ import type { Plugin } from "vite";
  * header and fetches it directly (electron/download.mjs); this route gives the dev server the
  * same reach, so the developer can use — and test — the browser half at localhost.
  *
- * `apply: "serve"`, like devInstall: a build has no such route, so a hosted OpenWar3 never relays
+ * `apply: "serve"`, like devInstall: a build has no such route, so a hosted Warcraft Open never relays
  * anybody's game files (CLAUDE.md, legal boundary). And it is NOT an open proxy — the upstream is
  * fixed to Drive's download host, and the only thing the page chooses is the file id.
  *
@@ -20,7 +20,7 @@ import type { Plugin } from "vite";
  */
 export function driveProxy(): Plugin {
   return {
-    name: "openwar3-drive-proxy",
+    name: "warcraft-open-drive-proxy",
     apply: "serve",
     configureServer(server) {
       server.middlewares.use("/dev-drive", (req, res) => {

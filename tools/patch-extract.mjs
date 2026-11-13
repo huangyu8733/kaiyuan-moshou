@@ -16,7 +16,7 @@
 // What comes out is `.cdn-cache/extract/<version>/`, laid out in 1.30.4's paths (`Units\…`,
 // `Custom_V1\Units\…`, `Melee_V0\…`, `Scripts\…`) whatever the build's own layout was, so the two
 // can be diffed file for file. It is the developer's own download to the developer's own disk and
-// is gitignored, as `Warcraft III/` is: OpenWar3 ships zero Blizzard data (CLAUDE.md).
+// is gitignored, as `Warcraft III/` is: Warcraft Open ships zero Blizzard data (CLAUDE.md).
 //
 // Two facts about the CDN that decide what this can reach:
 //   • Blizzard's CDN keeps only CURRENT builds. Every config from 1.30.0 to 2.0.4 is gone (404),

@@ -112,7 +112,7 @@ emission rate of particle emitters depending on the particles setting. High seem
 emission"* — and ships `SETTING_PARTICLES_HIGH = 2`, which every emitter object multiplies its
 authored rate by. So **the rate written into an MDX is Warcraft III's Medium**, and High is twice
 it. (The real client's main menu at its highest rung holds 0.45 × what that rate gives, traced, so this
-may simply be wrong: see lighting.md. Only that scene has moved so far.) We leave that 2 where it is and scale it, which makes our High exactly what OpenWar3 has
+may simply be wrong: see lighting.md. Only that scene has moved so far.) We leave that 2 where it is and scale it, which makes our High exactly what Warcraft Open has
 always drawn and our Medium the game's own middle rung. Every other rung in the file is OURS and
 says so at its definition. Nothing in the install describes what a quality setting does — these
 were engine settings, not data — so there is nothing to check them against.
@@ -181,7 +181,7 @@ Three things still belong to the instance and are done for it:
 - **Nodes that act on the world** — a particle emitter, an event object (a footstep sound, a
   blood splat), an attached model — get `instance.worldMatrix × local` composed into them, and
   only them. A Footman has two or three against fifty-seven bones. The list is rebuilt every
-  frame rather than cached, because OpenWar3 PARENTS a buff or spell model onto a bone at
+  frame rather than cached, because Warcraft Open PARENTS a buff or spell model onto a bone at
   runtime (`inst.setParent(node)`), and a cached list would leave that model at the world origin.
 - **The click ray** (`src/render/modelCollision.ts`) composes the same product for the two or
   three collision shapes it tests, or a click lands on a body standing at the origin.
@@ -239,7 +239,7 @@ replays the composer's locals as they are).
   instance to compose a bucket captures that world matrix into a shared pose, and every body
   wearing it draws that part of itself where the composer stood. The composer therefore redoes
   every node that carries something now OR has ever had a world matrix composed into it
-  (`ow3WorldWritten`); the second half is not paranoia, it is OpenWar3 parenting a buff model onto
+  (`ow3WorldWritten`); the second half is not paranoia, it is Warcraft Open parenting a buff model onto
   a bone and taking it away again. Forcing the composer's whole pass fixes it too and costs a
   third of the saving.
 - **…and `ow3FixBillboards` writes world matrices too**, into the plan's PARENTS (the static nodes
@@ -474,7 +474,7 @@ edge reading comes out wrong by exactly that.
 1920×1080 with `reswidth`/`resheight` set in `HKCU\Software\Blizzard Entertainment\Warcraft
 III\Video`): the main menu and the Single Player Profiles screen fill the **middle 1440×1080**
 and the rest is black. The glue is never widened — it is drawn in the 4:3 box its FDFs and chrome
-models are authored for. OpenWar3 spreads the menus to the window's edges by default instead,
+models are authored for. Warcraft Open spreads the menus to the window's edges by default instead,
 and `src/ui/widescreen.ts` takes up the extra width (issue #151). This row is the way back to the
 original. It is **off by default**, so nobody's menus change shape under them.
 

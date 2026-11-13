@@ -1,4 +1,4 @@
-import { bindHotkeys, createGlueButton, createPanel, createProgressBar, type GlueButton } from "@openwar3/ui/dom";
+import { bindHotkeys, createGlueButton, createPanel, createProgressBar, type GlueButton } from "@warcraft-open/ui/dom";
 import { currentLocale, t } from "../i18n";
 import { createLanguagePicker } from "../i18n/switch";
 import { safeMapName } from "../assets/downloadedMaps";
@@ -40,10 +40,10 @@ interface SiteMap {
   downloadUrl: string | null;
 }
 
-/** The site this build reads maps from. A packaged build must set `VITE_OPENWAR3_SITE_URL`;
+/** The site this build reads maps from. A packaged build must set `VITE_WARCRAFT_OPEN_SITE_URL`;
  *  a dev server falls back to the local site so the shelf works out of the box. */
 const SITE = (
-  (import.meta.env.VITE_OPENWAR3_SITE_URL as string | undefined) ??
+  (import.meta.env.VITE_WARCRAFT_OPEN_SITE_URL as string | undefined) ??
   (import.meta.env.DEV ? "http://localhost:3000" : "")
 ).replace(/\/+$/, "");
 
@@ -146,7 +146,7 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   heroBg.className = "home-hero-bg";
   heroBg.setAttribute("aria-hidden", "true");
   const heroBgImg = document.createElement("img");
-  heroBgImg.src = "/media/game2.avif";
+  heroBgImg.src = "/demoscreens/launcher-home.avif";
   heroBgImg.alt = "";
   heroBgImg.draggable = false;
   heroBg.append(heroBgImg);
@@ -210,18 +210,30 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   installedTab.textContent = t("home.installed");
   mapsTabs.append(libraryTab, installedTab);
 
-  const libraryPane = document.createElement("div");
-  libraryPane.className = "home-map-pane";
-  const toolbar = document.createElement("div");
-  toolbar.className = "home-map-toolbar";
+  // The search box sits beside the tabs, with its button on the right; the box stays visible.
   const search = document.createElement("input");
   search.type = "search";
   search.className = "home-map-search";
   search.placeholder = t("home.searchPlaceholder");
   search.setAttribute("aria-label", t("home.search"));
+  const searchBtn = document.createElement("button");
+  searchBtn.type = "button";
+  searchBtn.className = "home-map-search-btn";
+  searchBtn.textContent = t("home.search");
+  const searchGroup = document.createElement("div");
+  searchGroup.className = "home-map-search-group";
+  searchGroup.append(search, searchBtn);
+  const mapsHeadRow = document.createElement("div");
+  mapsHeadRow.className = "home-map-head";
+  mapsHeadRow.append(mapsTabs, searchGroup);
+
+  const libraryPane = document.createElement("div");
+  libraryPane.className = "home-map-pane";
+  const toolbar = document.createElement("div");
+  toolbar.className = "home-map-toolbar";
   const chips = document.createElement("div");
   chips.className = "home-map-chips";
-  toolbar.append(search, chips);
+  toolbar.append(chips);
   const mapsBody = document.createElement("div");
   mapsBody.className = "home-map-grid";
   libraryPane.append(toolbar, mapsBody);
@@ -233,7 +245,7 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   installedPane.append(installedBody);
   installedPane.hidden = true;
 
-  mapsView.append(mapsHead, mapsTabs, libraryPane, installedPane);
+  mapsView.append(mapsHead, mapsHeadRow, libraryPane, installedPane);
 
   // ── About page ────────────────────────────────────────────────────────────
   const aboutView = document.createElement("section");
@@ -473,7 +485,7 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
         }
       } catch (err) {
         if (abort.signal.aborted) return;
-        console.warn("[OpenWar3] the map language file was not kept:", err);
+        console.warn("[Warcraft Open] the map language file was not kept:", err);
       }
       // Re-enable it: the player can download again over the copy they have.
       btn.setDisabled(false);
@@ -594,6 +606,13 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
     chipButtons.push(chip);
     chips.append(chip);
   }
+  searchBtn.addEventListener("click", (): void => {
+    search.focus();
+    search.select();
+  });
+  search.addEventListener("keydown", (event): void => {
+    if (event.key === "Escape") search.blur();
+  });
   search.addEventListener("input", (): void => {
     filterQuery = search.value;
     renderShelf();
@@ -638,7 +657,7 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
       void refreshDownloaded();
     } catch (err) {
       if (abort.signal.aborted) return;
-      console.warn("[OpenWar3] the map library is unavailable:", err);
+      console.warn("[Warcraft Open] the map library is unavailable:", err);
       message(t("home.mapsFailed"), true);
     }
   };

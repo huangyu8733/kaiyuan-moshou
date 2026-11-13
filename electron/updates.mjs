@@ -1,4 +1,4 @@
-// Checking the project's GitHub releases for a newer OpenWar3, fetching it, and restarting into
+// Checking the project's GitHub releases for a newer Warcraft Open, fetching it, and restarting into
 // it — the desktop app's own updater.
 //
 // The flow is the player's to refuse, ONCE. `autoDownload` is OFF, so nothing is fetched until
@@ -45,7 +45,7 @@ export function startUpdates({ onChange, log, fakeVersion = null } = {}) {
           else set({ phase: "downloading", percent });
         }, 200);
       },
-      install() { set({ phase: "installing" }); log?.info?.("[OpenWar3] pretend update: not restarting"); },
+      install() { set({ phase: "installing" }); log?.info?.("[Warcraft Open] pretend update: not restarting"); },
     };
   }
 

@@ -1,6 +1,6 @@
 # Hotkeys — which key presses which button
 
-Options → Gameplay → **"Hotkeys:"** offers three, and the row is OpenWar3's
+Options → Gameplay → **"Hotkeys:"** offers three, and the row is Warcraft Open's
 ([`src/overrides/ui/OptionsMenu.fdf`](../src/overrides/ui/OptionsMenu.fdf)): the 2003 screen had
 a checkbox here instead, "Custom Keyboard Shortcuts", which is one of the three answers rather
 than the whole question (issue #142).
@@ -119,7 +119,7 @@ CustomKeys.txt can move.
 `CustomKeyInfo.txt` names two places in two consecutive paragraphs — the 1.30 user-data path
 `Documents\Warcraft III\CustomKeyBindings\CustomKeys.txt`, and then "once a customization file
 has been created in the **installed folder**". The user-data folder is outside the install and
-therefore outside everything a folder pick can see, so what OpenWar3 honours is the
+therefore outside everything a folder pick can see, so what Warcraft Open honours is the
 installed-folder spelling, plus the same `CustomKeyBindings\` sub-folder inside the install in
 case the player kept that shape when they moved the file where the game could be pointed at it.
 

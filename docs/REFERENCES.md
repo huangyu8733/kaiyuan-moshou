@@ -116,7 +116,7 @@ Practical notes:
 - **Liquipedia now 403s that trick too** (Cloudflare Turnstile, as of 2026-09). Its MediaWiki API
   still answers, but only to a request that asks for gzip and names itself — the page's wikitext,
   which is what you want anyway:
-  `curl -s --compressed -A "OpenWar3-research/1.0 (contact: …)" "https://liquipedia.net/warcraft/api.php?action=parse&page=Weapon_Types&format=json&prop=wikitext"`
+  `curl -s --compressed -A "Warcraft Open-research/1.0 (contact: …)" "https://liquipedia.net/warcraft/api.php?action=parse&page=Weapon_Types&format=json&prop=wikitext"`
   (without `--compressed` it returns *406 Gzip encoding is required for API requests*).
 - Warsmash's source is the next stop: it encodes many of these findings as code.
 - When a mechanic matters for gameplay feel, write the source (thread/repo) next to the constant in
@@ -175,7 +175,7 @@ used is the one inside `Chains_silver.blp`.
 - **Map (`.w3m`/`.w3x`) internal file manifest.** [thehelper.net "Explanation of w3m and w3x files" (35292)](https://www.thehelper.net/threads/explanation-of-w3m-and-w3x-files.35292/)
   — a plain-language index of every chunk file inside a map MPQ (terrain `.w3e`, pathing `.wpm`, placed
   objects `.doo`, info `.w3i`, triggers `.j`/`.wtg`/`.wct`/`.wts`, the `.w3u`…`.w3q` object-data tables, etc.).
-  Written up (cross-checked against the bundled maps, OpenWar3's parsers noted) in the **Maps** section of
+  Written up (cross-checked against the bundled maps, Warcraft Open's parsers noted) in the **Maps** section of
   [`wc3-data-formats.md`](wc3-data-formats.md). Complements the `w3x-spec` byte-layout reference above.
 - **Unit selection = collision shapes, not the mesh.** WC3 picks a unit by its model's
   **CollisionShape** (box/sphere), sized from the pathing/collision value — clicking the mesh is

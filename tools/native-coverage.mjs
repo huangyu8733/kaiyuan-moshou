@@ -18,7 +18,7 @@
 // can pick the next batch (Phase 7 plan, "Deliverable 0").
 //
 // It reads only the developer's own local install (Warcraft III/ is gitignored;
-// OpenWar3 ships zero Blizzard assets — see CLAUDE.md "Legal boundary").
+// Warcraft Open ships zero Blizzard assets — see CLAUDE.md "Legal boundary").
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';

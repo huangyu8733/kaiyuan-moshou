@@ -128,13 +128,13 @@ export const OPTION_DEFS: readonly OptionDef[] = [
   // The two scroll sliders and the switch between them, live through `applyScrollOptions`
   // (render/scrollOptions.ts) — which is also where the only invented number on this panel is
   // written down and justified: what a notch MEANS is engine-internal and in no game file, so
-  // the middle of either slider is the speed OpenWar3 has always panned at.
+  // the middle of either slider is the speed Warcraft Open has always panned at.
   { key: "mouseScrollSpeed", frame: "MouseScrollSlider", kind: "range", panel: "gameplay", def: 50 },
   { key: "mouseScrollDisable", frame: "MouseScrollDisableCheckBox", escFrame: "MouseScrollDisable", kind: "bool", panel: "gameplay", def: false },
   { key: "keyScrollSpeed", frame: "KeyScrollSlider", kind: "range", panel: "gameplay", def: 50 },
   // Four rows the game had here are GONE (issue #142), and the panel is shorter for it. Three
   // of them — Enhanced Tooltips, the Subgroup order modifier key and Enable formation movement
-  // toggle — are simply how OpenWar3 behaves: all three are what a player wants on, none of
+  // toggle — are simply how Warcraft Open behaves: all three are what a player wants on, none of
   // them was ever a question this engine asked (they were remembered and unread, `applied:
   // false`), and a setting whose only honest value is ON is not a setting. The fourth, "Custom
   // Keyboard Shortcuts", is not retired so much as PROMOTED: a checkbox that turns
@@ -181,7 +181,7 @@ export const OPTION_DEFS: readonly OptionDef[] = [
   // --- Video (applied through render/videoQuality.ts, which documents what each rung does) ---
   { key: "gamma", frame: "GammaSlider", kind: "range", panel: "video", def: 50 },
   // The buffer the world is drawn into (see RESOLUTIONS). 1920x1080 is the default and is what
-  // OpenWar3 has always rendered at, so a player who never opens this screen sees no change.
+  // Warcraft Open has always rendered at, so a player who never opens this screen sees no change.
   { key: "resolution", frame: "ResolutionMenu", kind: "choice", panel: "video", def: "1920x1080", choices: RESOLUTIONS },
   // "Low Performance Mode" (issue #161) — one switch that puts every rung BELOW it at its
   // cheapest, for a machine that cannot afford them. Not a WC3 row: the 2003 panel is nine
@@ -250,7 +250,7 @@ export function defaultOptions(): Options {
   return o;
 }
 
-const STORAGE_KEY = "openwar3.options";
+const STORAGE_KEY = "warcraft-open.options";
 
 /** The committed options, from localStorage merged over the defaults. Reads are best-effort:
  *  a disabled/quota-full/corrupt store just yields the defaults. */

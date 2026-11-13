@@ -25,7 +25,7 @@ import { dirname, join } from "node:path";
 
 const THREAD = "https://www.hiveworkshop.com/threads/what-is-openwar3.375387/";
 // Newcomers are sent to the LANDING page, never to a GitHub release page.
-const LANDING = "https://openwar3.vercel.app/";
+const LANDING = "https://warcraft.hhkj.me/";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -42,12 +42,12 @@ if (release.isDraft) fail(`${tag} is still a draft — publish it first (gh rele
 if (!release.body.trim()) fail(`${tag} has no release notes yet.`);
 
 const post = [
-  `[B][SIZE=5]OpenWar3 ${version} is out[/SIZE][/B]`,
+  `[B][SIZE=5]Warcraft Open ${version} is out[/SIZE][/B]`,
   "",
   toBBCode(release.body),
   "",
-  `[B]Already playing?[/B] Just launch OpenWar3 — it offers the update by itself the next time it starts.`,
-  `[B]New here?[/B] Download it from [URL='${LANDING}']openwar3.vercel.app[/URL].`,
+  `[B]Already playing?[/B] Just launch Warcraft Open — it offers the update by itself the next time it starts.`,
+  `[B]New here?[/B] Download it from [URL='${LANDING}']warcraft.hhkj.me[/URL].`,
 ].join("\n");
 
 if (printOnly) {

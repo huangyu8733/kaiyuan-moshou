@@ -25,7 +25,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     <>
       <section className="hero">
         <div className="hero__backdrop" aria-hidden>
-          <Image src="/media/game2.avif" alt="" draggable={false} fill priority sizes="100vw" />
+          <Image src="/media/hero.avif" alt="" draggable={false} fill priority sizes="100vw" />
         </div>
         <div className="hero__content">
           <p className="hero__kicker">{dict.hero.kicker}</p>

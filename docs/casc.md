@@ -1,6 +1,6 @@
 # CASC — how a 1.30.4 install is read (issue #102)
 
-OpenWar3 targets **Warcraft III: The Frozen Throne 1.30.4**. That version's UI is the one built
+Warcraft Open targets **Warcraft III: The Frozen Throne 1.30.4**. That version's UI is the one built
 for widescreen (the console side-panels and the top bar stretch properly), which is why it is
 the target — but it also dropped MPQ for **CASC**, Blizzard's NGDP content store, so the whole
 asset layer had to learn a second storage. The MPQ path is kept and still mounts a legacy

@@ -1,4 +1,4 @@
-// OpenWar3's own game patches — the balance Blizzard shipped after 1.30.4 (docs/patches.md,
+// Warcraft Open's own game patches — the balance Blizzard shipped after 1.30.4 (docs/patches.md,
 // issue #160).
 //
 // The install is 1.30.4 and stays 1.30.4. Every later patch is written down HERE, one JSON file

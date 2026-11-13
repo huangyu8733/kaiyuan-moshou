@@ -1,7 +1,8 @@
-import "./render/frameCap"; // first: the desktop app's 300 fps cap patches requestAnimationFrame
+import "./data/storageMigration"; // first: carry saved state over from the pre-rename keys
+import "./render/frameCap"; // second: the desktop app's 300 fps cap patches requestAnimationFrame
 // The shared UI kit (packages/ui) first, so the game's own sheet can lay its pieces out.
-import "@openwar3/ui/fonts.css";
-import "@openwar3/ui/ui.css";
+import "@warcraft-open/ui/fonts.css";
+import "@warcraft-open/ui/ui.css";
 import "./style.css";
 // First, so its capture listener is the page's first: Alt+Enter must reach nothing else.
 import "./ui/fullscreen";
@@ -201,7 +202,7 @@ async function showMenuBackground(vfs: DataSource | null): Promise<void> {
       menuDebug = mountMenuDebug(ui, menuScene);
     }
   } catch (err) {
-    console.warn("[OpenWar3] main-menu 3D scene unavailable:", err);
+    console.warn("[Warcraft Open] main-menu 3D scene unavailable:", err);
     show("none"); // empty background
   }
 }
@@ -458,16 +459,16 @@ function lanSession(): { lobby: LanLobby; connected: Promise<void> } {
     // ADDRESS and nothing else, which is what keeps it a small feature rather than a second way
     // to learn about games. A no-op in a browser, which cannot hear anything.
     const stopListening = onServersFound((urls) => lobby.setDiscovered(urls));
-    // The OpenWar3 servers (src/net/officialServer.ts): on every Servers List out of the box, and
+    // The Warcraft Open servers (src/net/officialServer.ts): on every Servers List out of the box, and
     // removable from none. Watched like any other address, so their games merge into the one
     // list — EU first, which is what makes it the Create Game screen's default.
     for (const official of officialServerAddresses()) {
       try { lobby.addRelay(official, "official"); } catch { /* a malformed override: no official row */ }
     }
-    // Reachable for the same reason `openwar3.vfs` and `openwar3.mapScene` are: the LAN screens
+    // Reachable for the same reason `warcraft-open.vfs` and `warcraft-open.mapScene` are: the LAN screens
     // are driven headlessly, and "what does the lobby actually think" is the question every
     // harness ends up asking.
-    ((window as unknown as { openwar3: Record<string, unknown> }).openwar3 ??= {}).lan = lobby;
+    ((window as unknown as { warcraftOpen: Record<string, unknown> }).warcraftOpen ??= {}).lan = lobby;
     lan = { lobby, connected, stopListening };
   }
   return lan;
@@ -643,7 +644,7 @@ async function openCampaignScreen(vfs: DataSource): Promise<void> {
   if (!campaigns.length) campaigns = await loadCampaigns(vfs);
   if (!campaigns.length) {
     // An install that ships neither edition's index (data/campaigns.ts `loadCampaigns`).
-    console.warn("[OpenWar3] no campaign index for this edition in this install — Campaign unavailable");
+    console.warn("[Warcraft Open] no campaign index for this edition in this install — Campaign unavailable");
     return;
   }
   campaignState ??= { campaign: campaigns[0], chapters: false, difficulty: loadDifficulty() };
@@ -722,7 +723,7 @@ async function startCampaignMission(vfs: DataSource, c: Campaign, index: number,
   const mission = c.missions[index];
   const bytes = mission ? await readMapBytes(vfs, mission.file) : null;
   if (!bytes) {
-    console.warn(`[OpenWar3] campaign map missing from this install: ${mission?.file}`);
+    console.warn(`[Warcraft Open] campaign map missing from this install: ${mission?.file}`);
     return;
   }
   leaveCampaignScreen();
@@ -758,7 +759,7 @@ async function changeLevel(mapPath: string): Promise<void> {
   if (!vfs) return exitToMenu();
   const bytes = await readMapBytes(vfs, mapPath);
   if (!bytes) {
-    console.warn(`[OpenWar3] next chapter missing from this install: ${mapPath}`);
+    console.warn(`[Warcraft Open] next chapter missing from this install: ${mapPath}`);
     return exitToMenu();
   }
   const found = findChapter(mapPath);
@@ -846,7 +847,7 @@ async function startCredits(vfs: DataSource): Promise<void> {
   const path = creditsMap();
   const bytes = await readMapBytes(vfs, path);
   if (!bytes) {
-    console.warn(`[OpenWar3] credits map missing from this install: ${path}`);
+    console.warn(`[Warcraft Open] credits map missing from this install: ${path}`);
     return;
   }
   applyMenuCursor(vfs); // no glue screen arrives after this one — the match does
@@ -984,10 +985,10 @@ async function startGame(
   }
   setMapLanguage(language);
   // A one-line answer for the question "why is this map still in its author's language?": type
-  // `openwar3.mapLanguage` in the console. `live:false` means no dictionary for this map at all
+  // `warcraft-open.mapLanguage` in the console. `live:false` means no dictionary for this map at all
   // (nothing beside it, or the install cannot see it) — which is what the `[i18n]` lines above
   // say in full, and what an empty list of matches means when it says live:true.
-  ((window as unknown as { openwar3: Record<string, unknown> }).openwar3 ??= {}).mapLanguage = language
+  ((window as unknown as { warcraftOpen: Record<string, unknown> }).warcraftOpen ??= {}).mapLanguage = language
     ? {
         live: true, wts: language.wts.size, text: language.text.size,
         abilities: language.objects.abilities.size, items: language.objects.items.size,
@@ -1170,7 +1171,7 @@ function previewOf(bytes: Uint8Array): MapPreview | null {
   try {
     return readMapPreviewBytes(vfs, bytes);
   } catch (err) {
-    console.warn("[OpenWar3] couldn't read the map's minimap markers:", err);
+    console.warn("[Warcraft Open] couldn't read the map's minimap markers:", err);
     return null;
   }
 }
@@ -1204,7 +1205,7 @@ async function showLoadingScreen(info: MapInfo, config: MeleeConfig, map: Uint8A
   try {
     vfs = new LayeredDataSource([new MpqDataSource("map", map), install]);
   } catch (err) {
-    console.warn("[OpenWar3] loading screen: map archive unreadable, using the install's art:", err);
+    console.warn("[Warcraft Open] loading screen: map archive unreadable, using the install's art:", err);
   }
   const chapter = pendingCampaign
     ? campaigns.find((c) => c.key === pendingCampaign?.key)?.missions[pendingCampaign.index]
@@ -1223,7 +1224,7 @@ async function showLoadingScreen(info: MapInfo, config: MeleeConfig, map: Uint8A
     loadingCanvas.hidden = false;
     return screen;
   } catch (err) {
-    console.warn("[OpenWar3] loading screen unavailable:", err);
+    console.warn("[Warcraft Open] loading screen unavailable:", err);
     loadingCanvas.hidden = true;
     return null;
   }
@@ -1381,7 +1382,7 @@ function exitToMenu(scores: ScoreTable | null = null): void {
  * Resolves on OK. A screen that cannot be built (the install lacks its art) is skipped rather
  * than leaving the player on a black window.
  */
-/** The last score table shown — kept for the `window.openwar3.scoreScreen()` probe, which puts the
+/** The last score table shown — kept for the `window.warcraftOpen.scoreScreen()` probe, which puts the
  *  screen back up without playing a match to its end again. */
 let lastScores: ScoreTable | null = null;
 
@@ -1409,7 +1410,7 @@ async function showScoreScreen(vfs: DataSource, table: ScoreTable): Promise<void
     await glue.cover();
     screen.dispose();
   } catch (err) {
-    console.warn("[OpenWar3] score screen unavailable:", err);
+    console.warn("[Warcraft Open] score screen unavailable:", err);
   }
   loadingCanvas.hidden = true;
   loadingLayer.querySelector(".score-fade")?.remove();
@@ -1443,7 +1444,7 @@ async function showMainMenu(vfs: DataSource): Promise<void> {
   try {
     await glue.show(mainMenuScreen(vfs));
   } catch (err) {
-    console.warn("[OpenWar3] FDF main menu unavailable, using flat menu:", err);
+    console.warn("[Warcraft Open] FDF main menu unavailable, using flat menu:", err);
     mountMainMenu(ui, resolver, {
       onSinglePlayer: () => window.alert(t("error.glueFilesMissing")),
     });
@@ -1456,7 +1457,7 @@ async function showMainMenu(vfs: DataSource): Promise<void> {
 function mountInstall(load: GateLoad): void {
   resolver.setInstall(load.vfs);
   installMaps = load.maps; // the Custom Game screen's map list
-  ((window as unknown as { openwar3: Record<string, unknown> }).openwar3 ??= {}).vfs = load.vfs;
+  ((window as unknown as { warcraftOpen: Record<string, unknown> }).warcraftOpen ??= {}).vfs = load.vfs;
   gate?.dispose();
   gate = null;
   home?.dispose();
@@ -1588,7 +1589,7 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has("dev")) {
 }
 
 // Console hooks for the phase exit criteria (see README "Testing manually").
-(window as unknown as { openwar3: Record<string, unknown> }).openwar3 = {
+(window as unknown as { warcraftOpen: Record<string, unknown> }).warcraftOpen = {
   resolver,
   decodeBlp,
   listModels,

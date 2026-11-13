@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting! OpenWar3 aims to match **Warcraft III: The Frozen Throne 1.30.4**, so
-        "the real game does X here, OpenWar3 does Y" is exactly the kind of report we want.
+        Thanks for reporting! Warcraft Open aims to match **Warcraft III: The Frozen Throne 1.30.4**, so
+        "the real game does X here, Warcraft Open does Y" is exactly the kind of report we want.
   - type: input
     id: map
     attributes:
@@ -59,7 +59,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: OpenWar3 version / commit
+      label: Warcraft Open version / commit
       placeholder: "v0.x.y, or a commit hash if running from source"
   - type: dropdown
     id: edition

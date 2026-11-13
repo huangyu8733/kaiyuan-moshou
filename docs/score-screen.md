@@ -109,11 +109,11 @@ so the scene is one orthographic window and the screen is mounted `stretchRoot`:
   — `fdf/render.ts` `addedLight` turns it into light, or it draws a black bar.
 - The FDF hangs a SCROLLBAR off the panel; it is removed, or the renderer makes the whole panel a
   scroll frame with a bar at the screen's edge. Twelve seats fit.
-- No Save Replay button: OpenWar3 records no replays yet, so both replay buttons are hidden.
+- No Save Replay button: Warcraft Open records no replays yet, so both replay buttons are hidden.
 
 The reference opens on the FIRST column sorted highest-first (none of the shots has Teams lit),
 keeps that column's place across tabs, and Teams sorts by team. The ally-colour button recolours
 the bars with `ALLY_FILTER_COLOR` (you blue, teammates teal, the rest red).
 
-`window.openwar3.scoreScreen(table?)` (dev) puts the screen back up on the last table or one
+`window.warcraft-open.scoreScreen(table?)` (dev) puts the screen back up on the last table or one
 handed in — lay it out without finishing a match each time; `lastScores()` reads the last one.

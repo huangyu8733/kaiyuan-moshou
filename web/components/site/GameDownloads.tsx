@@ -1,4 +1,4 @@
-import { GlueButton } from "@openwar3/ui/react";
+import { GlueButton } from "@warcraft-open/ui/react";
 import { AndroidIcon, AppleIcon, HarmonyIcon, LinuxIcon, WindowsIcon } from "../Icons";
 import type { DownloadRow } from "@/lib/db/schema";
 import type { Messages } from "@/i18n/dictionaries/zh";

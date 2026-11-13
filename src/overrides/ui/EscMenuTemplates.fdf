@@ -1,4 +1,4 @@
-// OpenWar3 override — `UI\FrameDef\UI\EscMenuTemplates.fdf`, the in-game menus' shared templates.
+// Warcraft Open override — `UI\FrameDef\UI\EscMenuTemplates.fdf`, the in-game menus' shared templates.
 //
 // One edit, and it is the developer's call rather than the game's: an open IN-GAME dropdown
 // (F10 → Options, the F12 chat recipients) lights the row under the mouse GOLD, the same

@@ -692,7 +692,7 @@ const BUILDING_SLAB = 113;
 // on the terrain-occlusion test, not a rule of the game's. See pickAt.
 const PICK_GROUND_SLACK = 48;
 // NOTE: there is deliberately NO selection cap here any more. WC3 stops a selection at 12 units
-// (we long stopped at 24), but OpenWar3 lifts it (issue #109): a box-select, a same-type grab or
+// (we long stopped at 24), but Warcraft Open lifts it (issue #109): a box-select, a same-type grab or
 // a control group holds as many units as you put in it. The HUD absorbs the size instead of the
 // sim — `showSelectionGrid` steps the icon grid down a tier every 12 units and folds whatever is
 // past the last tier into a "+N" badge on the final icon.
@@ -1422,7 +1422,7 @@ export class RtsController {
 
   /** `SetAllyColorFilterState`'s state — 0 off, 1 minimap, 2 minimap + game world.
    *
-   *  OpenWar3 boots in MODE 3 (state 2 — minimap AND game world), which is a deliberate
+   *  Warcraft Open boots in MODE 3 (state 2 — minimap AND game world), which is a deliberate
    *  departure from the original's own default: TriggerData's `_SetAllyColorFilterState_Defaults=0`
    *  is what the 2003 client starts in, and Alt-A / the button still cycles away from it. The
    *  mode is a purely LOCAL display setting (nothing here reaches the sim, the wire or another
@@ -11174,7 +11174,7 @@ export class RtsController {
    * The discreet row of spell icons floated over an ALLIED hero's health bar, or null.
    *
    * WC3 itself draws no such row — the original tells you nothing about an ally's spellbook —
-   * so this is OpenWar3's, and the three rules it follows are chosen to keep it from becoming
+   * so this is Warcraft Open's, and the three rules it follows are chosen to keep it from becoming
    * a second command card:
    *
    *  • **Only an ally's, and only a hero's.** Your own hero's spells are already on your

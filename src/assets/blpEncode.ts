@@ -1,4 +1,4 @@
-// RGBA → a BLP1 the engine reads — for the icons OpenWar3 makes itself (docs/icons.md).
+// RGBA → a BLP1 the engine reads — for the icons Warcraft Open makes itself (docs/icons.md).
 //
 // Two callers: tools/patch-art.mjs (our own drawn icons, baked into src/patches/art.ts) and
 // DerivedArtDataSource (src/vfs/derivedArt.ts), which computes the icons a later patch names and

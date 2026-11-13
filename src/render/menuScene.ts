@@ -213,7 +213,7 @@ interface Scene {
   color: Float32Array;
   viewport: Float32Array;
   camera: Camera;
-  distFog?: DistFog; // OpenWar3: read by the patched SD shaders
+  distFog?: DistFog; // Warcraft Open: read by the patched SD shaders
   ffp?: FixedFunctionLights | null; // …as is this (the model's own LITE lights)
   removeInstance(instance: unknown): void;
   /** The viewer's broad-phase cull: one huge cell here, tested against the frustum before any

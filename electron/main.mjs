@@ -1,6 +1,6 @@
-// OpenWar3 as a desktop app — the window, and nothing else. The server is `server.mjs`.
+// Warcraft Open as a desktop app — the window, and nothing else. The server is `server.mjs`.
 //
-// **Why a native shell at all** (docs/multiplayer.md "Running it", OpenWar3_PLAN.md §8): two
+// **Why a native shell at all** (docs/multiplayer.md "Running it", Warcraft-Open_PLAN.md §8): two
 // things the browser cannot do, and both of them are what LAN play actually feels like.
 //   • A page cannot LISTEN on a socket, so hosting needs a process. Here it is one, and the
 //     player starts it by starting the game — no terminal, no second command.
@@ -103,7 +103,7 @@ useSettingsDir(app.getPath("userData"));
 const VSYNC = readSettings().vsync !== false;
 
 // THE MATCH LOGS (src/game/matchLog.ts, docs/match-log.md): every match the player plays writes a
-// plain-text record of itself into `<userData>/.logs/` — OpenWar3's own data folder, beside the
+// plain-text record of itself into `<userData>/.logs/` — Warcraft Open's own data folder, beside the
 // settings file — so a match can be read back afterwards, a release build's included. The size
 // and age limits are the store's (electron/logStore.mjs); opening it sweeps out anything older
 // than three days, so the folder is cleaned on every launch whether or not a match is played.
@@ -122,7 +122,7 @@ const MAX_FPS = VSYNC ? 0 : 300;
  *  server of our own: the dev server is already carrying the relay at its own origin
  *  (tools/vite-plugin-relay.ts), and a second relay on a second port would be one the page never
  *  connects to — two rooms tables, one of them invisible, which is the confusing kind of bug. */
-const DEV_URL = process.env.OPENWAR3_DEV_URL || (process.env.OPENWAR3_DEV ? "http://localhost:5173" : null);
+const DEV_URL = process.env.WARCRAFT_OPEN_DEV_URL || (process.env.WARCRAFT_OPEN_DEV ? "http://localhost:5173" : null);
 
 /** A game window, not a browser window: no menu (see `Menu.setApplicationMenu(null)` below), and
  *  the world's own black behind it so a slow first paint is not a white flash.
@@ -232,12 +232,12 @@ let heard = [];
  *  that has been PATCHED to another version are both unusable and are not the same news, so the
  *  answer carries enough for the game to say which happened (src/ui/gate.ts). */
 const currentInstall = () => {
-  // `OPENWAR3_INSTALL` is the same variable the dev server's asset route reads
+  // `WARCRAFT_OPEN_INSTALL` is the same variable the dev server's asset route reads
   // (tools/vite-plugin-dev-install.ts) and it is here for the same reason: so the app can be
   // driven without a human at a folder dialog, which a native dialog cannot be automated past.
   // It is a FALLBACK, under what the player actually chose, and a packaged launch has no such
   // variable — nothing about it changes what a shipped app does.
-  const path = readSettings().installPath ?? process.env.OPENWAR3_INSTALL ?? null;
+  const path = readSettings().installPath ?? process.env.WARCRAFT_OPEN_INSTALL ?? null;
   return {
     path,
     valid: !!path && looksLikeInstall(path),
@@ -362,7 +362,7 @@ app.whenReady().then(async () => {
   // things that happen to it.
   updates = startUpdates({
     // Unpackaged only — see `startUpdates`. A shipped app has no way to be told this.
-    fakeVersion: app.isPackaged ? null : process.env.OPENWAR3_FAKE_UPDATE || null,
+    fakeVersion: app.isPackaged ? null : process.env.WARCRAFT_OPEN_FAKE_UPDATE || null,
     onChange: (next) => {
       updateState = next;
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send("ow3:update", next);
@@ -387,18 +387,18 @@ app.whenReady().then(async () => {
     // types, and the port is only USUALLY 8787 (server.mjs walks if it is taken). The protocol
     // version is printed beside it because that is what a mismatched build fails on, and the
     // beacon will carry it for exactly that reason.
-    console.log(`[OpenWar3] serving on ${server.url} — LAN players join at http://<this machine's ip>:${server.port} (protocol ${server.protocol})`);
+    console.log(`[Warcraft Open] serving on ${server.url} — LAN players join at http://<this machine's ip>:${server.port} (protocol ${server.protocol})`);
   }
   const install = currentInstall();
   // Three different pieces of news, said as three: it is there, it is gone, or it is there and
   // is the wrong Warcraft III (src/vfs/version.ts). The screen draws the same distinction.
   console.log(install.valid
-    ? `[OpenWar3] install: ${install.path} (${install.version})`
+    ? `[Warcraft Open] install: ${install.path} (${install.version})`
     : !install.path
-      ? "[OpenWar3] no install remembered — the game will ask for it"
+      ? "[Warcraft Open] no install remembered — the game will ask for it"
       : !install.present
-        ? `[OpenWar3] install: ${install.path} — NOT FOUND, the game will ask for it`
-        : `[OpenWar3] install: ${install.path} is ${install.version ?? "an unknown version"}, which is not supported — the game will ask for another`);
+        ? `[Warcraft Open] install: ${install.path} — NOT FOUND, the game will ask for it`
+        : `[Warcraft Open] install: ${install.path} is ${install.version ?? "an unknown version"}, which is not supported — the game will ask for another`);
 
   // Announce this game on the subnet and listen for others (electron/beacon.mjs). This is the
   // half of LAN play a page cannot do at all, and it is why the export is native: with it,

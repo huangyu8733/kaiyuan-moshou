@@ -25,7 +25,7 @@ That matters precisely because a bridge spans a gap: the terrain under it is far
 Human01 (The Defense of Strahnbrad) the single `LT05` at `(1216, -960, -114)` sits over a
 streambed at **-165**, with its two banks at about **+73**. Read the floor as the terrain and
 every unit crossing is drawn down in the water, under the planks it is supposed to be on — which
-is exactly what OpenWar3 did until this landed.
+is exactly what Warcraft Open did until this landed.
 
 ## How the height is found: a ray, straight down
 

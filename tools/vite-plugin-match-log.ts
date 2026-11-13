@@ -19,7 +19,7 @@ import { createLogStore } from "../electron/logStore.mjs";
  */
 export function matchLog(): Plugin {
   return {
-    name: "openwar3-match-log",
+    name: "warcraft-open-match-log",
     apply: "serve",
     configureServer(server) {
       const root = resolve(server.config.root ?? process.cwd());

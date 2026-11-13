@@ -10,7 +10,7 @@ import type { Options } from "../data/options";
 // UI\FrameDef\UI\EscMenuOptionsPanel.fdf both carry them), but what a notch on either slider
 // MEANS is engine-internal — it is in no .slk, .txt or .fdf in the install, and MiscData/
 // MiscGame say nothing about scrolling at all. So the CURVE below is OURS and says so, and it
-// is anchored on the one number we do know: the middle of the slider is the speed OpenWar3 has
+// is anchored on the one number we do know: the middle of the slider is the speed Warcraft Open has
 // always panned at, so a player who never touches the row is where they were.
 
 /** The pan multiplier a 0–100 slider notch means. Ours (see above): a doubling either side of

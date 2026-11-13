@@ -1,4 +1,4 @@
-# Icons OpenWar3 derives, and the last resort
+# Icons Warcraft Open derives, and the last resort
 
 A command-button icon comes from one of four places, in this order:
 

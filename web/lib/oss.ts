@@ -32,7 +32,7 @@ export function publicUrl(key: string): string {
 }
 
 export function keyPrefix(): string {
-  return (process.env.OSS_KEY_PREFIX ?? "openwar3/").replace(/\/+$/, "");
+  return (process.env.OSS_KEY_PREFIX ?? "warcraft-open/").replace(/\/+$/, "");
 }
 
 /** 预签名 PUT：浏览器在这个地址上直接上传，Content-Type 必须与签名时一致。 */

@@ -3,7 +3,7 @@
 // and within REVALIDATE seconds the buttons point at the new files — and a platform whose
 // artifact appears for the first time stops saying "Coming soon" on its own.
 
-export const REPO = "huangyu8733/kaiyuan-moshou";
+export const REPO = "huangyu8733/warcraft-open";
 export const REPO_URL = `https://github.com/${REPO}`;
 export const RELEASES_URL = `${REPO_URL}/releases`;
 
@@ -48,7 +48,7 @@ function headers(): HeadersInit {
   const h: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "openwar3-web",
+    "User-Agent": "warcraft-open-web",
   };
   if (process.env.GITHUB_TOKEN) h.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   return h;

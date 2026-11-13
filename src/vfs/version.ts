@@ -14,14 +14,14 @@ import { t } from "../i18n";
 // So the version is a gate rather than a note, and it is checked on EVERY launch and not only
 // when the folder is first picked: the desktop app remembers a folder and reads it again next
 // time (src/assets/nativeInstall.ts), and a player can patch Warcraft III between one launch and
-// the next without touching OpenWar3 at all.
+// the next without touching Warcraft Open at all.
 //
 // **The gate checks the MAJOR version**, not an exact patch: 1.x is the pre-Reforged client
 // line this engine reads (1.30.4 is still REQUIRED_VERSION and the downgrade target), and 2.x
 // is the remastered line. A pre-1.30 install is an MPQ one, which has no `.build.info` and is
 // therefore refused by the content-store check below.
 
-/** The build OpenWar3 plays by default. Matched on the first three components — `.build.info`
+/** The build Warcraft Open plays by default. Matched on the first three components — `.build.info`
  *  carries a fourth (the build number, 11274 here) that varies with the download and says
  *  nothing about the data. Used as the downgrade target and in player-facing messages; MUST
  *  equal `REQUIRED_VERSION` in electron/install.mjs. */

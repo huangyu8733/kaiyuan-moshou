@@ -555,7 +555,7 @@ export class ObserverHud {
       status, statusIcons, statusPool: [],
     };
     // Auto Camera stands ABOVE the selection, on no panel of its own (the replay panel it
-    // belongs to is for replays, which OpenWar3 does not have yet).
+    // belongs to is for replays, which Warcraft Open does not have yet).
     this.root.appendChild(adopt.autoCamera);
     adopt.autoCamera.classList.add("obs-autocam");
   }

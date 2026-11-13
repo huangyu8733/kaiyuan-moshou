@@ -28,7 +28,7 @@ export interface ListItem {
   /** Optional leading icon (a decoded BLP canvas), e.g. the folder / player-count badge. */
   icon?: HTMLCanvasElement | null;
   /**
-   * A control at the END of the row — OpenWar3's own, not the engine's: no 2003 list has one.
+   * A control at the END of the row — Warcraft Open's own, not the engine's: no 2003 list has one.
    * It exists for a list whose rows are things the player MANAGES rather than picks from (the
    * relay addresses of ui/joinAddressDialog.ts), where "select the row, then press the button
    * under the list" is a step more than the row itself needs. Clicking it does NOT select the

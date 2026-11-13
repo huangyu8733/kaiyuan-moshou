@@ -1,6 +1,6 @@
 # Lighting and shadows
 
-What lights a scene in OpenWar3, and what casts shadows in it. Read this before adding
+What lights a scene in Warcraft Open, and what casts shadows in it. Read this before adding
 anything shadow- or light-shaped — the single most important fact is at the top.
 
 ## WC3 has no real-time shadows
@@ -212,7 +212,7 @@ face is not something the scene's own lights or haze should touch.
 
 **This already works, and it works because mdx-m3-viewer samples KMTF per instance per frame**
 (`modelinstance.js`, `layer.variants['textureId'][sequence]` → `instance.layerTextures[i]`,
-which is what the batch binds). Nothing in OpenWar3 had to be added for it. Verified on the
+which is what the batch binds). Nothing in Warcraft Open had to be added for it. Verified on the
 running screen: all 248 textures resolve in the install and all 248 load, and forcing the two
 cached layer textures to something else on a frozen frame changes 68k pixels across Arthas —
 his face and hair flatten out and the modelling on his armour goes. If you are ever testing

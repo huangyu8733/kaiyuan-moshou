@@ -891,7 +891,7 @@ const STATBAR_TINT = {
 } as const;
 
 /** Multi-selection grid tiers (issue #109). WC3's own selection stops at 12 units and draws
- *  them as one row of large icons; OpenWar3 lifts the cap, so instead of refusing units the
+ *  them as one row of large icons; Warcraft Open lifts the cap, so instead of refusing units the
  *  grid steps down a tier every 12: the columns go up, the icons and their bars shrink, and the
  *  same panel space holds four times as many. Past the last tier the final visible slot carries
  *  a "+N" badge counting the units that aren't drawn. `cols` is what the CSS grid uses; `bar` is
@@ -1381,7 +1381,7 @@ const INVENTORY_NUMPAD: readonly number[] = [7, 8, 4, 5, 1, 2];
  *  pockets — the slot index, and nothing else; where it is DROPPED decides what happens. A
  *  custom MIME type rather than "text/plain" so a stray drag from elsewhere in the page (a
  *  chat selection) can never be mistaken for an item. */
-const INV_DRAG_TYPE = "application/x-openwar3-item-slot";
+const INV_DRAG_TYPE = "application/x-warcraft-open-item-slot";
 
 const MINIMAP_SIZE = 168; // px along the minimap canvas's LONGEST side
 /** Dots-canvas pixels to one UI unit — the unit the minimap's MODELS are authored in (ui/minimapModel.ts).
@@ -1925,7 +1925,7 @@ export class GameHud {
     // mapViewer.syncPauseUi, and deliberately NOT set for a pause that is only a panel being
     // open — the scrim test below is what covers those.
     if (document.body.classList.contains("game-paused")) return;
-    // So is every other dialog — the Allies and Messaging panels, a script's own, and OpenWar3's
+    // So is every other dialog — the Allies and Messaging panels, a script's own, and Warcraft Open's
     // own (the update prompt). The two flags above do not cover them (`game-menu-open` is the F10
     // panel's alone, and `game-paused` is deliberately not set for a pause that is only a panel
     // being open); what they ALL put up is a modal scrim, and that is the thing to ask about.
@@ -4785,7 +4785,7 @@ export class GameHud {
     try {
       model = bytes ? new MinimapModel(bytes, (p) => this.driver.blpCanvas(p)) : null;
     } catch (err) {
-      console.warn(`[OpenWar3] couldn't read ${path}:`, err);
+      console.warn(`[Warcraft Open] couldn't read ${path}:`, err);
     }
     this.minimapModels.set(kind, model);
     return model;

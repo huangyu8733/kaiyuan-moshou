@@ -21,7 +21,7 @@
  *
  *  The replacements are how a patch corrects a number a tooltip spells out ("Heals 300 hit
  *  points" → 150) without the repository ever holding the sentence: the text is the install's,
- *  and only the two fragments are ours. OpenWar3 ships zero Blizzard text (CLAUDE.md). Each pair
+ *  and only the two fragments are ours. Warcraft Open ships zero Blizzard text (CLAUDE.md). Each pair
  *  must match at least once, or the edit is reported (the tooltip is not what the patch thinks). */
 export type PatchValue = number | string | null | Replace;
 export interface Replace {

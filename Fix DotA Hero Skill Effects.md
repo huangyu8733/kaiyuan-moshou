@@ -223,7 +223,7 @@ Let me check the 6.90G map's script for Otch. And check w3u there (maybe exists)
 
 Hmm no w3u in either map. Yet DotA maps certainly have custom units (H000 etc.)... Wait, DotA 6.83d w3a 1MB but no w3u? That can't be — DotA defines hundreds of custom units/items. Unless the map stores them in a different archive, e.g., "war3map.w3u" is protected by using a non-standard name or fake hash. The map is protected to prevent editing, maybe using "war3map.w3u" with MPQ attributes stripped? But the engine plays the map fine, so it must load custom units. Hmm, maybe object data is in **war3mapSkin.w3u**? Not found. Maybe in `war3map.w3u` but with different case? MPQ is case-insensitive for hashing.
 
-Wait, maybe mdx-m3-viewer's `get` uses listfile names? Actually earlier get('war3map.w3a') worked while getFileNames didn't include it. So hash lookup works. If 'war3map.w3u' were present, get would find it. So the map genuinely has no w3u. Interesting: DotA 6.83d (IceFrog) is known to be a protected map, but it does have w3u. Unless this "DotA v6.83d.w3x" is a special "OpenWar3" repack? Hmm.
+Wait, maybe mdx-m3-viewer's `get` uses listfile names? Actually earlier get('war3map.w3a') worked while getFileNames didn't include it. So hash lookup works. If 'war3map.w3u' were present, get would find it. So the map genuinely has no w3u. Interesting: DotA 6.83d (IceFrog) is known to be a protected map, but it does have w3u. Unless this "DotA v6.83d.w3x" is a special "Warcraft Open" repack? Hmm.
 
 Hold on — maybe the map uses "war3map.w3u" but stored in an MPQ with a listfile hash that's deliberately broken, and mdx-m3-viewer's hash lookup gets null due to hash collisions? Not likely.
 
@@ -582,7 +582,7 @@ But key runtime evidence is better. Let's search the previous debug session's no
 
 Let's run the app in a headless browser and reproduce if possible. But how to spawn Earthshaker? The engine might have a "hero" dev mode. Search for keyboard/cheat features like "test hero" or "spawnhero".
 
-No dev spawn. Could inject via browser console: the app might expose `window.openwar3` with only devStartMap. Hmm.
+No dev spawn. Could inject via browser console: the app might expose `window.warcraft-open` with only devStartMap. Hmm.
 
 Alternative: reproduce through actual gameplay using browser_use: enter DotA game (auto-start), then click around the tavern? Maybe DotA 6.83d starts with "Single Draft" and a hero selection dialog? Actually DotA 6.83d's default mode when no mode chosen: after 15 seconds, "-ap" is forced? DotA waits for mode commands; default is "-ap" (All Pick). All Pick lets you click any hero icon in the taverns. Earthshaker is in the Tavern of the Lost? Hmm.
 
@@ -630,7 +630,7 @@ Approach: run a headless browser via browser_use. Steps:
 
 But we don't necessarily need OUR hero; we can observe an AI Earthshaker casting. The AI plays 9 heroes and attacks? Earthshaker is picked randomly. Hmm, unreliable.
 
-Better: use the sim in the browser via `window.openwar3` — but no api. We could temporarily add a dev hook to rts: e.g., expose `openwar3.devSpawnHero(typeId)` and `devCast(abilityId)`. That's editing code for debugging; we can remove after. But instructions say minimize file creation; edits fine but clean up.
+Better: use the sim in the browser via `window.warcraft-open` — but no api. We could temporarily add a dev hook to rts: e.g., expose `warcraft-open.devSpawnHero(typeId)` and `devCast(abilityId)`. That's editing code for debugging; we can remove after. But instructions say minimize file creation; edits fine but clean up.
 
 Alternatively, use the existing map to pick hero manually in browser by clicking. DotA pick: at start, you have a Circle of Power? In 6.83d, when game starts you're in All Pick mode, and you click on a hero icon in one of the 4 taverns. The camera starts at your fountain; taverns are near the fountain (for your team's side). Earthshaker is in "Tavern of the Lost" maybe. Hard.
 
@@ -735,9 +735,9 @@ Let me ask browser_use to open the URL and report console logs. The browser agen
 
 Actually, maybe simpler: use `curl` to verify server up, then run browser. Let me first check the dev server output/config: is it vite with install served? lsof showed port 5173 listening (from earlier command, output cleared but likely). Let me verify quickly.
 
-The manifest path returned HTML (404 fallback?) — port 5173 is another app? Wait, `/wc3/manifest.json` returned index HTML. Maybe the dev server is the Electron UI (start page) rather than the engine dev server? Or the URL routing. Let's check what's at 5173: maybe it's the electron renderer dev server, not openwar3 install server. Grep the manifest path setting (OPENWAR3_INSTALL). Let's see vite config for `/wc3` middleware.
+The manifest path returned HTML (404 fallback?) — port 5173 is another app? Wait, `/wc3/manifest.json` returned index HTML. Maybe the dev server is the Electron UI (start page) rather than the engine dev server? Or the URL routing. Let's check what's at 5173: maybe it's the electron renderer dev server, not warcraft-open install server. Grep the manifest path setting (OPENWAR3_INSTALL). Let's see vite config for `/wc3` middleware.
 
-Port 5173 serves index.html but /wc3/manifest.json returns HTML? The manifest fetch failed → maybe the dev server here is Electron app dev server using root index that differs? Actually the repo root index.html is the openwar3 app; /wc3 middleware exists only if OPENWAR3_INSTALL env set. The currently running server might have been started without OPENWAR3_INSTALL (so manifest 404 → SPA fallback HTML). So the running dev server has no install — cannot boot map. We'd need to restart with env. That would kill user's running session though. Hmm. The user's app was running Electron earlier—maybe this 5173 is the Electron renderer.
+Port 5173 serves index.html but /wc3/manifest.json returns HTML? The manifest fetch failed → maybe the dev server here is Electron app dev server using root index that differs? Actually the repo root index.html is the warcraft-open app; /wc3 middleware exists only if OPENWAR3_INSTALL env set. The currently running server might have been started without OPENWAR3_INSTALL (so manifest 404 → SPA fallback HTML). So the running dev server has no install — cannot boot map. We'd need to restart with env. That would kill user's running session though. Hmm. The user's app was running Electron earlier—maybe this 5173 is the Electron renderer.
 
 Let me check the process command line again (output was cleared).
 
@@ -1027,12 +1027,12 @@ Maybe the engine's HUD has a "hero chooser" panel? Let's check RTS UI for a hero
 
 This is getting heavy. Let's instead directly interrogate the sim at runtime through the browser by injecting JS into the page after starting a DotA game. Is there a global? Search src for `window.` assignments in game/rts or main.
 
-`openwar3.mapScene()` exposes the live match scene — we can use it in the browser console to access the sim! Excellent. `mapScene` likely has `.world` or `.sim`. We can drive it: create a unit (Otch) for player 0, add abilities, set level, and cast. This bypasses hero pick entirely.
+`warcraft-open.mapScene()` exposes the live match scene — we can use it in the browser console to access the sim! Excellent. `mapScene` likely has `.world` or `.sim`. We can drive it: create a unit (Otch) for player 0, add abilities, set level, and cast. This bypasses hero pick entirely.
 
 Great plan:
 1. Start a second dev server on port 5174 with OPENWAR3_INSTALL pointing to install (so `/wc3/manifest.json` works).
 2. Use browser to go to `http://localhost:5174/?dev&map=...` to start DotA.
-3. In console: `const s = openwar3.mapScene(); ...` inspect fields. Then create Otch hero via sim (through scene's authority? or `s.world`?). We need API: SimWorld.add / createUnit? Let's inspect mapScene object.
+3. In console: `const s = warcraft-open.mapScene(); ...` inspect fields. Then create Otch hero via sim (through scene's authority? or `s.world`?). We need API: SimWorld.add / createUnit? Let's inspect mapScene object.
 
 But browser_use agent can run `browser_evaluate`? Yes there's browser_evaluate tool. But per instructions, don't delegate heavy JS; still allowed for browser evaluation. Actually we have the `browser_use` subagent which can navigate and evaluate JS. Hmm, it says "Do not include JavaScript code blocks for the subagent to execute in the browser console — if you need to run JS logic, use the Exec tool instead." So better to use the browser_use agent only for navigation/screenshots, and use own tools? We don't have direct browser tools in this main context (only browser_waiting_for_user_interaction). Hmm, the main agent has no browser_evaluate. So we must delegate to browser_use subagent, but the hard input contract says every delegated query must be ≤600 chars, one independent outcome, no pasted code. So browser automation via subagent is constrained.
 
@@ -1500,7 +1500,7 @@ We need actual game logs. Let's run the app in a headless browser ourselves. To 
 
 Actually the Electron main uses `app:dev` which sets `OPENWAR3_DEV=1` and provides the install via IPC/file URL. The vite server alone cannot serve install (404). So browser test needs a different install mechanism.
 
-But wait — maybe we can serve the install ourselves with a tiny static server and point the app at it? How does the app locate the install in web mode? It uses the OpenWar3 install stored in OPFS after user picks a folder. The start page asks to choose game directory via File System Access API. Automating that in browser_use is impossible.
+But wait — maybe we can serve the install ourselves with a tiny static server and point the app at it? How does the app locate the install in web mode? It uses the Warcraft Open install stored in OPFS after user picks a folder. The start page asks to choose game directory via File System Access API. Automating that in browser_use is impossible.
 
 Hmm, but Electron app is what the user runs; maybe we can drive the Electron app via Chrome DevTools Protocol (port 9222) if enabled. Not necessarily.
 
@@ -1759,7 +1759,7 @@ Now, a key thought: DotA dummy units are created with `CreateUnit` and `UnitAddA
 
 But wait: the dummy cast requires mana? `UnitAddAbility` then SetUnitAbilityLevel. Dummies have mana set. Fine.
 
-OK. Rather than guessing, the decisive path: actually run the game. Let me check if I can run headless-ish: run the map in the browser with a script? There's `openwar3.mapScene()` exposure. Maybe I can drive via browser console: load map, then create Otch unit and cast.
+OK. Rather than guessing, the decisive path: actually run the game. Let me check if I can run headless-ish: run the map in the browser with a script? There's `warcraft-open.mapScene()` exposure. Maybe I can drive via browser console: load map, then create Otch unit and cast.
 
 Hmm, but the user's report is about in-game. Best: use the dev server and play DotA, pick Otch, cast skills, check console for `[dbg]` lines.
 
@@ -1871,7 +1871,7 @@ Let me reconsider: maybe the issue is that Otch's abilities are not being recogn
 
 I think we need real evidence from the browser. Let me check whether the game can be launched quickly and whether there's a console command to create units. Let's look at `src/ui/consoleUi.ts` briefly and check for a dev console that runs arbitrary JASS/script.
 
-Actually! Even better: the engine has the JASS interpreter; the map itself creates heroes. In DotA, to get Otch you pick at a tavern. But maybe easier: use the dev harness with `?dev&map=...` and then in browser console use `openwar3.mapScene()` to access sim and cast. The summary says `openwar3.mapScene()` is exposed. If the sim + hooks are reachable, I can run in console: create a unit of Otch type at some point, then `sim.issueCast`.
+Actually! Even better: the engine has the JASS interpreter; the map itself creates heroes. In DotA, to get Otch you pick at a tavern. But maybe easier: use the dev harness with `?dev&map=...` and then in browser console use `warcraft-open.mapScene()` to access sim and cast. The summary says `warcraft-open.mapScene()` is exposed. If the sim + hooks are reachable, I can run in console: create a unit of Otch type at some point, then `sim.issueCast`.
 
 But rendering verification needs a screenshot — acceptable: cast and screenshot.
 
@@ -1893,7 +1893,7 @@ Let me look at `sim-custom-map-test.cjs` — that sounds like a full map test wi
 
 Not a JASS harness. But `tools/jass-*.cjs` may have a harness that boots a script with a fake engine. E.g. `jass-effect-blz-test.cjs`. Let me check one to see whether it runs a JASS source snippet with hooks. That could let me run the Fissure trigger functions? But they depend on the whole map script + blizzard.j + full natives. Too heavy.
 
-Alternative decisive approach: use the real game via browser. Let me check what `openwar3` exposes in dev and whether I can spawn Otch programmatically.
+Alternative decisive approach: use the real game via browser. Let me check what `warcraft-open` exposes in dev and whether I can spawn Otch programmatically.
 
 Actually, maybe simplest: Since the map's own script creates the effects, and our engine's JASS runtime logs `[dbg] AddSpecialEffect ...`, running the actual game for a few seconds after picking Earthshaker will tell us. Picking a hero: DotA 6.83 uses taverns with `Sellunit`. The AI could also pick. Maybe simplest: set player as observer? Hmm.
 
@@ -1925,17 +1925,17 @@ Can I pick Earthshaker quickly? In DotA 6.83, heroes are hired from taverns; her
 
 Alternative: use the DotA AI. `src/ai/plus/dota/` implements AI hero pick for computer players. In dev boot with map + player=1, are other slots computers? If we boot a "dev" match, the other slots may be computers, and DotA AI would pick heroes for them, including possibly Earthshaker. Then we could watch their casts. But Otch specifically may not be picked.
 
-Alternative approach: **directly drive the sim + JASS runtime via the browser console**, using `openwar3` dev handles. Let me check `src/main.ts` for the exposure (`openwar3`). And whether mapScene gives access to `sim`, `scripts` runtime (to fire triggers). If I can call `CreateUnit` via JASS eval in the runtime... The console UI might already evaluate JASS!
+Alternative approach: **directly drive the sim + JASS runtime via the browser console**, using `warcraft-open` dev handles. Let me check `src/main.ts` for the exposure (`warcraft-open`). And whether mapScene gives access to `sim`, `scripts` runtime (to fire triggers). If I can call `CreateUnit` via JASS eval in the runtime... The console UI might already evaluate JASS!
 
 Let me check `src/ui/consoleUi.ts` for command evaluation.
 
 grep via Shell with --include failing due to zsh glob. Use Grep tool instead.
 
-Let me search for "openwar3" in src.
+Let me search for "warcraft-open" in src.
 
 Let me look at devBoot.ts around 322 and mapScene definition in main.ts to see what's exposed (sim? script runtime?).
 
-`openwar3.mapScene()` returns the MapViewerScene. Does MapViewerScene expose `rts` (with sim) and script runtime publicly? `this.rts` is private in TS but accessible at runtime as a property. So in browser console: `openwar3.mapScene().rts.sim` gives SimWorld. And `openwar3.mapScene().rts.simView`... but JASS runtime? There's `this.scripts` maybe. Let me check MapViewerScene fields for the script engine.
+`warcraft-open.mapScene()` returns the MapViewerScene. Does MapViewerScene expose `rts` (with sim) and script runtime publicly? `this.rts` is private in TS but accessible at runtime as a property. So in browser console: `warcraft-open.mapScene().rts.sim` gives SimWorld. And `warcraft-open.mapScene().rts.simView`... but JASS runtime? There's `this.scripts` maybe. Let me check MapViewerScene fields for the script engine.
 
 Plan:
 1. Start dev server with OPENWAR3_INSTALL pointing to `Warcraft III zhCN` on a free port (5174).
@@ -2446,7 +2446,7 @@ Now, verification in the running game would be ideal. Let me at least run a quic
 
 Now let's do a real runtime verification. I think it's worth it: launch the dev server with the zhCN install and the DotA map, and use the `[dbg]` overlay + a screenshot after casting Fissure. The problem remains controlling a hero.
 
-Hmm — but maybe I can use `openwar3.mapScene()` from a browser evaluate; the browser_use subagent's `browser_evaluate` tool accepts JS. The HARD INPUT CONTRACT says not to paste code into the query. I could instead use the TRAE-browseruse skill which may allow me to run JS via a local script? Actually `browser_evaluate` is a tool of the subagent, and its query contract forbids "pasting code". I could still describe: "In the page console, evaluate `openwar3.mapScene().rts` ..." — that's JS-ish.
+Hmm — but maybe I can use `warcraft-open.mapScene()` from a browser evaluate; the browser_use subagent's `browser_evaluate` tool accepts JS. The HARD INPUT CONTRACT says not to paste code into the query. I could instead use the TRAE-browseruse skill which may allow me to run JS via a local script? Actually `browser_evaluate` is a tool of the subagent, and its query contract forbids "pasting code". I could still describe: "In the page console, evaluate `warcraft-open.mapScene().rts` ..." — that's JS-ish.
 
 Alternative: write a dev-only probe module and enable it with a URL param, then just navigate + screenshot. This is clean, reproducible, and later removable. But the task says avoid creating files unless necessary... a temporary dev file that I delete afterwards is acceptable? It's a verification harness. Hmm, risky and time-consuming.
 
@@ -5035,7 +5035,7 @@ Let me run the vanilla audit.
 
 I'll analyze why the DotA maps still show English text despite having multilingual files. Let me first explore the referenced folder.
 
-This is an open-source Warcraft III engine (OpenWar3) with the game clients and DotA maps. There are many `.tmp-*.cjs` analysis scripts already present. Let me locate the maps and understand prior analysis.
+This is an open-source Warcraft III engine (Warcraft Open) with the game clients and DotA maps. There are many `.tmp-*.cjs` analysis scripts already present. Let me locate the maps and understand prior analysis.
 
 Now let me find the specific DotA maps and understand how this engine loads localized text.
 
@@ -8545,13 +8545,13 @@ DotA AI v6.90G PT-BR v4.1的地图，英雄死后重生，无法移动，无法�
 
 New user request: "DotA AI v6.90G PT-BR v4.1的地图，英雄死后重生，无法移动，无法控制英雄走动" — a gameplay bug: after hero dies and respawns, the hero cannot move / cannot be controlled.
 
-This is likely related to our localization work? Hmm — could be a pre-existing engine bug (OpenWar3 implementation) or caused by our map language sidecar? The sidecar only affects display text, not logic. But maybe the respawn logic is affected by the `text` channel? No, text is display-only.
+This is likely related to our localization work? Hmm — could be a pre-existing engine bug (Warcraft Open implementation) or caused by our map language sidecar? The sidecar only affects display text, not logic. But maybe the respawn logic is affected by the `text` channel? No, text is display-only.
 
 But wait: 6.90G is a PT-BR DotA AI map; also "DotA AI v6.90G" uses AI scripts. Death/respawn issue could be engine-side: hero revive doesn't reset movement or order state, or AI script controls.
 
-I need to investigate the codebase. This is a new debugging task. Given high context, consider new_context. But this task depends on knowledge of the repo? The repo is /Users/huangyu/魔兽/开源魔兽争霸 (OpenWar3). A fresh context would need to rediscover. The instruction says evaluate whether to call new_context — but not if the request depends on context still needed. This is a distinct task (runtime gameplay bug) and my current context is about map localization, mostly unrelated. I have useful repo knowledge (paths), which I can pass in a handoff summary.
+I need to investigate the codebase. This is a new debugging task. Given high context, consider new_context. But this task depends on knowledge of the repo? The repo is /Users/huangyu/魔兽/开源魔兽争霸 (Warcraft Open). A fresh context would need to rediscover. The instruction says evaluate whether to call new_context — but not if the request depends on context still needed. This is a distinct task (runtime gameplay bug) and my current context is about map localization, mostly unrelated. I have useful repo knowledge (paths), which I can pass in a handoff summary.
 
-Hmm, but I don't know if the issue is caused by our changes. First step: determine whether it's a pre-existing engine bug or related to sidecar. Let me think about the symptoms: hero dies, respawns, cannot move or be controlled. In OpenWar3, after revive, the unit may remain in "dead" state or orders not accepted. Common bug: `ReviveHero` native implementation doesn't re-enable movement / selection, or the unit's `isDead` flag not cleared, or control groups.
+Hmm, but I don't know if the issue is caused by our changes. First step: determine whether it's a pre-existing engine bug or related to sidecar. Let me think about the symptoms: hero dies, respawns, cannot move or be controlled. In Warcraft Open, after revive, the unit may remain in "dead" state or orders not accepted. Common bug: `ReviveHero` native implementation doesn't re-enable movement / selection, or the unit's `isDead` flag not cleared, or control groups.
 
 This is a debugging task best done by inspecting code. Since context is high, I should start fresh with a handoff note that includes: repo path, task, prior work (localization, unrelated), and that I should investigate revive/movement.
 
@@ -8569,7 +8569,7 @@ Let me do a quick grep myself first? Context is high; the system suggests compac
 
 Handoff note content:
 - Intent: fix 6.90G map gameplay: hero after death/revive cannot move or be controlled.
-- Context: repo /Users/huangyu/魔兽/开源魔兽争霸 (OpenWar3 TypeScript web reimplementation). Localization work done (tools/map-zh-extract.cjs, sidecars) — display only, not logic; suspected engine bug in revive/order handling.
+- Context: repo /Users/huangyu/魔兽/开源魔兽争霸 (Warcraft Open TypeScript web reimplementation). Localization work done (tools/map-zh-extract.cjs, sidecars) — display only, not logic; suspected engine bug in revive/order handling.
 - Key areas: src/game/, src/jass/natives (ReviveHero, SetUnitPosition, PauseUnit, IssueImmediateOrder), unit state (isDead, paused), selection/control.
 - Known: maps at "Warcraft III zhCN/Maps/hhkj/DotA AI v6.90G PT-BR v4.1.w3x".
 - Background command still running (likely dev server) — don't re-run.
@@ -9983,11 +9983,11 @@ At this point, static analysis is exhausting. Let's get empirical with the user'
 
 There's `src/dev/devBoot.ts` — a dev boot that can load a map from a URL param! Let's read its header to see params (map path? URL map=...). This could let the browser automation load the map automatically.
 
-There's `window.openwar3` dev API! It may expose more (rts). Let's read further in devBoot.ts for exposed handles (e.g., `api.rts`, `api.sim`, `api.hud`, `api.game`).
+There's `window.warcraft-open` dev API! It may expose more (rts). Let's read further in devBoot.ts for exposed handles (e.g., `api.rts`, `api.sim`, `api.hud`, `api.game`).
 
-There is a dev boot with `?dev&map=DotA AI v6.90G` and `?player=0`. And a `window.openwar3` API only with devStartMap. Is there an exposed handle to the RtsController for automation? Maybe mapViewerScene exposes `openwar3.rts` in dev. Search for "openwar3" in src.
+There is a dev boot with `?dev&map=DotA AI v6.90G` and `?player=0`. And a `window.warcraft-open` API only with devStartMap. Is there an exposed handle to the RtsController for automation? Maybe mapViewerScene exposes `warcraft-open.rts` in dev. Search for "warcraft-open" in src.
 
-`window.openwar3.mapScene()` gives the live MapViewerScene. From the browser console (or Playwright `browser_evaluate`), I might access its internals (private fields are accessible in JS). If `mapScene` exposes `rts`/`viewer`, we can drive the game via eval: find the hero, kill it (`rts.simWorld.kill`), then let revive happen, then call `rts.orderMove`? and inspect movement. Even better, we can reproduce DotA's revive quickly by calling the script's `ReviveHeroLoc` indirectly... Actually we can directly kill the hero and wait for DotA's respawn; that takes ~16s.
+`window.warcraft-open.mapScene()` gives the live MapViewerScene. From the browser console (or Playwright `browser_evaluate`), I might access its internals (private fields are accessible in JS). If `mapScene` exposes `rts`/`viewer`, we can drive the game via eval: find the hero, kill it (`rts.simWorld.kill`), then let revive happen, then call `rts.orderMove`? and inspect movement. Even better, we can reproduce DotA's revive quickly by calling the script's `ReviveHeroLoc` indirectly... Actually we can directly kill the hero and wait for DotA's respawn; that takes ~16s.
 
 This is very feasible with browser automation + dev boot:
 URL: `http://localhost:<port>/?dev&map=DotA%20AI%20v6.90G&player=0` (needs `OPENWAR3_INSTALL` server env). The background command (beb93445...) may be the dev server. Let's check running command output to get the port. But the system says don't re-run; I can read its output.
@@ -9998,15 +9998,15 @@ Alternatively start a dev server myself on a known port (but "do not re-run the 
 
 Also check package.json dev script.
 
-Whoa, the environment shows processes from `/Users/huangyu/WorkBuddy/openwar3` too — possibly a duplicate checkout. Our repo is `/Users/huangyu/魔兽/开源魔兽争霸`, with vite on ports 5173 and 5175. The background command might be 5175 (started 2:52pm) and 5173 (1:58pm) from the other session.
+Whoa, the environment shows processes from `/Users/huangyu/WorkBuddy/warcraft-open` too — possibly a duplicate checkout. Our repo is `/Users/huangyu/魔兽/开源魔兽争霸`, with vite on ports 5173 and 5175. The background command might be 5175 (started 2:52pm) and 5173 (1:58pm) from the other session.
 
 Wait, the working dir of the 5175 process? `node ./node_modules/.bin/../vite/bin/vite.js --port 5175` started 2:52pm. Our repo's server? Let's check which repo each belongs to via lsof cwd.
 
-Also note `/Users/huangyu/WorkBuddy/openwar3` may be a symlink to our repo or another clone. Let's inspect.
+Also note `/Users/huangyu/WorkBuddy/warcraft-open` may be a symlink to our repo or another clone. Let's inspect.
 
 Actually, this is getting huge. Let's focus.
 
-Plan: reproduce via browser automation using dev boot with `?dev&map=DotA AI v6.90G&player=0`. Then use `window.openwar3.mapScene()` internals via browser_evaluate to:
+Plan: reproduce via browser automation using dev boot with `?dev&map=DotA AI v6.90G&player=0`. Then use `window.warcraft-open.mapScene()` internals via browser_evaluate to:
 - wait for my hero to exist,
 - kill it (`scene.rts.simWorld.kill(id, ...)`)?
 - Actually better: call the map's own death? Simpler: set hp to 0 via `simWorld` damage? There may be `rts` methods.
@@ -10118,7 +10118,7 @@ Let me consider the possibility that the user is playing as **a computer player*
 
 Honestly, the right move now: run the engine and reproduce. Let's do it with a dev harness. But we can avoid modifying the repo: use the browser console via the `browser_use` subagent? It can't take embedded JS.
 
-Hmm, but maybe there's a **dev relay**: `?dev&map=...&player=0&speed=3` and `openwar3.mapScene()` accessible. The subagent can use `browser_evaluate` with its own reasoning. I could give it a natural-language goal: "In the console, call openwar3.mapScene() and inspect the rts session to find the local player's hero, then call ... to kill it and after 20s report the hero's sim state". But the agent may not know internals. However, its query can include a short JS snippet? The contract says no code. Hmm, but it's a hard contract of the tool description (max 600 chars, no pasted code). It says "no ... instruction to execute pasted code". So no.
+Hmm, but maybe there's a **dev relay**: `?dev&map=...&player=0&speed=3` and `warcraft-open.mapScene()` accessible. The subagent can use `browser_evaluate` with its own reasoning. I could give it a natural-language goal: "In the console, call warcraft-open.mapScene() and inspect the rts session to find the local player's hero, then call ... to kill it and after 20s report the hero's sim state". But the agent may not know internals. However, its query can include a short JS snippet? The contract says no code. Hmm, but it's a hard contract of the tool description (max 600 chars, no pasted code). It says "no ... instruction to execute pasted code". So no.
 
 Better: Do it myself with a temporary dev-only module? Adding a probe to src is intrusive but could be deleted after. Actually there's a better way: I can install/use `playwright` via npx? Network may be blocked; and adding deps is heavy.
 
@@ -10179,7 +10179,7 @@ Honestly, we need evidence. Let's do the dev-probe approach but *without touchin
 
 Alternatively, we can make the *map itself* kill the hero quickly? No.
 
-Hmm. What about `?dev&map=...&speed=3` and using the console via agent's `browser_evaluate`? The subagent has a `browser_evaluate` tool; its query contract forbids embedding code in the *query*, but the agent can decide to evaluate JS itself. I could phrase: "Open URL. Goal: find window.openwar3.mapScene(), inspect its rts/simWorld objects, and report whether a revived hero's sim unit has these flags..." The agent is an LLM and can write its own JS via browser_evaluate. It might manage. But the query must be <=600 chars and must not embed code. I can say: "Use browser_evaluate to inspect window.openwar3.mapScene().rts?.simWorld units for player 0, and report states: hp, order, speed, paused..." — that's describing inspection, not pasted code. Borderline but allowed.
+Hmm. What about `?dev&map=...&speed=3` and using the console via agent's `browser_evaluate`? The subagent has a `browser_evaluate` tool; its query contract forbids embedding code in the *query*, but the agent can decide to evaluate JS itself. I could phrase: "Open URL. Goal: find window.warcraft-open.mapScene(), inspect its rts/simWorld objects, and report whether a revived hero's sim unit has these flags..." The agent is an LLM and can write its own JS via browser_evaluate. It might manage. But the query must be <=600 chars and must not embed code. I can say: "Use browser_evaluate to inspect window.warcraft-open.mapScene().rts?.simWorld units for player 0, and report states: hp, order, speed, paused..." — that's describing inspection, not pasted code. Borderline but allowed.
 
 Wait, but first: can the match even run headless in the automation browser? It needs WebGL; likely works with swiftshader (the repo mentions swiftshader). And `?dev` boot takes minutes to fetch install data.
 
@@ -10426,23 +10426,23 @@ But wait: is the app the user runs this same dev server (5175)? They likely use 
 
 However — maybe I can reproduce myself via the dev boot + browser subagent, with the instrumented logs. The user's hero death requires gameplay though; not feasible.
 
-Actually — maybe I can reproduce the **sim-level** part myself quickly in the browser: load the map with `?dev&map=...`, then via `openwar3.mapScene()` find the local player's hero, call the DotA revive flow manually? We'd need to kill the hero. We can set `hero.hp = 0`? Death requires `sim.kill` to record the fallen hero. If `mapScene.rts.simWorld.kill(id, killerId)` exists, we can kill the hero, then DotA's death trigger will start the timer, and ~16s later the map's `VO8` calls ReviveHeroLoc. Then we can issue a move order via rts API and observe. This is fully doable **if** the browser agent can evaluate JS via its `browser_evaluate` tool. But per the hard contract I can't include code in the query... The agent could inspect itself, but it won't know the drums.
+Actually — maybe I can reproduce the **sim-level** part myself quickly in the browser: load the map with `?dev&map=...`, then via `warcraft-open.mapScene()` find the local player's hero, call the DotA revive flow manually? We'd need to kill the hero. We can set `hero.hp = 0`? Death requires `sim.kill` to record the fallen hero. If `mapScene.rts.simWorld.kill(id, killerId)` exists, we can kill the hero, then DotA's death trigger will start the timer, and ~16s later the map's `VO8` calls ReviveHeroLoc. Then we can issue a move order via rts API and observe. This is fully doable **if** the browser agent can evaluate JS via its `browser_evaluate` tool. But per the hard contract I can't include code in the query... The agent could inspect itself, but it won't know the drums.
 
 Hmm, what if I **add a dev-only autoplay probe** (in `src/dev/devBoot.ts`, gated by a URL param) that automates this and writes a report to `document.title` / a DOM overlay + `console.log`. Then I ask the browser agent: "Open URL ...?reviveprobe. Wait until the page shows 'PROBE DONE'. Report the text." That's legitimate.
 
-But implementing that probe requires knowing the internals (mapScene API). Let me read devBoot's exposed API and MapViewerScene's public methods (selectHero, etc.). Read the last part of devBoot and main.ts openwar3 definitions. Earlier grep found `openwar3` in src; let's see the file(s).
+But implementing that probe requires knowing the internals (mapScene API). Let me read devBoot's exposed API and MapViewerScene's public methods (selectHero, etc.). Read the last part of devBoot and main.ts warcraft-open definitions. Earlier grep found `warcraft-open` in src; let's see the file(s).
 
-So `window.openwar3` only has `devStartChapter`/`devStartMap`. But `main.ts` might expose more in dev (e.g., `api.scene`). Let's check main.ts for `openwar3`.
+So `window.warcraft-open` only has `devStartChapter`/`devStartMap`. But `main.ts` might expose more in dev (e.g., `api.scene`). Let's check main.ts for `warcraft-open`.
 
-`openwar3.mapScene` exists — let's find what it exposes (grep "mapScene" in main.ts).
+`warcraft-open.mapScene` exists — let's find what it exposes (grep "mapScene" in main.ts).
 
-Let me find where `openwar3.mapScene` is exposed (a getter). Grep `mapScene` again with `openwar3` context, or grep `"mapScene"` string.
+Let me find where `warcraft-open.mapScene` is exposed (a getter). Grep `mapScene` again with `warcraft-open` context, or grep `"mapScene"` string.
 
-`openwar3.mapScene()` returns the MapViewerScene. Its fields: `rts`, `sim`? Public? We can access private TS fields at runtime. Since we're going to instrument anyway, maybe the quickest is:
+`warcraft-open.mapScene()` returns the MapViewerScene. Its fields: `rts`, `sim`? Public? We can access private TS fields at runtime. Since we're going to instrument anyway, maybe the quickest is:
 
 Write a **temporary dev probe** inside `devBoot.ts`? Hmm, but the user's environment... Actually the user is playing; the app is served by dev server, so code changes hot-reload. If I add instrumentation now, the user can reproduce and logs will be written to `.logs`. That's the most direct path with real evidence.
 
-But maybe we can shortcut: use the browser subagent to open the dev URL and run `openwar3.mapScene()` probes **by asking it in natural language**? The subagent can use browser_evaluate; it's an agent that can write code. The contract only restricts the *query* text. I can say: "Open http://localhost:5175/?dev&map=DotA%20AI%20v6.90G&player=0 . Goal: after the match loads, use browser_evaluate to find window.openwar3.mapScene() and report the fields of its rts/sim state for player 0's hero." The agent will write its own JS. But it doesn't know the object shape; it can introspect with Object.keys. That could work! And then, in a follow-up, I can instruct: "Call the scene's rts[method] to kill player 0's hero, wait 20s, then report the hero unit's state and whether issuing a move order changes its position." The agent writes the JS. Risky but feasible.
+But maybe we can shortcut: use the browser subagent to open the dev URL and run `warcraft-open.mapScene()` probes **by asking it in natural language**? The subagent can use browser_evaluate; it's an agent that can write code. The contract only restricts the *query* text. I can say: "Open http://localhost:5175/?dev&map=DotA%20AI%20v6.90G&player=0 . Goal: after the match loads, use browser_evaluate to find window.warcraft-open.mapScene() and report the fields of its rts/sim state for player 0's hero." The agent will write its own JS. But it doesn't know the object shape; it can introspect with Object.keys. That could work! And then, in a follow-up, I can instruct: "Call the scene's rts[method] to kill player 0's hero, wait 20s, then report the hero unit's state and whether issuing a move order changes its position." The agent writes the JS. Risky but feasible.
 
 Actually hold on. Before all this heavy machinery, let me reconsider the "别的东西" clue with fresh eyes: maybe it's the **"hero level-up selection circle"**? No.
 
@@ -10770,7 +10770,7 @@ But first, let me consider a much more likely explanation given "别的东西" (
 
 In DotA 6.90G, the hero revive at the fountain... hmm, what if the map's revive also creates a "dummy" unit for the "revive" effect? Actually in DotA there's `CreateUnit( ..., 'e00X' )` dummy.
 
-Hmm — but a much better approach: get runtime evidence. We have a running dev server on 5175, and `window.openwar3.mapScene()`. But no browser automation? The summary says "无 Chrome CDP (9222 不通)，仓库无 playwright/puppeteer". There IS a browser_use subagent though (browser_navigate). That could work: open http://localhost:5175/?dev&map=...&player=0 and use browser_evaluate to inspect. But running the DotA map in the browser through that subagent... heavy but feasible? DotA requires hero selection, then die, then revive — long. Not practical.
+Hmm — but a much better approach: get runtime evidence. We have a running dev server on 5175, and `window.warcraft-open.mapScene()`. But no browser automation? The summary says "无 Chrome CDP (9222 不通)，仓库无 playwright/puppeteer". There IS a browser_use subagent though (browser_navigate). That could work: open http://localhost:5175/?dev&map=...&player=0 and use browser_evaluate to inspect. But running the DotA map in the browser through that subagent... heavy but feasible? DotA requires hero selection, then die, then revive — long. Not practical.
 
 Alternative: write a headless Node test that loads the map? The repo probably has tests with the map. Let's check for existing tests loading 6.90G. Hmm.
 
@@ -11515,7 +11515,7 @@ So the Chinese overlay seems barely applied — only game UI chrome (learn/level
 
 Hmm, so what did the previous task actually fix? Possibly only some strings via `.zhCN.json`... but the screenshots show most map-authored strings in English. Maybe the user is running on the OTHER dev server (5173) without the new JSON, or the app needs the map's zhCN overlay to be loaded.
 
-Wait — maybe these screenshots are from the original Warcraft III (real game) rather than this engine? Look: "开发者工具" tooltip and a right panel with "TRACE"/"已读取 1 个文件" — that's the TRAE IDE panel behind? No, actually the right side shows a chat panel with "开发者工具" — that's Trae. And there's a debug overlay "f/File?path=Data%5Cdata%5CData.000" at the bottom of image 1 — that's OpenWar3's asset loading debug. So yes, this is our engine.
+Wait — maybe these screenshots are from the original Warcraft III (real game) rather than this engine? Look: "开发者工具" tooltip and a right panel with "TRACE"/"已读取 1 个文件" — that's the TRAE IDE panel behind? No, actually the right side shows a chat panel with "开发者工具" — that's Trae. And there's a debug overlay "f/File?path=Data%5Cdata%5CData.000" at the bottom of image 1 — that's Warcraft Open's asset loading debug. So yes, this is our engine.
 
 So the engine shows map-authored English text. Where does Chinese come from for some strings? "英雄等级: 3" is engine UI. "等级 1 Priestess of the Moon" — "等级" is engine, "Priestess of the Moon" is the unit type name from map/UnitData.
 
@@ -12104,7 +12104,7 @@ But note: enUS has 1747 abilities vs zhCN 2644 — 897 fewer. If the served file
 
 Let me settle which install the dev server uses: check the running process env. `ps eww -p <pid>`? Use `lsof -i :5175` to find pid then `ps eww` to see env. Let's try.
 
-Alternatively the browser subagent can evaluate `window.openwar3` — hmm, it could read the manifest fetch source? Simpler: the engine's map scene has the install? Could evaluate something like `fetch('/wc3/manifest.json')`... still doesn't tell the dir.
+Alternatively the browser subagent can evaluate `window.warcraft-open` — hmm, it could read the manifest fetch source? Simpler: the engine's map scene has the install? Could evaluate something like `fetch('/wc3/manifest.json')`... still doesn't tell the dir.
 
 `ps eww` approach is quick.
 
@@ -12126,10 +12126,10 @@ So the overlay IS current and applied. Then the English in screenshots (12:38) =
 
 BUT the user says "还显示英文" NOW. Maybe they re-tested after our 16:12 rebuild and still see English. I need current evidence: take a screenshot in the browser via browser_use of the actual hero skill panel and shop tooltip.
 
-Hmm, that's involved (needs hero selection, buying items). But we can do a simpler check: in the running scene, evaluate the ability/item defs' names. But `window.openwar3.mapScene()` — does it expose registries? mapScene returns MapViewerScene; maybe `.rts` / `.sim` / units. We could evaluate the hero's ability names if a hero exists. In dev boot at the load screen, no hero yet.
+Hmm, that's involved (needs hero selection, buying items). But we can do a simpler check: in the running scene, evaluate the ability/item defs' names. But `window.warcraft-open.mapScene()` — does it expose registries? mapScene returns MapViewerScene; maybe `.rts` / `.sim` / units. We could evaluate the hero's ability names if a hero exists. In dev boot at the load screen, no hero yet.
 
 Alternative cheap decisive check: in the same browser, evaluate the **item registry** names for I02P and the ability def for Starfall:
-`window.openwar3.mapScene()` → scene has `regs`? Let's just ask the subagent to evaluate `Object.values(window.openwar3.mapScene().items?.all ?? {})...` — unknown API.
+`window.warcraft-open.mapScene()` → scene has `regs`? Let's just ask the subagent to evaluate `Object.values(window.warcraft-open.mapScene().items?.all ?? {})...` — unknown API.
 
 Better: use the dev tools page? Hmm.
 
@@ -12147,7 +12147,7 @@ Goal: "在页面里执行一段脚本，列出当前已加载的 item/ability �
 
 But wait — is a hero needed? Item registry exists at load. Ability registry too (map object data). So we can list them at the loading screen.
 
-Let me do that via the subagent: evaluate and report counts + first 20 English names. It needs to know where the registries live. It can inspect `window.openwar3`. Risky but the agent can explore with evaluate.
+Let me do that via the subagent: evaluate and report counts + first 20 English names. It needs to know where the registries live. It can inspect `window.warcraft-open`. Risky but the agent can explore with evaluate.
 
 Hmm, but "HARD INPUT CONTRACT: no pasted code, no instruction to execute pasted code". So I can only describe outcomes — e.g. "report whether item tooltips for Gloves of Haste are Chinese". The agent will handle it. But without code it may not know how. It can use browser_evaluate with its own JS (that's allowed; I just can't paste code).
 
@@ -12169,33 +12169,33 @@ But I can do better cheaply: verify in the live browser that an item tooltip is 
 
 Let me resume the earlier agent (97edfd47...) since it has the page loaded.
 
-Prompt: "在同一个页面里，判断当前已加载的物品/技能定义中，'Gloves of Haste'（加速手套）和英雄技能 'Starfall'（流星坠落）的名称/说明现在是中文还是英文；可以用 window.openwar3 暴露的对象或页面上的示例结果。报告：这两个条目当前显示的语言，以及随便再抽 10 个物品/技能看中文覆盖率。"
+Prompt: "在同一个页面里，判断当前已加载的物品/技能定义中，'Gloves of Haste'（加速手套）和英雄技能 'Starfall'（流星坠落）的名称/说明现在是中文还是英文；可以用 window.warcraft-open 暴露的对象或页面上的示例结果。报告：这两个条目当前显示的语言，以及随便再抽 10 个物品/技能看中文覆盖率。"
 
-The agent can inspect `window.openwar3` keys.
+The agent can inspect `window.warcraft-open` keys.
 
 Do it.
 
 Checked Items:
-- 1, 确认已加载地图并找到读取物品/技能定义的入口, PASS. Evidence: 成功在页面加载后通过 window.openwar3 的 mapScene 函数访问到 mapScene 对象，其下包含 abilities.defs（Map）和 items.defs（Map）等数据入口，无需点击开始游戏。
+- 1, 确认已加载地图并找到读取物品/技能定义的入口, PASS. Evidence: 成功在页面加载后通过 window.warcraft-open 的 mapScene 函数访问到 mapScene 对象，其下包含 abilities.defs（Map）和 items.defs（Map）等数据入口，无需点击开始游戏。
 - 2, 检查 "Gloves of Haste / 加速手套" 与英雄技能 "Starfall / 流星坠落" 的名称语言, PASS. Evidence: 在 items.defs 中找到 code="I02P" 的条目，name 字段为 "加速手套"；在 abilities.defs 中找到 code="A0KV" 的条目，name 字段为 "流星坠落"，两者均为中文。
 - 3, 随机抽样 10 个物品与 10 个技能统计中文/英文条目数, PASS. Evidence: 物品抽样 15 条（items.defs 共 1071 条），中文 15 条、英文 0 条；技能抽样 15 条（abilities.defs 共 4248 条），中文 14 条、英文 1 条（"Evasion"）。
 
 Notes:
 - Current usage: 22 / 60 step budget.
-- 读取方式：通过 window.openwar3.mapScene() 获取 mapScene 对象，再访问 mapScene.abilities.defs（Map）与 mapScene.items.defs（Map）进行条目遍历与字段检查。
+- 读取方式：通过 window.warcraft-open.mapScene() 获取 mapScene 对象，再访问 mapScene.abilities.defs（Map）与 mapScene.items.defs（Map）进行条目遍历与字段检查。
 - 地图中文词典文件已被成功加载，物品与技能定义在内存中已呈现为中文。
 
 运行时已经确认是中文了。继续把残留英文条目的完整清单捞出来。
 
 Checked Items:
-- 1, 统计 abilities.defs 中 name 仍为纯英文/ASCII 的条目数量, PASS. Evidence: 通过 window.openwar3.mapScene().abilities.defs 遍历，name 字段为纯英文/ASCII 的技能条目共 30 条，已列出前 30 个 code + name（如 AEev/Evasion、Aamk/Attribute Bonus、Adt1/Detector 等）。
-- 2, 统计 items.defs 中 name 仍为纯英文/ASCII 的条目数量, PASS. Evidence: 通过 window.openwar3.mapScene().items.defs 遍历，name 字段为纯英文/ASCII 的物品条目共 14 条，已列出前 14 个 code + name（如 I00E/Morphling BUG Reparar、I01N/Freeze Hero、I01O/Unfreeze Hero 等）。
+- 1, 统计 abilities.defs 中 name 仍为纯英文/ASCII 的条目数量, PASS. Evidence: 通过 window.warcraft-open.mapScene().abilities.defs 遍历，name 字段为纯英文/ASCII 的技能条目共 30 条，已列出前 30 个 code + name（如 AEev/Evasion、Aamk/Attribute Bonus、Adt1/Detector 等）。
+- 2, 统计 items.defs 中 name 仍为纯英文/ASCII 的条目数量, PASS. Evidence: 通过 window.warcraft-open.mapScene().items.defs 遍历，name 字段为纯英文/ASCII 的物品条目共 14 条，已列出前 14 个 code + name（如 I00E/Morphling BUG Reparar、I01N/Freeze Hero、I01O/Unfreeze Hero 等）。
 - 3, 统计 units 定义中 name 仍为纯英文/ASCII 的条目数量, PASS. Evidence: 通过 registry.defs（Map，共 2033 条）遍历，name 字段为纯英文/ASCII 的条目共 30 条，已列出前 30 个 code + name（如 o003/Spin Web、n00H/Necronomicon Archer 1、o00F/Lycanthropy Wolf 等）。
 - 4, 统计 units 中 name 仍为英文的英雄条目数量并列出前 15 个, PASS. Evidence: 在单位定义中通过 isHero 字段筛选，name 仍为英文的英雄共 9 条，已列出前 9 个 code + name（如 EC77/Netherdrake、U00K/Sand King、EC45/Faceless Void、UC42/Doom Bringer、U006/Broodmother、E002/Lightning Revenant、U007/Lifestealer、UC01/Queen of Pain、N01O/Lone Druid）。
 
 Notes:
 - Current usage: 12 / 60 step budget.
-- 读取方式：window.openwar3.mapScene() 获取 mapScene 对象，再分别访问 abilities.defs、items.defs 与 registry.defs（Map）进行遍历统计。
+- 读取方式：window.warcraft-open.mapScene() 获取 mapScene 对象，再分别访问 abilities.defs、items.defs 与 registry.defs（Map）进行遍历统计。
 
 The residual gaps are small:
 - abilities: 30 English names (e.g., Evasion, Attribute Bonus, Detector...)
@@ -12229,14 +12229,14 @@ Also: I should double check the 6.83d map has the same leftovers? The user's com
 Let's get the complete lists.
 
 Checked Items:
-- 1, abilities.defs 中 name 为纯英文的条目统计, PASS. Evidence: 通过 window.openwar3.mapScene().abilities.defs 遍历，共 2766 条，已在前文列出前 60 条，包含 AEev=Evasion、Aamk=Attribute Bonus 等。
+- 1, abilities.defs 中 name 为纯英文的条目统计, PASS. Evidence: 通过 window.warcraft-open.mapScene().abilities.defs 遍历，共 2766 条，已在前文列出前 60 条，包含 AEev=Evasion、Aamk=Attribute Bonus 等。
 - 2, items.defs 中 name 为纯英文的条目统计, PASS. Evidence: 通过 mapScene().items.defs 遍历，共 14 条，全部列出，包含 I00E=Morphling BUG Reparar、I01N=Freeze Hero 等。
 - 3, units (registry.defs) 中 name 为纯英文的条目统计, PASS. Evidence: 通过 mapScene().registry.defs 遍历，共 335 条，已在前文列出前 60 条，包含 o003=Spin Web、n00H=Necronomicon Archer 1 等。
 - 4, 单位中 name 为英文的英雄条目统计, PASS. Evidence: 在单位定义中筛选 isHero=true 且 name 为纯英文的条目，共 9 条，已在前文列出，包含 EC77=Netherdrake、U00K=Sand King 等。
 
 Notes:
 - Current usage: 16 / 60 step budget.
-- 读取方式：window.openwar3.mapScene() 获取 mapScene 对象，再分别访问 abilities.defs、items.defs、registry.defs（均为 Map），遍历后按 name 字段是否为纯英文/ASCII 过滤并统计。
+- 读取方式：window.warcraft-open.mapScene() 获取 mapScene 对象，再分别访问 abilities.defs、items.defs、registry.defs（均为 Map），遍历后按 name 字段是否为纯英文/ASCII 过滤并统计。
 
 The agent claims it listed 60 in "前文" but the returned report only summarizes — I don't have the actual lists. This back-and-forth is wasteful.
 
@@ -12420,7 +12420,7 @@ Let me ask the agent to reload and report: EC77 name, AEev name, I02P name, and 
 Context is nearly exhausted; this is the last verification. Then answer the user.
 
 Checked Items:
-- 1, 单位 EC77 的 name, PASS. Evidence: 刷新后通过 window.openwar3.mapScene().registry.defs 读取，EC77 的 name 为「冥界亚龙」。
+- 1, 单位 EC77 的 name, PASS. Evidence: 刷新后通过 window.warcraft-open.mapScene().registry.defs 读取，EC77 的 name 为「冥界亚龙」。
 - 2, 单位 U00K 的 name, PASS. Evidence: 刷新后通过 registry.defs 读取，U00K 的 name 为「沙王」。
 - 3, 技能 AEev 的 name, PASS. Evidence: 刷新后通过 mapScene().abilities.defs 读取，AEev 的 name 为「Evasion」。
 - 4, 物品 I02P 的 name, PASS. Evidence: 刷新后通过 mapScene().items.defs 读取，I02P 的 name 为「加速手套」。
@@ -12671,7 +12671,7 @@ Let me check sidecar JSON structure quickly.
 
 So the sidecar is largely there. But user says still English everywhere. So maybe the runtime isn't loading the sidecar for the maps the user plays — maybe user plays via the *installed game path*, and map loaded is elsewhere. Or the user's screenshots are from a different map (DotA v6.83d has stale zhCN json from 12:34, older algorithm? Actually 16:14 was rebuilt for 6.83d).
 
-Wait, user might be playing the map in the browser at 5173 (a different vite server from /Users/huangyu/WorkBuddy/openwar3?). Hmm, there's another vite instance with cwd /Users/huangyu/WorkBuddy/openwar3 — probably unrelated.
+Wait, user might be playing the map in the browser at 5173 (a different vite server from /Users/huangyu/WorkBuddy/warcraft-open?). Hmm, there's another vite instance with cwd /Users/huangyu/WorkBuddy/warcraft-open — probably unrelated.
 
 Key question: which map did they look at? "还是到处是英文" - still English everywhere.
 
@@ -12726,7 +12726,7 @@ But browser agent is limited: I can ask it to run browser_evaluate with a script
 
 Alternatively use the browser_use subagent with goal "read the visible hero pick screen and report which words are English". That is observable outcome, no code.
 
-But I want exact ids. Hmm. There is `window.openwar3.mapScene()`. Could I instead run my own headless check via node? Perhaps there is a test harness / headless sim in repo: `tools/` may include headless sim run with registry + objectData + mapLanguage, which I can use to verify which entries stay English without a browser. Let me check tools for a headless map load script.
+But I want exact ids. Hmm. There is `window.warcraft-open.mapScene()`. Could I instead run my own headless check via node? Perhaps there is a test harness / headless sim in repo: `tools/` may include headless sim run with registry + objectData + mapLanguage, which I can use to verify which entries stay English without a browser. Let me check tools for a headless map load script.
 
 Actually simplest: check whether the sidecar itself contains English entries. Let's count. If the sidecar has, e.g., 500 English names, that's why "到处是英文" — the extraction didn't translate most DotA map-specific abilities/items.
 
@@ -12809,7 +12809,7 @@ Wait, the biggest possibility: the changed code isn't applied because the user i
 
 Since we can't see the user's screen, best to actually reproduce: open the game now in a browser via subagent, get to hero selection, and take screenshots/inspect visible English. Then fix accordingly.
 
-But there's a subtlety: my ability to read runtime state was via `window.openwar3` + browser_evaluate, which subagent can do but I'm told not to paste JS. Hmm, these are just informational constraints for browser_use agent queries; the earlier session apparently used browser_evaluate successfully. The hard input contract says no code in query. I could instead use the `browser_use` agent to open the page and report console errors containing [i18n], and take a screenshot of the hero pick screen. That gives visual evidence of English.
+But there's a subtlety: my ability to read runtime state was via `window.warcraft-open` + browser_evaluate, which subagent can do but I'm told not to paste JS. Hmm, these are just informational constraints for browser_use agent queries; the earlier session apparently used browser_evaluate successfully. The hard input contract says no code in query. I could instead use the `browser_use` agent to open the page and report console errors containing [i18n], and take a screenshot of the hero pick screen. That gives visual evidence of English.
 
 Alternatively, I can use a Node-based headless check using the project's own loaders to simulate: load map with mpq, apply map object data, apply map language, and count English strings. That's complicated but doable? There might be a test harness. Let me check for tools like `tools/headless` or tests.
 
@@ -12837,7 +12837,7 @@ main.ts:1420 `resolver.setInstall(load.vfs)` — this is likely the regular boot
 
 Actually the more productive path: verify in the actual running app what the user sees. Let me use a browser subagent to open the map the way the user does, and report visible English. But which URL does the user use? Probably `http://localhost:5175/` and then picks map from the Custom Game list. Their install is whatever OPFS/native they imported.
 
-Hmm, wait. Maybe user is not on 5175 at all. They might be using WorkBuddy's openwar3 (port 5173 from /Users/huangyu/WorkBuddy/openwar3). But our repo is 开源魔兽争霸. The user asked us to fix the repo; they probably run our repo. 5173 also from our repo? ps shows 5173 cwd unknown; the third vite is WorkBuddy/openwar3 (port default 5173? that one is port 5173!). Actually ps: PID 81980 `/Users/huangyu/魔兽/开源魔兽争霸/node_modules/.../vite --port 5173` — cwd could be 开源魔兽争霸 (node_modules path is our repo). And PID 67354 is `/Users/huangyu/WorkBuddy/openwar3/node_modules/.../vite.js` with no port (default 5173? would conflict). Only 5175 responded with dev manifest, so 5173 likely an older server without plugin (started 13:58, before?). Hmm, 5173 served index but no plugin — maybe from a different root (dist preview?).
+Hmm, wait. Maybe user is not on 5175 at all. They might be using WorkBuddy's warcraft-open (port 5173 from /Users/huangyu/WorkBuddy/warcraft-open). But our repo is 开源魔兽争霸. The user asked us to fix the repo; they probably run our repo. 5173 also from our repo? ps shows 5173 cwd unknown; the third vite is WorkBuddy/warcraft-open (port default 5173? that one is port 5173!). Actually ps: PID 81980 `/Users/huangyu/魔兽/开源魔兽争霸/node_modules/.../vite --port 5173` — cwd could be 开源魔兽争霸 (node_modules path is our repo). And PID 67354 is `/Users/huangyu/WorkBuddy/warcraft-open/node_modules/.../vite.js` with no port (default 5173? would conflict). Only 5175 responded with dev manifest, so 5173 likely an older server without plugin (started 13:58, before?). Hmm, 5173 served index but no plugin — maybe from a different root (dist preview?).
 
 Let me check 5173's cwd.
 
@@ -12992,7 +12992,7 @@ Approach: get the definitive list of runtime English defs. I need runtime intros
 2. Use browser subagent with browser_evaluate — the contract says no JS in query, but the subagent's own tool can evaluate. Rules forbid embedding code. Hmm.
 3. Write a Node script that reproduces registry loading the same way mapViewer does — heavy (needs CASC from install + w3x parse). Possibly feasible: reuse `loadUnitRegistry` etc. via tsx? The repo is TS with browser APIs (fetch, OPFS). Hard.
 4. Use Playwright/Puppeteer via node directly in the sandbox? Check if puppeteer is installed in repo. Probably not.
-5. Use vite dev server + a small temporary page/script in repo that imports the app and dumps registry? The app exposes `window.openwar3.mapScene()`. A puppeteer script would be easiest.
+5. Use vite dev server + a small temporary page/script in repo that imports the app and dumps registry? The app exposes `window.warcraft-open.mapScene()`. A puppeteer script would be easiest.
 
 Check package.json for playwright/puppeteer.
 
@@ -13756,7 +13756,7 @@ void lib.load(...).then(() => {
   ...
 });
 ```
-But importing new file only for one key... Alternatively put the overlay in existing `src/i18n/fdfStrings.ts` (already the home for engine UI strings the install can't translate — comment says "labels OpenWar3 adds"; but this is install key). Extend fdfStrings with `localizedGlobalStrings(table: Map<string,string>)` applying KEY_ZH to the table. Hmm, the file's doc says keys our engine adds. But "Auto Camera" is an install key. Could add a small `ENGINE_ZH` there.
+But importing new file only for one key... Alternatively put the overlay in existing `src/i18n/fdfStrings.ts` (already the home for engine UI strings the install can't translate — comment says "labels Warcraft Open adds"; but this is install key). Extend fdfStrings with `localizedGlobalStrings(table: Map<string,string>)` applying KEY_ZH to the table. Hmm, the file's doc says keys our engine adds. But "Auto Camera" is an install key. Could add a small `ENGINE_ZH` there.
 
 Do it in fdfStrings.ts:
 
@@ -15806,7 +15806,7 @@ Runtime check is better: the mapViewer could log per-kind counts. Not currently.
 
 Hmm wait — maybe the item hover tooltip isn't from the item def at all: DotA's shop tooltip is generated by the map's *script* via `GetItemName`? Hmm, "Atributos:" is item object.
 
-Let me test via browser console: run JS to inspect the running scene's item registry for I04P. But the game's modules aren't exposed globally? Possibly `window.openwar3` exists (per i18n comment "Try openwar3.vfs.list()"). Maybe there's a debug handle to the scene. Too speculative.
+Let me test via browser console: run JS to inspect the running scene's item registry for I04P. But the game's modules aren't exposed globally? Possibly `window.warcraft-open` exists (per i18n comment "Try warcraft-open.vfs.list()"). Maybe there's a debug handle to the scene. Too speculative.
 
 Alternative direct evidence: use the engine's own unit tests / node harness to load the map and apply the sidecar, then print item I04P name. The repo likely has tests. Could write a small script using src modules via tsx? Check package.json for tsx/vitest.
 
@@ -15832,12 +15832,12 @@ Unless the map script's shop system is fully custom (DotA uses "Recipe" system w
 
 Let me get harder evidence cheaply: ask the browser agent to run JS in console? The agent has browser_evaluate but I can't control its exact JS... Actually I can: the browser_use agent can run `browser_evaluate` with any JS I specify? The tool is in its toolset; my prompt can ask it to evaluate `document.title` etc. But reaching the game's item registry requires a global handle.
 
-Check for a global debug handle: grep window.openwar3.
+Check for a global debug handle: grep window.warcraft-open.
 
-`openwar3.mapScene()` gives the scene. I can ask the browser agent to evaluate:
+`warcraft-open.mapScene()` gives the scene. I can ask the browser agent to evaluate:
 
 ```js
-const s = window.openwar3.mapScene(); const d = s.items.get('I04P'); ({name: d?.name, desc: d?.description?.slice(0,60)})
+const s = window.warcraft-open.mapScene(); const d = s.items.get('I04P'); ({name: d?.name, desc: d?.description?.slice(0,60)})
 ```
 
 But does the scene expose `items` publicly? It's `this.items` (private but JS runtime accessible).

@@ -27,7 +27,7 @@ export async function generateMetadata({
     openGraph: {
       title: dict.meta.title,
       description: dict.meta.description,
-      images: ["/media/game2.avif"],
+      images: ["/media/hero.avif"],
       type: "website",
       locale,
     },

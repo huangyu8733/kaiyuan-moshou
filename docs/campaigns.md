@@ -122,7 +122,7 @@ The edition is reachable without clicking through the menu: **`?dev&edition=roc`
 table (`docs/editions.md`). A LOCKED campaign's backdrop still cannot be reached from a fresh
 profile — its scene is only up once that campaign has been selected — so seeing one means
 playing far enough to open it, or setting its progress by hand
-(`openwar3.campaigns.<profile>` in localStorage, `data/campaignProgress.ts`). Unlocking them
+(`warcraft-open.campaigns.<profile>` in localStorage, `data/campaignProgress.ts`). Unlocking them
 all behind the debug flag was tried and taken back out: the tuning flag has no business
 deciding what a profile has finished.
 
@@ -671,7 +671,7 @@ native  InitGameCache    takes string campaignFile returns gamecache
 ```
 
 So a cache is a FILE and it belongs to a **profile**. Both halves are real here
-([`src/data/gameCache.ts`](../src/data/gameCache.ts)): the store is `openwar3.gamecache` under
+([`src/data/gameCache.ts`](../src/data/gameCache.ts)): the store is `warcraft-open.gamecache` under
 `profileKey`, listed in profiles.ts's `PROFILE_OWNED`, so two players on one install have two
 campaigns with their own heroes, levels, experience and belts — and deleting a profile takes its
 caches with it, which is what `PROFILE_MESSAGE` promises on the Single Player screen. **The file

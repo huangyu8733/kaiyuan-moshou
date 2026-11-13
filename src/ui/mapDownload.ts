@@ -109,7 +109,7 @@ export async function showMapDownload(opts: MapDownloadOptions): Promise<{ key: 
     if (!running) return closed;
     // Kept in memory for this session either way; a write that failed only means the next game
     // on this map downloads it again.
-    if (kept.saveError) console.warn(`[OpenWar3] the downloaded map was not saved: ${kept.saveError}`);
+    if (kept.saveError) console.warn(`[Warcraft Open] the downloaded map was not saved: ${kept.saveError}`);
     running = false;
     dialog.close();
     // Until the lobby screen hooks the room up for itself — a beat away — a start is still ours
@@ -118,14 +118,14 @@ export async function showMapDownload(opts: MapDownloadOptions): Promise<{ key: 
     // this start left us out too.
     lobby.onChange = prevChange;
     lobby.onStart = () => {
-      console.warn("[OpenWar3] the match started before the downloaded map could be opened");
+      console.warn("[Warcraft Open] the match started before the downloaded map could be opened");
       lobby.leave();
     };
     settle({ key: kept.key, file: kept.file });
   } catch (err) {
     if (running) {
       // The box says it in the game's own one line; the why is for the console.
-      console.warn("[OpenWar3] map download failed:", err);
+      console.warn("[Warcraft Open] map download failed:", err);
       stop(TEXT.titleFailed(), opts.string("NETERROR_MAPFILEINCOMPLETE") ?? TEXT.failed());
     }
   }

@@ -1,4 +1,4 @@
-/* @openwar3/ui — the Frozen Throne glue screens, redrawn.
+/* @warcraft-open/ui — the Frozen Throne glue screens, redrawn.
  *
  * Nothing here is a game texture. The frames in frames/ are drawn by scripts/frames.mjs with
  * colours sampled off the 1.30.4 install's own BLPs, and every text colour below is the one the
@@ -20,7 +20,7 @@
   --ow3-disabled: rgb(128 128 128);
   --ow3-text: #f2f2f2;
   --ow3-text-dim: #b8bcc8;
-  --ow3-font: "OpenWar3 Sans", "Nowar Sans", "Trebuchet MS", system-ui, sans-serif;
+  --ow3-font: "Warcraft Open Sans", "Nowar Sans", "Trebuchet MS", system-ui, sans-serif;
 }
 
 .ow3-gold {

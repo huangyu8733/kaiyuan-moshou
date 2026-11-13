@@ -3,7 +3,7 @@
 A field guide to the Warcraft III (TFT) data model: which archives hold what, the file formats,
 and **exactly where a given piece of data lives** (target flags, tooltips, names, hotkeys, icons, sounds…).
 Everything here is verified against the real game data in `Warcraft III/`; the **game data wins** over any
-reference (see [`REFERENCES.md`](REFERENCES.md)). OpenWar3's parsers that consume each file are noted inline.
+reference (see [`REFERENCES.md`](REFERENCES.md)). Warcraft Open's parsers that consume each file are noted inline.
 
 The *paths* below are the same on every version — that is the point of the layout. Where the bytes physically
 live is not: 1.30.4 keeps them in a CASC content store rather than in MoPaQ archives. Read
@@ -55,7 +55,7 @@ Parsers: SLK/TXT via `mdx-m3-viewer`'s `MappedData`; MDX/BLP/MPQ via `mdx-m3-vie
 ## Units — where each field lives
 
 A unit's data is **split across several tables**, all keyed by the 4-char rawcode (e.g. `hfoo`, `Hblm`).
-OpenWar3 merges them in `src/data/units.ts`:
+Warcraft Open merges them in `src/data/units.ts`:
 
 | Data | File | Key fields |
 |---|---|---|
@@ -67,7 +67,7 @@ OpenWar3 merges them in `src/data/units.ts`:
 | **Icon, grid position, missile art** | per-race `Units\<Race>UnitFunc.txt` | `art` (BLP icon), `buttonpos` (`col,row`), `missileart`, `missilespeed` |
 | Abilities granted | `Units\UnitAbilities.slk` | `abilList` (innate), `heroAbilList` (learnable, in slot order), `auto` (default autocast) |
 
-Per-race files exist for `Human`, `Orc`, `Undead`, `NightElf`, `Neutral`, `Campaign` — OpenWar3 loads all six
+Per-race files exist for `Human`, `Orc`, `Undead`, `NightElf`, `Neutral`, `Campaign` — Warcraft Open loads all six
 into one `MappedData` each for strings and funcs.
 
 **Layering quirk:** unit `collision` lives in `UnitBalance.slk` in the expansion/patch but in `UnitData.slk`
@@ -94,7 +94,7 @@ missing effect, because two of the five have no model to hunt for.
 
 ### `targs1` — Targets Allowed (the target-flag field)
 
-A comma-separated flag list saying **what a targeted ability may be cast on**. OpenWar3 parses it into
+A comma-separated flag list saying **what a targeted ability may be cast on**. Warcraft Open parses it into
 `AbilityDef.targetFlags` and enforces it in `World.targetAllowed` (`src/sim/world.ts`). Two kinds of flags:
 
 - **Allegiance:** `enemy`, `friend` (allies), `player` (own units only), `self`, `neutral`, `notself` (anything
@@ -186,7 +186,7 @@ relational** — lives instead in the per-race **profile** `.txt` files, split i
 | Abilities | `Units\<Race>AbilityFunc.txt` | `Units\<Race>AbilityStrings.txt` |
 | Upgrades | `Units\<Race>UpgradeFunc.txt` | `Units\<Race>UpgradeStrings.txt` |
 
-`<Race>` is one of **`Human`, `Orc`, `Undead`, `NightElf`, `Neutral`, `Campaign`** — OpenWar3 loads **all six**
+`<Race>` is one of **`Human`, `Orc`, `Undead`, `NightElf`, `Neutral`, `Campaign`** — Warcraft Open loads **all six**
 of each into a single merged `MappedData` (`PROFILE_FILES` in `src/data/techtree.ts`; consumed by
 `src/data/units.ts`, `abilities.ts`, `techtree.ts`). Sections are `[rawcode]` INI blocks.
 
@@ -246,12 +246,12 @@ files rather than the game's. Open one with the same reader (`src/vfs/`). The on
 extensions is the game version they target: **`.w3m` = Reign of Chaos** maps (also playable in TFT);
 **`.w3x` = Frozen Throne** maps (TFT-only, may use expansion content). Both have the identical internal
 layout. This manifest is the full set of chunk files a map can contain, per thehelper.net's *"Explanation of
-w3m and w3x files"* thread (#35292), cross-checked against the bundled maps; the **OpenWar3** column
+w3m and w3x files"* thread (#35292), cross-checked against the bundled maps; the **Warcraft Open** column
 names the parser where we read it (all under `src/world/`, wired through `src/vfs/`).
 
 ### Terrain, pathing & minimap
 
-| File | Content | OpenWar3 |
+| File | Content | Warcraft Open |
 |---|---|---|
 | `war3map.w3e` | **Terrain**: per-corner tile texture, cliff/ramp level, height and water — the ground itself | `terrain.ts` |
 | `war3map.wpm` | **Pathing map**: per-cell walkable/buildable/flyable bits (red = unwalkable, blue = unbuildable) | `map.ts` → `PathingGrid` |
@@ -284,7 +284,7 @@ on those three Felwood maps actually paints with `CAc2`.
 
 ### Placed objects
 
-| File | Content | OpenWar3 |
+| File | Content | Warcraft Open |
 |---|---|---|
 | `war3mapUnits.doo` | **Placed units/buildings** — creeps, gold mines, shops, start locations, player units, with drop tables/inventory | `mapUnits.ts` |
 | `war3map.doo` | **Placed doodads/destructibles** — trees, rocks, decorative props | `doodads.ts` |
@@ -303,7 +303,7 @@ the rule and the maps it was read off.
 
 ### Map info & configuration
 
-| File | Content | OpenWar3 |
+| File | Content | Warcraft Open |
 |---|---|---|
 | `war3map.w3i` | **Map info**: name, author, players, forces/teams, start locations, camera bounds, tech-tree tweaks, and the **flags** bitfield (melee-vs-custom, see below) | `mapInfo.ts` |
 | `war3mapMisc.txt` | Per-map **Gameplay Constants** overrides (a map's edits to `MiscGame`/`MiscData` values) | — |
@@ -313,7 +313,7 @@ the rule and the maps it was read off.
 
 ### Triggers & script
 
-| File | Content | OpenWar3 |
+| File | Content | Warcraft Open |
 |---|---|---|
 | `war3map.j` | **Compiled trigger script** (JASS2; Lua on Reforged). What the engine actually runs | `triggers.ts` |
 | `war3map.wtg` | GUI **trigger tree**: categories, variables, event-condition-action definitions (editor source) | scanned in `triggers.ts` |
@@ -325,7 +325,7 @@ executes the `.j`, never the `.wtg`.
 
 ### Audio, cameras & regions
 
-| File | Content | OpenWar3 |
+| File | Content | Warcraft Open |
 |---|---|---|
 | `war3map.w3s` | **Sound definitions**: the map's declared sounds/ambience (paths, volume, 3-D flags) | — |
 | `war3map.w3r` | **Regions**: named rectangles + their weather effect / ambient-sound bindings | — |
@@ -334,7 +334,7 @@ executes the `.j`, never the `.wtg`.
 ### Custom object data (World Editor "object editor" edits)
 
 Each is a binary table of *modifications* layered on the base game data — present only when a map actually
-customises that object class. OpenWar3 runs the stock melee tables, so it doesn't read these yet (a custom-map
+customises that object class. Warcraft Open runs the stock melee tables, so it doesn't read these yet (a custom-map
 concern for the future JASS/object-data pass):
 
 | File | Class | | File | Class |

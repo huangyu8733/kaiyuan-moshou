@@ -10,7 +10,7 @@
 // that has to be verified can be run under plain node (`node electron/serve-check.mjs`) without
 // a display. It is also the half a headless dedicated host would keep if we ever want one.
 //
-// It serves `dist/` — engine code only, no Blizzard content, ever (OpenWar3_PLAN.md §0/§8). The
+// It serves `dist/` — engine code only, no Blizzard content, ever (Warcraft-Open_PLAN.md §0/§8). The
 // dev server's asset route (`/wc3/…`, tools/vite-plugin-dev-install.ts) is `apply: "serve"` and
 // therefore does not exist here; assets are read from the player's own install by the renderer.
 

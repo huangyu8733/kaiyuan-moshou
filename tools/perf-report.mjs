@@ -117,7 +117,7 @@ export function renderReport(text) {
   const out = [];
   const push = (...l) => out.push(...l);
 
-  push("OpenWar3 — session performance report", "=".repeat(60), "");
+  push("Warcraft Open — session performance report", "=".repeat(60), "");
   push(...kv(
     [
       ["map", String(head.map ?? "—")],

@@ -5,7 +5,7 @@ import { listPublishedMaps } from "@/lib/db/queries/maps";
 export const dynamic = "force-dynamic";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://openwar3.vercel.app").replace(/\/+$/, "");
+  const base = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://warcraft.hhkj.me").replace(/\/+$/, "");
   const entries: MetadataRoute.Sitemap = [];
 
   for (const locale of LOCALE_CODES) {

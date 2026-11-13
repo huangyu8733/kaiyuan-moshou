@@ -9,7 +9,7 @@
 // reader, compiled headlessly by tools/tsconfig.casc.json, so what comes out here is what the
 // game sees rather than what a second parser thinks it should.
 //
-// Nothing here is committed: `Warcraft III/` is gitignored in full (OpenWar3 ships zero
+// Nothing here is committed: `Warcraft III/` is gitignored in full (Warcraft Open ships zero
 // Blizzard assets — see CLAUDE.md "Legal boundary"). This tool only reads the developer's own
 // local install.
 //

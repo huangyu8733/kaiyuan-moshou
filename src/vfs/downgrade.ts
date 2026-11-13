@@ -6,7 +6,7 @@ import DOWNGRADE_1_31_1 from "../patches/downgrade/1.31.1.json";
 // A 1.31.1 store, played as the 1.30.4 it came from (docs/casc.md, "1.31.1").
 //
 // "Download game files" falls back on the Internet Archive's Warcraft III, and the only copy it
-// keeps is 1.31.1 (src/assets/downloadInstall.ts). OpenWar3 plays 1.30.4 and every player must
+// keeps is 1.31.1 (src/assets/downloadInstall.ts). Warcraft Open plays 1.30.4 and every player must
 // read the same game data (src/vfs/version.ts), so a 1.31.1 store is turned back into 1.30.4 at
 // the mount, in two halves:
 //

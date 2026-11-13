@@ -201,7 +201,7 @@ body.in-game {
      the dark went on answering the mouse. */
   pointer-events: auto;
 }
-/* A scrim that is SEEN, for OpenWar3's own modals. The game's own message box (DialogWar3)
+/* A scrim that is SEEN, for Warcraft Open's own modals. The game's own message box (DialogWar3)
    deliberately does not darken what is behind it — it is a question about the screen you are
    looking at, and the reference leaves that screen lit. A panel of ours that is a place of its
    own reads better with the menu pushed back, and the darkening is also what says "this is
@@ -601,7 +601,7 @@ body.hud-tooltip-skinned .unit-hover-tooltip {
 }
 .uht-line { white-space: nowrap; }
 
-/* OpenWar3's own hover hints (ui/gameTip.ts) — the idle-worker button, the XP bar's numbers, the
+/* Warcraft Open's own hover hints (ui/gameTip.ts) — the idle-worker button, the XP bar's numbers, the
    clock — in place of the browser's `title` bubble, which grows DOWN from the pointer. Pinned by
    its BOTTOM edge above the element (`bottom` is written by gameTip.ts) so it grows upward like
    every other tooltip in the game, and dressed like the unit slab above. */
@@ -3717,7 +3717,7 @@ body.in-game .fdf-screen.fdf-ingame {
 }
 
 /* The product's own mark: the SAME picture the tab, the home screen and the desktop app wear
-   (public/icon-512.png, derived from art/openwar3-logo.png by tools/make-icon.mjs), so the
+   (public/icon-512.png, derived from art/warcraft-open-logo.png by tools/make-icon.mjs), so the
    launcher and the icon are one face. The gold ring is the game's own chrome, and the gradient
    underneath is only what shows for the instant the image is still arriving. */
 .launcher-mark {
@@ -4291,11 +4291,41 @@ body.in-game .fdf-screen.fdf-ingame {
   gap: 22px;
 }
 
-/* Library / Installed, then the library's own search + category chips. */
+/* Library / Installed, with the search button on their right. */
+.home-map-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
 .home-map-tabs {
   display: flex;
   gap: 8px;
-  margin: 0 0 18px;
+  margin: 0;
+}
+
+.home-map-search-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-map-search-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: #c9c2ae;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.home-map-search-btn:hover {
+  color: #fff;
+  border-color: var(--gold);
+  background: rgba(216, 180, 90, 0.12);
 }
 
 .home-map-tab {
@@ -4323,7 +4353,8 @@ body.in-game .fdf-screen.fdf-ingame {
 }
 
 .home-map-search {
-  flex: 1 1 240px;
+  flex: 0 1 220px;
+  width: 220px;
   min-width: 0;
   padding: 9px 12px;
   border: 1px solid var(--border);

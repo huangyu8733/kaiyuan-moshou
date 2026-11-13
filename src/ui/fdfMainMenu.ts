@@ -32,7 +32,7 @@ export async function mountFdfMainMenu(
   vfs: DataSource,
   h: MainMenuHandlers,
 ): Promise<FdfScreen> {
-  const log = (name: string) => () => console.log(`[OpenWar3] menu: ${name}`);
+  const log = (name: string) => () => console.log(`[Warcraft Open] menu: ${name}`);
   const screen = await mountFdfScreen({
     container,
     vfs,
@@ -47,7 +47,7 @@ export async function mountFdfMainMenu(
     // Wider buttons than the 4:3-authored FDF, to fill the widescreen chain panel
     // (text stays its FDF size — only the widget widens).
     buttonWidthScale: 1.35,
-    // "Battle.net" is intentionally "Online": OpenWar3 multiplayer targets our own
+    // "Battle.net" is intentionally "Online": Warcraft Open multiplayer targets our own
     // server, not Blizzard's (matches the flat-menu note in mainMenu.ts / plan §10.1).
     //
     // Renaming a button renames its ACCELERATOR with it. The FDF's caption carries the
@@ -132,7 +132,7 @@ async function changeInstall(): Promise<void> {
   try {
     if (!(await pickInstall())) return; // cancelled: nothing to say, the old install stays mounted
   } catch (err) {
-    console.warn("[OpenWar3] the picked folder could not be read:", err);
+    console.warn("[Warcraft Open] the picked folder could not be read:", err);
     return;
   }
   // "Download game files" leaves a copy in OPFS that the gate mounts before asking

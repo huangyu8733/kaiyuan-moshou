@@ -25,7 +25,7 @@ import type { DataSource } from "../vfs/types";
  *  wants to read what changed before saying yes can, in their own browser: in the desktop app
  *  a `target="_blank"` link goes through `setWindowOpenHandler` to `shell.openExternal`
  *  (electron/main.mjs) and never opens a second game window. */
-const RELEASES_URL = "https://github.com/elevchyt/openwar3/releases";
+const RELEASES_URL = "https://github.com/elevchyt/warcraft-open/releases";
 
 /**
  * Make the gold version line of the prompt a link to the releases page.
@@ -90,8 +90,8 @@ export function watchForUpdates(container: HTMLElement, vfs: DataSource): () => 
         asked = true;
         void show(
           // The gold line names the build the way the overlay's caption does ("Downloading
-          // OpenWar3 0.2.4…"), and it is the ONLY part of the message that is a link.
-          `A new version of OpenWar3 is available|n|n|cffffcc00OpenWar3 ${state.version ?? "?"}|r|n|nDownload it now?`,
+          // Warcraft Open 0.2.4…"), and it is the ONLY part of the message that is a link.
+          `A new version of Warcraft Open is available|n|n|cffffcc00Warcraft Open ${state.version ?? "?"}|r|n|nDownload it now?`,
           "yesno",
           () => {
             downloadUpdate();
@@ -115,7 +115,7 @@ export function watchForUpdates(container: HTMLElement, vfs: DataSource): () => 
         if (installing) return;
         installing = true;
         overlay?.setProgress(1);
-        overlay?.setCaption(`Restarting into OpenWar3 ${state.version ?? ""}…`);
+        overlay?.setCaption(`Restarting into Warcraft Open ${state.version ?? ""}…`);
         installUpdate();
         return;
       case "error":
@@ -124,7 +124,7 @@ export function watchForUpdates(container: HTMLElement, vfs: DataSource): () => 
         // Not shown. Failing to REACH the releases page is not the player's problem to solve
         // mid-session, and a game that opens a box about it every launch on a machine with no
         // internet is a game with a bug in it. The console keeps the reason.
-        console.warn("[OpenWar3] update check failed:", state.error);
+        console.warn("[Warcraft Open] update check failed:", state.error);
         return;
       default:
         return; // idle / checking / none / downloading — nothing to say

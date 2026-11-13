@@ -101,12 +101,12 @@ export function applyGameFont(vfs: DataSource): void {
       pending.push(
         face.load().then(
           (f) => { document.fonts.add(f); },
-          (err: unknown) => { console.warn(`[OpenWar3] font ${path} failed to load:`, err); },
+          (err: unknown) => { console.warn(`[Warcraft Open] font ${path} failed to load:`, err); },
         ),
       );
       loaded.push(family);
     } catch (err) {
-      console.warn(`[OpenWar3] font ${path} rejected:`, err);
+      console.warn(`[Warcraft Open] font ${path} rejected:`, err);
     }
   }
   // Names first even when a file was missing: the player may have the face installed.

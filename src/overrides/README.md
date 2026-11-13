@@ -1,10 +1,10 @@
-# `src/overrides/` — OpenWar3's own layer on top of the game's UI files
+# `src/overrides/` — Warcraft Open's own layer on top of the game's UI files
 
 Everything under `UI\FrameDef\` belongs to the player's Warcraft III install. We read it; we
 never write it, and nothing in this repository is a copy of it (see the legal boundary in
-[`CLAUDE.md`](../../CLAUDE.md) — OpenWar3 ships zero Blizzard assets).
+[`CLAUDE.md`](../../CLAUDE.md) — Warcraft Open ships zero Blizzard assets).
 
-So when OpenWar3 needs a control the 2003 UI has no frame for — the Computer+ checkbox of
+So when Warcraft Open needs a control the 2003 UI has no frame for — the Computer+ checkbox of
 issue #124, the Observer Mode switch that replaces a dropdown a single-player screen can do
 nothing with — the change is expressed **here**, as a small file in the game's own FrameDef
 language that is layered onto the screen at mount time:
@@ -18,7 +18,7 @@ language that is layered onto the screen at mount time:
 | [`ui/AdvancedOptionsPane.fdf`](ui/AdvancedOptionsPane.fdf) | Custom Game → Advanced Options: adds a row, and replaces the Observers one. The LAN create screen layers the same file through a second manifest that adds the row and KEEPS the Observers one — on a hosted game that dropdown means what it says |
 | [`ui/AdvancedOptionsDisplay.fdf`](ui/AdvancedOptionsDisplay.fdf) | the LAN game lobby's Advanced Options summary: adds the Computer+ row to the seven the game prints |
 | [`ui/HotkeyEditor.fdf`](ui/HotkeyEditor.fdf) | the hotkey editor, a glue dialog of its own opened from Options → Gameplay (issue #156) — see docs/hotkeys.md |
-| [`ui/LocalMultiplayerCreate.fdf`](ui/LocalMultiplayerCreate.fdf) | LAN → Create Game: adds the "Server:" row under the map list — this computer, the OpenWar3 server, or another watched server |
+| [`ui/LocalMultiplayerCreate.fdf`](ui/LocalMultiplayerCreate.fdf) | LAN → Create Game: adds the "Server:" row under the map list — this computer, the Warcraft Open server, or another watched server |
 
 ## How a layer is applied
 
@@ -54,6 +54,6 @@ one line and everything else about it is unchanged.
 * **Anchor to the game's frames, not to ours.** A new checkbox says
   `SetPoint TOPLEFT, "AutosaveReplayCheckBox", BOTTOMLEFT` — the row it sits under in the real
   screen — so it lands in the right place whatever else moves.
-* **Say why, in the file.** A frame that exists only in OpenWar3 needs its reason next to it as
+* **Say why, in the file.** A frame that exists only in Warcraft Open needs its reason next to it as
   much as any code does.
 * **Never edit the install.** If a change seems to need it, it needs a file in here instead.

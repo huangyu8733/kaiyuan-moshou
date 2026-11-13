@@ -771,15 +771,15 @@ interface Scene {
   startFrame(): void;
   renderOpaque(): void;
   renderTranslucent(): void;
-  // OpenWar3 patch hook: the day/night light the ground/cliff and model shaders read
+  // Warcraft Open patch hook: the day/night light the ground/cliff and model shaders read
   // (see src/render/dayNight.ts). Left at 0/null on scenes with no cycle.
   dncEnabled: number;
   dncTerrain: DayNightLight | null;
   dncUnit: DayNightLight | null;
-  // OpenWar3 patch hook: linear distance fog (the map's w3i environment haze) that the
+  // Warcraft Open patch hook: linear distance fog (the map's w3i environment haze) that the
   // ground/cliff/water and model shaders read (src/render/fog.ts). Undefined = no fog.
   distFog?: DistFog;
-  // OpenWar3 patch hook: the map's unplayable area, which the MODEL shader paints its
+  // Warcraft Open patch hook: the map's unplayable area, which the MODEL shader paints its
   // [FogOfWar] object tint over (issue #117; src/render/fogOverlay.ts). Undefined off the
   // map — a menu backdrop and a portrait bust have no boundary to stand in.
   boundaryMask?: BoundaryMask;
@@ -822,11 +822,11 @@ interface W3xMap {
   // ground → cliffs → opaque instances → water → translucent instances; we replay that
   // sequence ourselves to insert the ubersplat pass before the translucent one (issue #16).
   anyReady: boolean;
-  /** OpenWar3 patch hook: the terrain cells to draw, as (first instance, count) pairs — one
+  /** Warcraft Open patch hook: the terrain cells to draw, as (first instance, count) pairs — one
    *  run per visible cell row, refilled each frame by render/terrainCull.ts. Null draws the
    *  whole map, which is what the stock viewer does on every frame of every match. */
   ow3Runs: Int32Array | null;
-  /** OpenWar3 patch hook: mark one terrain CORNER blighted / clean, and push every tile
+  /** Warcraft Open patch hook: mark one terrain CORNER blighted / clean, and push every tile
    *  changed since the last push. See src/sim/blight.ts for what drives it. */
   setBlight(column: number, row: number, on: boolean): boolean;
   flushBlight(): void;
@@ -865,7 +865,7 @@ interface W3xViewer {
   unitsData: MappedData;
   /** Doodad + destructable data, merged — and, like `unitsData`, GLOBAL across maps. */
   doodadsData: MappedData;
-  /** OpenWar3 patch hook: lets the map handler check which cliff-ramp
+  /** Warcraft Open patch hook: lets the map handler check which cliff-ramp
    *  (CliffTrans) models exist in the VFS before placing them. */
   terrainModelExists?: (path: string) => boolean;
   on(event: string, cb: (e: unknown) => void): void;
@@ -2474,7 +2474,7 @@ export class MapViewerScene {
         .filter((g) => g.lod === 0 || g.lod === -1)
         .map((g) => ({ vertices: g.vertices, faces: g.faces }));
     } catch (err) {
-      console.warn(`[OpenWar3] walkable destructible model unreadable: ${path}`, err);
+      console.warn(`[Warcraft Open] walkable destructible model unreadable: ${path}`, err);
       return null;
     }
   }
@@ -3273,7 +3273,7 @@ export class MapViewerScene {
         if (drain && onProgress) onProgress(drain.sample(this.viewer.promiseMap));
         settledFrames = ready() ? settledFrames + 1 : 0;
         if (settledFrames >= 2 || performance.now() - t0 > timeoutMs) {
-          if (settledFrames < 2) console.warn(`[openwar3] ${what} still streaming after ${Math.round(timeoutMs / 1000)}s — starting anyway.`);
+          if (settledFrames < 2) console.warn(`[Warcraft Open] ${what} still streaming after ${Math.round(timeoutMs / 1000)}s — starting anyway.`);
           onProgress?.(1);
           resolve();
           return;
@@ -3333,7 +3333,7 @@ export class MapViewerScene {
       onProgress(DRAIN_SHARE + ((1 - DRAIN_SHARE) * ++done) / roster.length);
     }));
     onProgress(1);
-    console.info(`[openwar3] preloaded ${roster.length} ${this.localRace} unit model(s) + icons in ${Math.round(performance.now() - t0)}ms.`);
+    console.info(`[Warcraft Open] preloaded ${roster.length} ${this.localRace} unit model(s) + icons in ${Math.round(performance.now() - t0)}ms.`);
   }
 
   /** Everything the local player is likely to MAKE: their worker, what it builds, and what
@@ -3583,7 +3583,7 @@ export class MapViewerScene {
         .map((s) => ({ player: s.id, difficulty: s.aiDifficulty ?? MELEE_AI_NORMAL })));
     }
     this.rts.holdWorld(false); // the map has had its say — let the world run
-    console.info(`[openwar3] Custom map: ${seeds.length} pre-placed player unit(s) seeded owned (issue #33)${dummies ? `, plus ${dummies} model-less dummy unit(s)` : ""}.`);
+    console.info(`[Warcraft Open] Custom map: ${seeds.length} pre-placed player unit(s) seeded owned (issue #33)${dummies ? `, plus ${dummies} model-less dummy unit(s)` : ""}.`);
   }
 
   /**

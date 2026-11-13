@@ -83,7 +83,7 @@ export class FdfLibrary {
   }
 
   /**
-   * Lay one of OpenWar3's OWN FrameDef files over what the install supplied (src/overrides/).
+   * Lay one of Warcraft Open's OWN FrameDef files over what the install supplied (src/overrides/).
    *
    * The install's `UI\FrameDef\` is the player's and is never written to, so a control the
    * 2003 UI has no frame for is declared in a file of ours and registered here. Two

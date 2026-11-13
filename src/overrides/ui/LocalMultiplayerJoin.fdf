@@ -1,4 +1,4 @@
-// OpenWar3 override — `UI\FrameDef\Glue\LocalMultiplayerJoin.fdf`.
+// Warcraft Open override — `UI\FrameDef\Glue\LocalMultiplayerJoin.fdf`.
 //
 // One line the 2003 screen has no frame for, because the 2003 game never needed it: WHETHER
 // OTHER MACHINES CAN REACH THIS ONE, and at what address.
@@ -36,7 +36,7 @@ Frame "TEXT" "NetworkStatusText" INHERITS "StandardInfoTextTemplate" {
 //
 // The 2003 client had no such control because it never needed one: it broadcast on the subnet
 // and the games appeared. We cannot broadcast from a page, and the packaged game has no address
-// bar to navigate with, so two copies of OpenWar3 on one network would never see each other. The
+// bar to navigate with, so two copies of Warcraft Open on one network would never see each other. The
 // addresses are a thing the player MANAGES, so they live in a dialog of their own
 // (src/overrides/ui/JoinAddressDialog.fdf) and this is the way in.
 //

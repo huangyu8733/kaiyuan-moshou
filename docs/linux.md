@@ -7,8 +7,8 @@ in the root `package.json`, or the Electron version the 32-bit Linux build is pi
 
 | File | Arch | Electron | Updater reads |
 |---|---|---|---|
-| `OpenWar3-<version>.AppImage` | x86-64 | the project's (44) | `latest-linux.yml` |
-| `OpenWar3-<version>-i386.AppImage` | x86 (32-bit) | **18.3.15** | `latest-linux-ia32.yml` |
+| `Warcraft Open-<version>.AppImage` | x86-64 | the project's (44) | `latest-linux.yml` |
+| `Warcraft Open-<version>-i386.AppImage` | x86 (32-bit) | **18.3.15** | `latest-linux-ia32.yml` |
 
 `pnpm release` builds the first, `pnpm release:linux32` the second (`dist:linux32` without the
 upload). They are two electron-builder runs because electron-builder has no per-arch
@@ -47,7 +47,7 @@ scripts). The i386 build points `main` at that file with `-c.extraMetadata.main`
   The shell asks for a collection whenever the renderer has grown 400 MB since its last low point.
   Measured, allocator not found, and the numbers are in the file's own comment.
 
-`pnpm dist:linux32` then `release/linux-ia32-unpacked/openwar3` is the build as shipped. Running it
+`pnpm dist:linux32` then `release/linux-ia32-unpacked/warcraft-open` is the build as shipped. Running it
 on a 64-bit machine needs the i386 NSS/NSPR/sqlite libraries, which apt will download without
 root (`apt-get download libnss3:i386 libnspr4:i386 libsqlite3-0:i386`, `dpkg -x` each, point
 `LD_LIBRARY_PATH` at the result). The 64-bit Electron 18 from its GitHub release runs

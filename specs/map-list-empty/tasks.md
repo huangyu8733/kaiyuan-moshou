@@ -18,7 +18,7 @@
 - [x] `addMap()` 改为复用 `syncEntries()` 的合并路径。
 
 ## T4. 空白就绪的诊断日志
-- [x] `fillList()` 在 `ready && rows.length === 0` 时打印一次 `console.info("[OpenWar3] map list is empty", {...})`。
+- [x] `fillList()` 在 `ready && rows.length === 0` 时打印一次 `console.info("[Warcraft Open] map list is empty", {...})`。
 
 ## T5. 构建、回归与部署
 - [x] `./node_modules/.bin/tsc --noEmit`（通过，无输出）

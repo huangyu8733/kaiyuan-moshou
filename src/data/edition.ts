@@ -19,7 +19,7 @@
 
 export type Edition = "roc" | "tft";
 
-const STORAGE_KEY = "openwar3.edition";
+const STORAGE_KEY = "warcraft-open.edition";
 
 function stored(): Edition {
   try {

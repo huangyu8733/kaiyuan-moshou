@@ -5,7 +5,7 @@ import w3iParser from "mdx-m3-viewer/dist/cjs/parsers/w3x/w3i";
 // The w3i is the KEYSTONE of a map load: the Custom Game list is built from it, `loadMapBytes`
 // refuses a map without it, and its build version is what gates the Reforged skin id in
 // war3map.doo / war3mapUnits.doo. So an all-or-nothing read is an all-or-nothing map, and that
-// is what OpenWar3 had — `info.load(bytes)` throwing took the whole map out of the list, with
+// is what Warcraft Open had — `info.load(bytes)` throwing took the whole map out of the list, with
 // no row, no reason and nothing for the player to act on.
 //
 // Two different files land here and only one of them is about a later editor:

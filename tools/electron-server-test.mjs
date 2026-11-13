@@ -44,7 +44,7 @@ try {
   // escape is spelled the way an attacker would have to send it.
   const escape = await fetch(`${server.url}/%2e%2e%2f%2e%2e%2fpackage.json`);
   const body = await escape.text();
-  ok("it cannot be walked out of", !body.includes("\"openwar3\""), `status ${escape.status}`);
+  ok("it cannot be walked out of", !body.includes("\"warcraft-open\""), `status ${escape.status}`);
 
   console.log("the relay answers on the same port");
   const a = new WebSocket(`ws://127.0.0.1:${server.port}/relay`);
@@ -75,7 +75,7 @@ try {
   ok("an upgrade off the relay path is refused", refused);
 
   a.close(); b.close();
-  console.log("only the Warcraft III OpenWar3 plays is accepted as an install");
+  console.log("only the Warcraft III Warcraft Open plays is accepted as an install");
   {
     // The rule is stated in src/vfs/version.ts, where it is also explained and said to the
     // player; this side only has to AGREE, so that a folder the game would refuse at load is
@@ -129,12 +129,12 @@ try {
       // from where its own executable sits (electron/locate.mjs) — and an unpackaged one, run
       // out of node_modules, must not go looking there.
       build("1.30.4.11274");
-      const exe = join(tmp, "OpenWar3", "OpenWar3.exe");
+      const exe = join(tmp, "Warcraft Open", "Warcraft Open.exe");
       const linux = { platform: "linux", env: {} };
       ok("a packaged app inside the game folder finds it", (await detectInstall({ packaged: true, execPath: exe, ...linux })) === tmp);
       ok("…an unpackaged one does not look", (await detectInstall({ packaged: false, execPath: exe, ...linux })) === null);
       ok("…and an AppImage is placed by its FILE, not its mount",
-         (await detectInstall({ packaged: true, execPath: "/tmp/.mount_x/openwar3", platform: "linux", env: { APPIMAGE: join(tmp, "OpenWar3.AppImage") } })) === tmp);
+         (await detectInstall({ packaged: true, execPath: "/tmp/.mount_x/warcraft-open", platform: "linux", env: { APPIMAGE: join(tmp, "WarcraftOpen.AppImage") } })) === tmp);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

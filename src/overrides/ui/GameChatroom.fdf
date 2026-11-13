@@ -1,4 +1,4 @@
-// OpenWar3 override — `UI\FrameDef\Glue\GameChatroom.fdf` (the game lobby).
+// Warcraft Open override — `UI\FrameDef\Glue\GameChatroom.fdf` (the game lobby).
 //
 // Where the other players type to reach this game — the other half of the LAN screen's
 // "Join by address" field (src/overrides/ui/LocalMultiplayerJoin.fdf).

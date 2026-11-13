@@ -388,7 +388,7 @@ function run(h: VoiceHost, heard: string, lexicon: Lexicon): string[] {
 
 /**
  * Run a sentence through the same path an utterance takes, with no microphone —
- * `window.openwar3.voiceSay("train three footmen")`, the console probe for testing the mapping
+ * `window.warcraftOpen.voiceSay("train three footmen")`, the console probe for testing the mapping
  * in a live match or on a menu (and for a player to see what a phrase would do).
  */
 export function voiceSay(text: string): string[] {
@@ -399,7 +399,7 @@ export function voiceSay(text: string): string[] {
 
 /**
  * Transcribe 16 kHz samples and run the result — the console probe for the
- * RECOGNISER (`window.openwar3.voiceHear(samples)`), for testing it with recorded speech.
+ * RECOGNISER (`window.warcraftOpen.voiceHear(samples)`), for testing it with recorded speech.
  */
 export async function voiceHear(audio: Float32Array): Promise<{ heard: string; did: string[] }> {
   const h = active() ?? host ?? menuHost;
@@ -410,7 +410,7 @@ export async function voiceHear(audio: Float32Array): Promise<{ heard: string; d
 }
 
 /** Whether the microphone is open and how many seconds of pre-roll it holds — a console probe
- *  (`window.openwar3.voicePreroll()`) for checking the pre-roll in a live match. */
+ *  (`window.warcraftOpen.voicePreroll()`) for checking the pre-roll in a live match. */
 export function voicePrerollState(): { micOpen: boolean; seconds: number } {
   const n = preroll.reduce((sum, p) => sum + p.length, 0);
   return { micOpen: !!stream, seconds: ctx ? n / ctx.sampleRate : 0 };

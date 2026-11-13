@@ -32,7 +32,7 @@ export interface GlueDialogOptions {
    *
    * Off by default, because the reference leaves the screen lit: the game's own message box asks
    * about the screen you are looking at ("delete this profile?"), and pushing that screen back
-   * would be answering a different question. On by OpenWar3's OWN modals — an update is not
+   * would be answering a different question. On by Warcraft Open's OWN modals — an update is not
    * about the main menu, it is about the game — which is the same line src/style.css draws for
    * the Join Server panel.
    */

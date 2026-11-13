@@ -21,7 +21,7 @@ Pressing it (`switchEdition`, `src/main.ts`) crosses the whole menu through blac
 (`GlueManager.crossWorlds`): the screen fades out as it stands, the edition flips, the 3D
 scene/panels/logo reload as the other game's (`MenuScene.reloadEdition`), the glue theme and
 wind swap (`GlueAudio.swapEdition`), and the new main menu arrives on its chrome Birth as the
-black lifts. The choice is remembered (`localStorage` `openwar3.edition`).
+black lifts. The choice is remembered (`localStorage` `warcraft-open.edition`).
 
 ## What the switch changes, and where each piece is read
 

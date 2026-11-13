@@ -1466,7 +1466,7 @@ export interface SpellEvent {
  * `GoldMineCollapseSound`). That pairing is the whole test for whether a cue prints
  * text: the three COMPLETION sounds — `JobDoneSound`, `UpgradeComplete`,
  * `ResearchComplete` — have no [Errors] row at all, which is why a finished building
- * only speaks in the real client (issue #111). OpenWar3 prints one anyway for a finished
+ * only speaks in the real client (issue #111). Warcraft Open prints one anyway for a finished
  * BUILDING ("Completed: Barracks", GlobalStrings' own `COLON_COMPLETED`) — a deliberate
  * departure, decided in the renderer where the audience is known, and shown on this same
  * one-line display, since that is where the engine puts everything it says in one line.

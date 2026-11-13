@@ -17,7 +17,7 @@ import { DowngradeDataSource, downgradeEdits } from "./downgrade";
 // from a real install").
 //
 // Two storages, one mount (issue #102). A 1.30.4 folder is a CASC content store, and that is
-// the version OpenWar3 targets — it is the one whose UI is built for widescreen. An MPQ-era
+// the version Warcraft Open targets — it is the one whose UI is built for widescreen. An MPQ-era
 // folder is four MPQs, and that path stays: it is what the engine was first written against,
 // and an install nobody has patched is still a perfectly good install. Which one a folder is
 // is not a question the player gets asked — `.build.info` beside the exe answers it.

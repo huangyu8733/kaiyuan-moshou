@@ -1,4 +1,4 @@
-// The OpenWar3 relay as a STANDALONE server — the port, and nothing else.
+// The Warcraft Open relay as a STANDALONE server — the port, and nothing else.
 //
 // Run it on its own:                                node server/relay.mjs   (pnpm relay)
 // Deploy this file to Railway/Render for internet play (it reads PORT).
@@ -13,7 +13,7 @@
 //   • It runs no simulation. The authoritative sim is the HOST CLIENT's. That keeps the
 //     CPU cost on hardware we don't rent, which is what makes a free tier viable.
 //   • It never loads Blizzard data. An authoritative *server* would have to read the
-//     install's SLKs to know a footman's stats — and OpenWar3_PLAN.md §8 forbids hosting
+//     install's SLKs to know a footman's stats — and Warcraft-Open_PLAN.md §8 forbids hosting
 //     Blizzard content. A relay sidesteps that entirely: it forwards opaque payloads.
 //   • It keeps no match state beyond a room table, so a cold start or a restart costs a
 //     lobby, never a game in progress.
@@ -38,4 +38,4 @@ attachRelay(wss, new RelayCore(), { heartbeatMs: HEARTBEAT_MS });
 // Any path is accepted, so both `ws://host:PORT` and `ws://host:PORT/relay` reach it — the
 // second being what a client built against the same-origin default sends when VITE_RELAY_URL
 // points a deployment here.
-console.log(`[OpenWar3] relay listening on ws://localhost:${PORT} (heartbeat ${HEARTBEAT_MS} ms)`);
+console.log(`[Warcraft Open] relay listening on ws://localhost:${PORT} (heartbeat ${HEARTBEAT_MS} ms)`);

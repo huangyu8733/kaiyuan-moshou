@@ -1,7 +1,7 @@
-# CLAUDE.md — working guide for OpenWar3
+# CLAUDE.md — working guide for Warcraft Open
 
-OpenWar3 is a browser-first, asset-compatible re-creation of the **Warcraft III (TFT 1.30.4)** engine in TypeScript.
-See [`README.md`](./README.md) and [`OpenWar3_PLAN.md`](./OpenWar3_PLAN.md) for scope; this file is the standing
+Warcraft Open is a browser-first, asset-compatible re-creation of the **Warcraft III (TFT 1.30.4)** engine in TypeScript.
+See [`README.md`](./README.md) and [`Warcraft-Open_PLAN.md`](./Warcraft-Open_PLAN.md) for scope; this file is the standing
 guidance for how to build here.
 
 ## Prime directive: match the original game, and use our sources to do it
@@ -68,7 +68,7 @@ data, or asset behaviour, **consult our sources** and cite what you used.
   desaturated **and drawn without the gold button frame**, and losing the frame is most of what reads as "you can't
   press this". `DIS` + the basename, for `BTN*` and a passive's `PASBTN*` alike); spell AoE circles are
   `ReplaceableTextures\Selection\SpellAreaOfEffect*.blp`.
-- **Legal boundary:** OpenWar3 ships **zero Blizzard assets or code**. The RE material is *documentation of behaviour
+- **Legal boundary:** Warcraft Open ships **zero Blizzard assets or code**. The RE material is *documentation of behaviour
   and naming only* — never lift Blizzard binaries, decompiled code, or GPL reference code (Warsmash: study, don't lift).
   Assets are read only from the user's own local install at runtime.
 
@@ -232,7 +232,7 @@ data, or asset behaviour, **consult our sources** and cite what you used.
   blocks or [`electron/locate.mjs`](electron/locate.mjs). ONE installer carries the 64- and the
   32-bit app, which is why the Windows build is pinned to **Electron 43** (`-c.electronVersion`
   in `dist:win`/`release:win`) — 44 publishes no `win32-ia32`. The installer asks for the
-  WARCRAFT III folder and installs into `<it>\OpenWar3`, and electron-builder's uninstaller is
+  WARCRAFT III folder and installs into `<it>\Warcraft Open`, and electron-builder's uninstaller is
   `RMDir /r $INSTDIR`, so `$INSTDIR` is kept off the game folder by three guards (after the
   directory page, in `.onInit` for silent installs, and in the uninstaller) — never remove one.
 - **Linux 32-bit:** read [`docs/linux.md`](docs/linux.md) before touching `electron/legacy/`,
@@ -248,7 +248,7 @@ data, or asset behaviour, **consult our sources** and cite what you used.
 - **Layout:** sim in `src/sim/` (world, pathing, `spells.ts`), game glue in `src/game/rts.ts`, rendering + command card
   in `src/render/mapViewer.ts`, HUD DOM in `src/ui/hud.ts`, data tables in `src/data/` (units, techtree, `abilities.ts`),
   audio in `src/audio/`, styles in `src/style.css`.
-- **UI kit:** [`packages/ui`](packages/ui/README.md) (`@openwar3/ui`) is the glue-screen look drawn from scratch
+- **UI kit:** [`packages/ui`](packages/ui/README.md) (`@warcraft-open/ui`) is the glue-screen look drawn from scratch
   (glue button, Human panel, tooltip, heading, loading bar) that BOTH the landing page (`web/`, React binding) and the
   game's load gate (`src/ui/gate.ts`, DOM binding) are built from, because that screen runs before any FrameDef can be
   read. Classes are `ow3-*` and it sets no `cursor`. `web/` takes it as a hard-linked `file:` dependency: after ADDING
@@ -1060,7 +1060,7 @@ data, or asset behaviour, **consult our sources** and cite what you used.
   NAME TAGS ("Fiend 4", a number per unit for life, shown only with two or more of a kind) so a
   body can be said, and "," toggles a hint box; an order spoken to an army rides the camera on
   its first hero. "Gather" asks the sim's worker profile, never "is it a worker" (the Ghoul).
-- **Never edit the install's UI files.** `UI\FrameDef\` is the player's. A control OpenWar3 needs
+- **Never edit the install's UI files.** `UI\FrameDef\` is the player's. A control Warcraft Open needs
   that the 2003 UI has no frame for goes in [`src/overrides/`](src/overrides/) — our own FrameDef
   files, layered onto the screen at mount through `mountFdfScreen`'s `overrides` option — and its
   README is the contract.
