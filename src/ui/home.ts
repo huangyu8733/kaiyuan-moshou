@@ -457,10 +457,27 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
     changeBtn.setDisabled(on);
   };
 
+  /** The whole screen, taken by the press that starts the game — the browser's own click is the
+   *  only gesture that may ask for it, and the folder picker is about to spend that gesture.
+   *
+   *  It is deliberately NOT awaited before the picker: fullscreen only CHECKS for activation
+   *  while the picker CONSUMES it, so asking first is free. If a browser disagrees and the picker
+   *  does not open, the frame is already fullscreen by the next press and this returns early —
+   *  the second click always gets its dialog. */
+  const enterPlayFullscreen = (): void => {
+    if (native || document.fullscreenElement) return;
+    try {
+      void document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+    } catch {
+      /* no fullscreen in this browser (an iPhone, a refused permission) — the tab is the frame */
+    }
+  };
+
   /** The browser's door: the folder is asked for HERE, by the press that also starts the game —
    *  a page may only open the folder picker from a gesture. The mount itself is the gate's: the
    *  same profile, the same progress narration. */
   const startBrowser = async (): Promise<void> => {
+    enterPlayFullscreen();
     setBusy(true);
     setStatus("");
     bar.set(null);

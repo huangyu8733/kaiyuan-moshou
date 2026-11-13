@@ -49,6 +49,9 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  /* A browser tab over the game must not rubber-band, pull-to-refresh or scroll-chain: there is
+     no document under it, and the one gesture that leaves is the one that loses the match. */
+  overscroll-behavior: none;
   font-family: var(--game-font);
   background: #05070c;
   color: #e8e2d0;
@@ -104,6 +107,9 @@ textarea,
   height: 100%;
   display: block;
   z-index: 0;
+  /* A touch on the world is a click on the world — never a pan or a double-tap zoom of the page
+     (which is what a canvas receives from a browser by default). */
+  touch-action: none;
 }
 
 /* Everything that belongs to the GAME FRAME — the map canvas, the world-anchored overlay

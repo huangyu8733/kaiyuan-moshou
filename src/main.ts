@@ -1608,6 +1608,26 @@ window.addEventListener("dragstart", (e) => { if (!isTextField(e.target)) e.prev
 // belongs to the camera and the HUD's lists).
 window.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 
+// The rest of the SCREEN-LEVEL gestures — the ones a browser page has and a game must not. A page
+// that only ever draws a game has no document to pan, pinch, double-tap or key-zoom, and each of
+// those would otherwise land on the frame the player is commanding. The shell has none of them,
+// so none of this is registered there.
+if (!isDesktopApp()) {
+  // Safari announces a trackpad pinch as `gesture*`, NOT as a ctrl+wheel — the only way to
+  // refuse it is by name. Chrome's ctrl+wheel is already above.
+  for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+    window.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+  }
+  // Pinch on a touch screen arrives as two pointers on the page rather than as a wheel.
+  window.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  // The browser's zoom KEYS (Cmd/Ctrl with +/-/0), which the wheel listener cannot see. Text fields
+  // keep them: a player typing a name may still use their own shortcuts.
+  window.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || isTextField(e.target)) return;
+    if (e.key === "+" || e.key === "-" || e.key === "=" || e.key === "0") e.preventDefault();
+  });
+}
+
 // The browser's own autofill and spell-check dropdowns over the game's text fields: the game
 // draws its own console, and a password manager's card or a red squiggle under a player's name
 // is not part of it. Each field still works exactly as before; only the page's suggestions go.
