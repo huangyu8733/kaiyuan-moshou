@@ -11,8 +11,8 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   other: "其他",
 };
 
-/** Android / HarmonyOS 直接跳后台填写的地址，不走 GitHub Release 兜底路由。 */
-export const DIRECT_PLATFORMS: Platform[] = ["android", "harmony", "other"];
+/** 这些平台直接使用后台为每一行填写的地址，不走 /download/<os> 的单一跳转。 */
+export const DIRECT_PLATFORMS: Platform[] = ["windows", "android", "harmony", "other"];
 
 export function asPlatform(value: string): Platform {
   return (PLATFORM_ORDER as string[]).includes(value) ? (value as Platform) : "other";

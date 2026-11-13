@@ -3,9 +3,12 @@ import type { DownloadRow } from "../schema";
 
 export function listDownloads(includeDisabled = false): DownloadRow[] {
   const where = includeDisabled ? "" : "WHERE enabled = 1";
-  return getDb()
+  const rows = getDb()
     .prepare(`SELECT * FROM downloads ${where} ORDER BY sort ASC, id ASC`)
     .all() as unknown as DownloadRow[];
+  // node:sqlite hands back null-prototype objects, which React refuses to serialize
+  // into a Client Component (GameDownloads); a spread gives them Object.prototype.
+  return rows.map((row) => ({ ...row }));
 }
 
 /** The enabled link for a platform. `os` is the route's platform code. */

@@ -12,6 +12,7 @@
     "cycles": "node tools/import-cycle-test.mjs",
     "test": "node tools/test.mjs",
     "preview": "vite preview",
+    "build:web": "WARCRAFT_OPEN_BASE=/play/ vite build",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json",
     "data:extract": "tsc -p tools/tsconfig.casc.json && node --max-old-space-size=8192 tools/extract-data.mjs",
     "casc:test": "tsc -p tools/tsconfig.casc.json && node --max-old-space-size=8192 tools/casc-test.cjs",

@@ -1660,16 +1660,12 @@ if (replayBridge()) {
       console.error("[dev-boot] failed:", err);
       gate = mountLoadGate(ui, onFilesLoaded); // fall back to the human path
     });
-} else if (isDesktopApp()) {
-  // The packaged app's front page: the site's layout, with the game's own launch button and a
-  // map shelf that writes into the install. The browser keeps the load gate, where picking a
-  // folder is also the gesture that opens its autoplay gate.
-  home = mountHome(ui, onFilesLoaded);
 } else {
-  // The launcher IS the front page: a browser lands here, and the game starts when the player
-  // presses Play. A remembered install is opened by that press rather than for them, so "/" is
-  // always the same screen — the platform's — and never a redirect into the middle of a game.
-  gate = mountLoadGate(ui, onFilesLoaded, { auto: false });
+  // The launcher's front page is the same page in the browser: /play/ opens on it, and the
+  // folder picker is the Launch press itself (src/ui/home.ts startBrowser). A remembered folder
+  // is re-opened by that press rather than for the player, so "/" is always the same screen and
+  // never a redirect into the middle of a game.
+  home = mountHome(ui, onFilesLoaded);
 }
 
 // Console hooks for the phase exit criteria (see README "Testing manually").

@@ -58,7 +58,13 @@ const commit = (() => {
 })();
 const fingerprint = simFingerprint(root);
 
+// Where the build is served from. The desktop app and a root-hosted static build use "/"; the
+// website serves the playable build under /play/, so its release sets WARCRAFT_OPEN_BASE=/play/
+// and every emitted asset URL is rebased to match.
+const base = process.env.WARCRAFT_OPEN_BASE || "/";
+
 export default defineConfig({
+  base,
   plugins: [devInstall(), driveProxy(), mapSiteProxy(), perfLog(), matchLog(), replays(), relay()],
   define: {
     ...perfLogDefines(),

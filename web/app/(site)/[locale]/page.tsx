@@ -42,10 +42,12 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
           />
           <p className="hero__tagline">{dict.hero.tagline}</p>
           <p className="hero__lede">{dict.hero.lede}</p>
-          <GameDownloads downloads={downloads.slice(0, 4)} dict={dict} locale={locale} />
+          <GameDownloads downloads={downloads} dict={dict} locale={locale} />
           <p className="downloads__meta">
             {version ? <>{format(dict.hero.latest, { version })} · </> : null}
             <Link href={`/${locale}/downloads`}>{dict.nav.downloads}</Link>
+            {" · "}
+            <a href="/play/">{dict.downloads.playInBrowser}</a>
           </p>
         </div>
       </section>

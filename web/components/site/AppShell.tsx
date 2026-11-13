@@ -50,6 +50,9 @@ export function AppShell({
           ))}
         </nav>
         <div className="app-topbar__actions">
+          <a className="topbar-play" href="/play/" title={dict.downloads.playInBrowserHint}>
+            {dict.downloads.playInBrowser}
+          </a>
           <LanguageSwitcher locale={locale} locales={locales} />
           <a
             className="resource"

@@ -1,7 +1,7 @@
 import { bindHotkeys, createGlueButton, createPanel, createProgressBar, type GlueButton } from "@warcraft-open/ui/dom";
 import { currentLocale, t } from "../i18n";
 import { createLanguagePicker } from "../i18n/switch";
-import { safeMapName } from "../assets/downloadedMaps";
+import { downloadedMapKey, safeMapName } from "../assets/downloadedMaps";
 import {
   deleteDownloadedMap, downloadedMapExists, isDesktopApp, listDownloadedMaps, loadNativeInstall,
   pickNativeInstall, quitNative, rememberedInstall, saveMapToDownload,
@@ -10,17 +10,26 @@ import {
 } from "../assets/nativeInstall";
 import { DEFAULT_PROFILE } from "../vfs/profiles";
 import { loadProfile } from "../vfs/loader";
+import {
+  pickInstall, readInstallDir, rememberedInstallHandle, requestPersistence,
+  type DirHandle, type PickedInstall,
+} from "../assets/opfs";
 import { wrongVersionMessage } from "../vfs/version";
 import type { GateLoad } from "./gate";
 
-// The DESKTOP app's front page: the same shell as the site (top bar, side nav, hero, footer),
-// with three views of its own — Launch, Maps and About. They are PAGES, not sections stacked
-// under the hero: the launch screen is the game's front door, and the shelves live behind the
-// nav. There is deliberately no "download the game" block: a shipped app already is the game.
+// The launcher's front page — the desktop app's and the browser build's alike: the same shell as
+// the site (top bar, side nav, hero, footer), with three views of its own — Launch, Maps and
+// About. They are PAGES, not sections stacked under the hero: the launch screen is the game's
+// front door, and the shelves live behind the nav. There is deliberately no "download the game"
+// block: a shipped app already is the game, and /play/ is reached from the site's download page.
 //
 // The map page reads the site's public map API and saves straight into the install's
 // `Maps\Download\`, through the shell (`ow3native.saveMap`). A map service that is down or not
 // configured only empties that page; starting the game never waits for it.
+
+/** A public asset's URL. The page may be served from a subpath (the website's /play/), so the
+ *  build's base — not a bare "/" — is what the artwork hangs off. */
+const asset = (path: string): string => `${import.meta.env.BASE_URL}${path}`;
 
 export interface Home {
   dispose(): void;
@@ -42,10 +51,11 @@ interface SiteMap {
 }
 
 /** The site this build reads maps from. A packaged build must set `VITE_WARCRAFT_OPEN_SITE_URL`;
- *  a dev server falls back to the local site so the shelf works out of the box. */
+ *  the browser build is served BY the site (https://warcraft.hhkj.me/play/), so it reads its own
+ *  origin; a dev server falls back to the local site so the shelf works out of the box. */
 const SITE = (
   (import.meta.env.VITE_WARCRAFT_OPEN_SITE_URL as string | undefined) ??
-  (import.meta.env.DEV ? "http://localhost:3000" : "")
+  (import.meta.env.DEV ? "http://localhost:3000" : isDesktopApp() ? "" : location.origin)
 ).replace(/\/+$/, "");
 
 const siteLocale = (): string => (currentLocale() === "zhCN" ? "zh" : "en");
@@ -60,8 +70,15 @@ function formatBytes(value: number | null): string {
 
 export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void): Home {
   const abort = new AbortController();
+  const native = isDesktopApp();
   let busy = false;
   let install: InstalledFolder = { path: null, valid: false, present: false, version: null };
+  /** Browser: the folder an earlier visit picked. Its grant does not survive a reload, so it is
+   *  kept only to hand to the Play button — a press is what may ask for it back. */
+  let browserHandle: DirHandle | null = null;
+  /** Browser: the folder this page has already mounted. Pressing Play again reuses it rather
+   *  than putting the picker up a second time. */
+  let browserInstall: PickedInstall | null = null;
   /** What the map page last read, so a detail route can be opened without another request. */
   let loadedMaps: SiteMap[] = [];
   /** Maps already kept in the install's `Maps\Download\`, by slug — the shelf's "downloaded". */
@@ -84,7 +101,7 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   brand.className = "home-brand";
   brand.href = "#/";
   const brandLogo = document.createElement("img");
-  brandLogo.src = "/brand-logo.png";
+  brandLogo.src = asset("brand-logo.png");
   brandLogo.alt = t("app.title");
   brandLogo.draggable = false;
   brand.append(brandLogo);
@@ -147,7 +164,7 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   heroBg.className = "home-hero-bg";
   heroBg.setAttribute("aria-hidden", "true");
   const heroBgImg = document.createElement("img");
-  heroBgImg.src = "/demoscreens/game-server.avif";
+  heroBgImg.src = asset("demoscreens/game-server.avif");
   heroBgImg.alt = "";
   heroBgImg.draggable = false;
   heroBg.append(heroBgImg);
@@ -159,7 +176,7 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   kicker.textContent = t("home.kicker");
   const logo = document.createElement("img");
   logo.className = "home-hero-logo";
-  logo.src = "/hero-logo.avif";
+  logo.src = asset("hero-logo.avif");
   logo.alt = t("app.title");
   logo.draggable = false;
   const tagline = document.createElement("p");
@@ -385,10 +402,20 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   updateBtn.button.onclick = (): void => void runUpdate();
 
   corner.append(updateBtn.root, quitBtn.root);
+  if (!native) {
+    // Both are the shell's: a page cannot update itself, and it cannot quit an app it is not.
+    updateBtn.root.hidden = true;
+    quitBtn.root.hidden = true;
+  }
   page.append(corner);
 
   // ── Install state ─────────────────────────────────────────────────────────
   const paintInstall = (): void => {
+    if (!native) {
+      installLine.classList.remove("is-error");
+      installLine.textContent = t(browserHandle ? "home.folderRemembered" : "home.folderNone");
+      return;
+    }
     installLine.classList.toggle("is-error", !!install.path && !install.valid);
     if (!install.path) {
       installLine.textContent = t("home.folderNone");
@@ -407,6 +434,14 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   };
 
   const refreshInstall = async (): Promise<void> => {
+    if (!native) {
+      browserHandle = await rememberedInstallHandle();
+      paintInstall();
+      downloaded.clear();
+      for (const map of loadedMaps) applyDownloadState(map);
+      void refreshDownloaded();
+      return;
+    }
     install = await rememberedInstall();
     paintInstall();
     // A different folder has different maps in its `Maps\Download\`: forget the old answers and
@@ -422,8 +457,59 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
     changeBtn.setDisabled(on);
   };
 
+  /** The browser's door: the folder is asked for HERE, by the press that also starts the game —
+   *  a page may only open the folder picker from a gesture. The mount itself is the gate's: the
+   *  same profile, the same progress narration. */
+  const startBrowser = async (): Promise<void> => {
+    setBusy(true);
+    setStatus("");
+    bar.set(null);
+    bar.setLabel(t("gate.loading"));
+    bar.root.hidden = false;
+    try {
+      let picked = browserInstall;
+      if (!picked && browserHandle) {
+        const allowed = (await browserHandle.requestPermission?.({ mode: "read" })) ?? "granted";
+        if (allowed === "granted") {
+          picked = await readInstallDir(browserHandle);
+          browserInstall = picked;
+        }
+      }
+      if (!picked) {
+        picked = await pickInstall();
+        if (!picked) {
+          bar.root.hidden = true;
+          setBusy(false);
+          setStatus(t("gate.noFolder"), true);
+          return;
+        }
+        browserInstall = picked;
+        browserHandle = await rememberedInstallHandle();
+      }
+      paintInstall();
+      // Browser only: the desktop app reads the folder off disk and has no quota to be evicted
+      // from, which is the other half of why the export is native.
+      await requestPersistence();
+      const load = await loadProfile(picked, DEFAULT_PROFILE, (_message, fraction) => bar.set(fraction ?? null));
+      bar.set(1);
+      bar.setLabel(t("gate.loaded"));
+      // Let the full bar be READ before the menu build holds the main thread.
+      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => requestAnimationFrame(() => setTimeout(r)));
+      onLoaded(load);
+    } catch (err) {
+      bar.root.hidden = true;
+      setBusy(false);
+      setStatus(t("home.loadFailed", { error: (err as Error).message }), true);
+    }
+  };
+
   const start = async (): Promise<void> => {
     if (busy) return;
+    if (!native) {
+      await startBrowser();
+      return;
+    }
     if (!install.valid) {
       // A first run (or a folder that moved): the press below IS the folder choice.
       const picked = await pickNativeInstall();
@@ -460,6 +546,15 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
 
   const changeFolder = async (): Promise<void> => {
     if (busy) return;
+    if (!native) {
+      const picked = await pickInstall();
+      if (!picked) return;
+      browserInstall = picked;
+      browserHandle = await rememberedInstallHandle();
+      paintInstall();
+      setStatus(t("home.folderChangedBrowser"));
+      return;
+    }
     const picked = await pickNativeInstall();
     if (!picked) return;
     await refreshInstall();
@@ -506,6 +601,23 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
 
   /** Ask the shell which of the shelf's maps are already in `Maps\Download\`. */
   const refreshDownloaded = async (): Promise<void> => {
+    if (!native) {
+      // The browser's answer is the mount's own walk of the picked folder: every `Maps\Download\`
+      // entry it collected is a map this install already keeps.
+      downloaded.clear();
+      const kept = new Set<string>();
+      for (const key of browserInstall?.files.keys() ?? []) {
+        if (!key.toLowerCase().startsWith("maps\\download\\")) continue;
+        const last = key.split("\\").pop();
+        if (last) kept.add(last.toLowerCase());
+      }
+      for (const map of loadedMaps) {
+        const name = safeMapName(map.fileName)?.toLowerCase();
+        if (name && kept.has(name)) downloaded.add(map.slug);
+        applyDownloadState(map);
+      }
+      return;
+    }
     if (!install.valid) return;
     await Promise.all(loadedMaps.map(async (map) => {
       const name = safeMapName(map.fileName);
@@ -515,7 +627,80 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
     }));
   };
 
+  /** Browser: keep the map in the picked folder's `Maps\Download\`, through the very folder handle
+   *  the install was mounted from (File System Access) — the same place the desktop app writes.
+   *  A folder read through `<input webkitdirectory>` has no writer, so there the file is handed to
+   *  the browser's own downloads instead. */
+  const browserKeepMap = async (map: SiteMap, btn: GlueButton): Promise<void> => {
+    let folder = browserInstall;
+    if (!folder && browserHandle) {
+      // A remembered folder may be re-opened from this click, which is also the gesture that
+      // lets the browser ask for write access.
+      const allowed = (await browserHandle.requestPermission?.({ mode: "readwrite" })) ?? "granted";
+      if (allowed === "granted") folder = browserInstall = await readInstallDir(browserHandle);
+    }
+    if (!folder) {
+      showToast(t("home.pickFirst"));
+      return;
+    }
+    if (!map.downloadUrl) {
+      showToast(t("home.mapNoFile", { name: map.name }));
+      return;
+    }
+    const save = folder.saveMap;
+    if (!save) {
+      const link = document.createElement("a");
+      link.href = map.downloadUrl;
+      link.download = safeMapName(map.fileName) ?? "";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      showToast(t("home.mapSavedToDownloads"), false);
+      return;
+    }
+    btn.setDisabled(true);
+    btn.setLabel(t("home.downloading"));
+    try {
+      // Ask while the click is still in hand: the fetch below can end long after the gesture.
+      if (folder.askMapWrite && !(await folder.askMapWrite())) throw new Error(t("home.mapWriteRefused"));
+      const res = await fetch(map.downloadUrl, { signal: abort.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const name = safeMapName(map.fileName);
+      if (!name) throw new Error(`unusable file name: ${map.fileName}`);
+      await save(name, bytes);
+      // The mount already walked the folder, so this session's Custom Game list is that same map:
+      // add the file to it rather than making the player reload to see their new map.
+      folder.files.set(downloadedMapKey(name), new File([bytes.slice()], name));
+      const locale = currentLocale();
+      try {
+        const sidecar = await fetch(`${map.downloadUrl}?lang=${locale}`, { signal: abort.signal });
+        if (sidecar.ok) {
+          const sidecarName = `${name}.${locale}.json`;
+          const sidecarBytes = new Uint8Array(await sidecar.arrayBuffer());
+          await save(sidecarName, sidecarBytes);
+          folder.files.set(downloadedMapKey(sidecarName), new File([sidecarBytes.slice()], sidecarName));
+        }
+      } catch (err) {
+        if (abort.signal.aborted) return;
+        console.warn("[Warcraft Open] the map language file was not kept:", err);
+      }
+      btn.setDisabled(false);
+      downloaded.add(map.slug);
+      applyDownloadState(map);
+    } catch (err) {
+      if (abort.signal.aborted) return;
+      btn.setDisabled(false);
+      btn.setLabel(t("home.download"));
+      showToast(t("home.mapFailed", { name: map.name, error: (err as Error).message }));
+    }
+  };
+
   const downloadMap = async (map: SiteMap, btn: GlueButton): Promise<void> => {
+    if (!native) {
+      await browserKeepMap(map, btn);
+      return;
+    }
     if (!install.valid) {
       showToast(t("home.pickFirst"));
       return;
@@ -782,11 +967,31 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
         showToast(t("home.deleteFailed", { error: (err as Error).message }));
       }
     };
-    row.append(text, remove);
+    // Deleting means removing a file from the disk, which is the shell's; the browser's row just
+    // reports what the folder holds.
+    row.append(text, ...(native ? [remove] : []));
     return row;
   };
 
   const refreshInstalled = async (): Promise<void> => {
+    if (!native) {
+      // The same walk the mount made — `Maps\Download\` as the picked folder gave it to us.
+      if (!browserInstall) {
+        installedBody.replaceChildren(installedEmpty(t("home.pickFirst")));
+        return;
+      }
+      const kept: DownloadedMap[] = [];
+      for (const [key, file] of browserInstall.files) {
+        if (!key.toLowerCase().startsWith("maps\\download\\")) continue;
+        const name = key.split("\\").pop();
+        if (!name || !/\.(w3m|w3x)$/i.test(name)) continue;
+        kept.push({ name, size: file.size, updatedAt: new Date(file.lastModified).toISOString() });
+      }
+      installedBody.replaceChildren(
+        ...(kept.length === 0 ? [installedEmpty(t("home.noInstalled"))] : kept.map(installedRow)),
+      );
+      return;
+    }
     if (!install.valid) {
       installedBody.replaceChildren(installedEmpty(t("home.pickFirst")));
       return;
@@ -887,11 +1092,8 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   window.addEventListener("hashchange", route);
   route();
 
-  if (!isDesktopApp()) message(t("home.mapsUnconfigured")); // defensive: this page is the desktop boot
-  else {
-    void refreshInstall();
-    void loadMaps();
-  }
+  void refreshInstall();
+  void loadMaps();
 
   return {
     dispose: () => {

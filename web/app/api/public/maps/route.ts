@@ -17,6 +17,10 @@ const CORS = {
 /** 地图下载时保存到 `Maps\Download\` 的文件名：优先取 OSS key，其次取 URL 路径。 */
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
+  // Behind nginx `request.url` carries the app server's own address (localhost:3000), not the
+  // public one — a download URL built from it is unreachable for every client. The configured
+  // public origin is the answer; a bare dev run falls back to the request's.
+  const site = (process.env.NEXT_PUBLIC_SITE_URL || url.origin).replace(/\/+$/, "");
   const locale = url.searchParams.get("locale") || DEFAULT_LOCALE;
   const requested = Number(url.searchParams.get("limit"));
   const limit = Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), 60) : 12;
@@ -37,9 +41,7 @@ export async function GET(request: Request): Promise<Response> {
     category: map.category,
     updatedAt: map.updated_at,
     fileName: mapFileName(map),
-    downloadUrl: map.file_url
-      ? new URL(`/api/public/maps/${encodeURIComponent(map.slug)}/file`, url.origin).toString()
-      : null,
+    downloadUrl: map.file_url ? `${site}/api/public/maps/${encodeURIComponent(map.slug)}/file` : null,
   }));
 
   return Response.json(

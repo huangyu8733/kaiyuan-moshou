@@ -4,7 +4,8 @@
   "files": {
     "mac-arm64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-0.3.85-arm64.dmg",
     "mac-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-0.3.85-x64.dmg",
-    "win-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-0.3.85-x64.exe",
+    "win-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-Setup-0.3.85-x64.exe",
+    "win-arm64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-Setup-0.3.85-arm64.exe",
     "linux-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-0.3.85-x86_64.AppImage"
   }
 }
