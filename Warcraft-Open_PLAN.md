@@ -13,7 +13,7 @@ Blizzard assets** — and is **playable with zero assets** via placeholders (see
 
 ## Progress snapshot (2026-07-03)
 
-Repo: `elevchyt/warcraft-open` (private). Package manager: **pnpm**. Renderer: mdx-m3-viewer 5.12.0,
+Repo: `huangyu8733/warcraft-open` (upstream: `elevchyt/openwar3`). Package manager: **pnpm**. Renderer: mdx-m3-viewer 5.12.0,
 patched via `pnpm patch` (`patches/mdx-m3-viewer@5.12.0.patch`) — see notes below.
 
 **Done:**

@@ -159,7 +159,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "elevchyt",
+        "owner": "huangyu8733",
         "repo": "warcraft-open"
       }
     ]

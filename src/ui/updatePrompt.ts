@@ -25,7 +25,7 @@ import type { DataSource } from "../vfs/types";
  *  wants to read what changed before saying yes can, in their own browser: in the desktop app
  *  a `target="_blank"` link goes through `setWindowOpenHandler` to `shell.openExternal`
  *  (electron/main.mjs) and never opens a second game window. */
-const RELEASES_URL = "https://github.com/elevchyt/warcraft-open/releases";
+const RELEASES_URL = "https://github.com/huangyu8733/warcraft-open/releases";
 
 /**
  * Make the gold version line of the prompt a link to the releases page.
