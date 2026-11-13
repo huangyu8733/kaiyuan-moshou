@@ -1,6 +1,12 @@
 {
   "name": "warcraft-open",
-  "version": "0.3.85",
+  "version": "1.0.0",
+  "upstream": {
+    "name": "openwar3",
+    "repo": "https://github.com/elevchyt/openwar3",
+    "version": "0.3.85",
+    "note": "上游最新版为 0.3.85；本地 0.3.86 起含自有改动，升级上游时以此版本号为基准做三方合并"
+  },
   "private": true,
   "description": "Browser-first, asset-compatible re-creation of the Warcraft III engine (TypeScript). Ships zero Blizzard assets.",
   "type": "module",
@@ -13,6 +19,7 @@
     "test": "node tools/test.mjs",
     "preview": "vite preview",
     "build:web": "WARCRAFT_OPEN_BASE=/play/ vite build",
+    "release:web": "vite build && node tools/web-bundle.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json",
     "data:extract": "tsc -p tools/tsconfig.casc.json && node --max-old-space-size=8192 tools/extract-data.mjs",
     "casc:test": "tsc -p tools/tsconfig.casc.json && node --max-old-space-size=8192 tools/casc-test.cjs",
@@ -38,6 +45,7 @@
     "dist:linux32": "pnpm build && node tools/make-icon.mjs && node tools/build-legacy-main.mjs && electron-builder --linux --ia32 -c.electronVersion=18.3.15 -c.extraMetadata.main=electron/main-legacy.cjs",
     "dist:win": "pnpm build && node tools/make-icon.mjs && electron-builder --win -c.electronVersion=43.7.0",
     "dist:mac": "pnpm build && node tools/make-icon.mjs && electron-builder --mac",
+    "dist:android": "cd android && ./gradlew assembleRelease && cp app/build/outputs/apk/release/app-release.apk ../release/Warcraft-Open-${npm_package_version}-android.apk",
     "release": "pnpm build && node tools/make-icon.mjs && electron-builder --publish always && node tools/replay-bundle.mjs --publish",
     "release:linux32": "pnpm build && node tools/make-icon.mjs && node tools/build-legacy-main.mjs && electron-builder --linux --ia32 -c.electronVersion=18.3.15 -c.extraMetadata.main=electron/main-legacy.cjs --publish always",
     "hive:post": "node tools/hive-post.mjs",

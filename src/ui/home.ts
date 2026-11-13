@@ -164,7 +164,7 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
   heroBg.className = "home-hero-bg";
   heroBg.setAttribute("aria-hidden", "true");
   const heroBgImg = document.createElement("img");
-  heroBgImg.src = asset("demoscreens/game-server.avif");
+  heroBgImg.src = asset("demoscreens/launcher-hero.avif");
   heroBgImg.alt = "";
   heroBgImg.draggable = false;
   heroBg.append(heroBgImg);
@@ -390,7 +390,8 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
       } else if (state.phase === "ready") {
         stop();
         resetUpdate();
-        if (window.confirm(t("home.updateReady", { version: found.version ?? "" }))) installUpdate();
+        const question = found.mode === "web" ? t("home.updateWebReady") : t("home.updateReady", { version: found.version ?? "" });
+        if (window.confirm(question)) installUpdate();
       } else if (state.phase === "error") {
         stop();
         resetUpdate();
@@ -457,27 +458,40 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
     changeBtn.setDisabled(on);
   };
 
-  /** The whole screen, taken by the press that starts the game — the browser's own click is the
-   *  only gesture that may ask for it, and the folder picker is about to spend that gesture.
+  /** The whole screen, taken as the game is ENTERED — and only ever entered.
    *
-   *  It is deliberately NOT awaited before the picker: fullscreen only CHECKS for activation
-   *  while the picker CONSUMES it, so asking first is free. If a browser disagrees and the picker
-   *  does not open, the frame is already fullscreen by the next press and this returns early —
-   *  the second click always gets its dialog. */
+   *  It is asked for AFTER the folder is resolved, never before: the folder picker and the folder
+   *  permission prompt both belong to the press that starts the game, and a fullscreen request
+   *  ahead of them spends it — the page went fullscreen, the dialog closed it again, and the next
+   *  press looked like a toggle. There is no toggle here: nothing on this path ever EXITS
+   *  fullscreen (leaving is Esc's, or Alt+Enter's — ui/fullscreen.ts).
+   *
+   *  If the dialog took the activation with it and the request is refused, the screen is taken on
+   *  the player's NEXT press instead — the first click inside the game. */
   const enterPlayFullscreen = (): void => {
     if (native || document.fullscreenElement) return;
-    try {
-      void document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
-    } catch {
-      /* no fullscreen in this browser (an iPhone, a refused permission) — the tab is the frame */
-    }
+    const ask = async (): Promise<boolean> => {
+      try {
+        await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+        return true;
+      } catch {
+        return false; // no fullscreen here (an iPhone), or the press's activation is spent
+      }
+    };
+    void ask().then((taken) => {
+      if (taken || document.fullscreenElement) return;
+      const retry = (): void => {
+        window.removeEventListener("pointerdown", retry, true);
+        if (!document.fullscreenElement) void ask();
+      };
+      window.addEventListener("pointerdown", retry, { capture: true, once: true });
+    });
   };
 
   /** The browser's door: the folder is asked for HERE, by the press that also starts the game —
    *  a page may only open the folder picker from a gesture. The mount itself is the gate's: the
    *  same profile, the same progress narration. */
   const startBrowser = async (): Promise<void> => {
-    enterPlayFullscreen();
     setBusy(true);
     setStatus("");
     bar.set(null);
@@ -513,6 +527,8 @@ export function mountHome(root: HTMLElement, onLoaded: (load: GateLoad) => void)
       // Let the full bar be READ before the menu build holds the main thread.
       await new Promise((r) => setTimeout(r, 600));
       await new Promise((r) => requestAnimationFrame(() => setTimeout(r)));
+      // The game is mounted and about to be shown: this is the screen to take.
+      enterPlayFullscreen();
       onLoaded(load);
     } catch (err) {
       bar.root.hidden = true;

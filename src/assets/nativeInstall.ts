@@ -67,6 +67,8 @@ export interface UpdateState {
   version: string | null;
   percent: number;
   error: string | null;
+  /** `app` replaces the installed program, `web` swaps only the page and reloads onto it. */
+  mode?: "app" | "web" | null;
 }
 
 const bridge = (): NativeBridge | null =>

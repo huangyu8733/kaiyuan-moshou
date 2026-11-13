@@ -20,9 +20,10 @@ import { app, net, shell } from "electron";
 import { createWriteStream, promises as fsp } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { applyWebBundle, currentWebVersion } from "./webUpdate.mjs";
 
 const MANIFEST_URL = process.env.WARCRAFT_OPEN_UPDATE_URL || "https://warcraft.hhkj.me/launcher/latest.json";
-const IDLE = { phase: "idle", version: null, percent: 0, error: null };
+const IDLE = { phase: "idle", version: null, percent: 0, error: null, mode: null };
 
 function parseVersion(value) {
   return String(value ?? "").replace(/^v/i, "").split(/[.+-]/).map((part) => Number.parseInt(part, 10) || 0);
@@ -43,7 +44,10 @@ export function isNewerVersion(remote, local) {
 /** The manifest key for this build: mac-arm64, mac-x64, win-x64, linux-x64. */
 function assetKey() {
   const platform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "win" : "linux";
-  return `${platform}-${process.arch}`;
+  // An x64 build on Apple Silicon IS x64 — Rosetta is running it — but the machine is not, and the
+  // native arm64 build is both faster and what the player wants. Ask for it.
+  const arch = process.platform === "darwin" && app.runningUnderARM64Translation ? "arm64" : process.arch;
+  return `${platform}-${arch}`;
 }
 
 function getJson(url) {
@@ -141,7 +145,7 @@ async function replaceOnMac(file) {
   app.quit();
 }
 
-export function startUpdates({ onChange, log, fakeVersion = null } = {}) {
+export function startUpdates({ onChange, log, fakeVersion = null, onApplied = null } = {}) {
   let state = { ...IDLE };
   let manifest = null;
   const set = (patch) => {
@@ -152,7 +156,7 @@ export function startUpdates({ onChange, log, fakeVersion = null } = {}) {
   // A pretend update, for driving the two questions without publishing a release to ask them.
   // Unpackaged only; a shipped build cannot be told there is a version it should fetch.
   if (fakeVersion) {
-    setTimeout(() => set({ phase: "available", version: fakeVersion, error: null }), 400);
+    setTimeout(() => set({ phase: "available", version: fakeVersion, mode: "app", error: null }), 400);
     return {
       get state() { return state; },
       check() { return Promise.resolve(); },
@@ -184,24 +188,33 @@ export function startUpdates({ onChange, log, fakeVersion = null } = {}) {
         const version = String(data?.version ?? "").trim();
         if (!version) throw new Error("The update manifest has no version.");
         manifest = data;
-        if (!isNewerVersion(version, app.getVersion())) {
-          set({ phase: "none", version, error: null });
+        // The SHELL comes first: a new app brings its own page, so there is nothing to fetch
+        // separately. Only when the shell is current does a newer page count on its own — that is
+        // the hot half, applied by reloading the window instead of reinstalling the app.
+        if (isNewerVersion(version, app.getVersion())) {
+          if (!data?.files?.[assetKey()]) {
+            set({ phase: "error", error: `No build for ${assetKey()} in the update manifest.` });
+            return;
+          }
+          set({ phase: "available", version, mode: "app", error: null });
           return;
         }
-        if (!data?.files?.[assetKey()]) {
-          set({ phase: "error", error: `No build for ${assetKey()} in the update manifest.` });
+        const web = data?.web;
+        if (web?.url && isNewerVersion(String(web.version ?? ""), currentWebVersion())) {
+          set({ phase: "available", version: String(web.version), mode: "web", error: null });
           return;
         }
-        set({ phase: "available", version, error: null });
+        set({ phase: "none", version, mode: null, error: null });
       } catch (err) {
         set({ phase: "error", error: String(err?.message ?? err) });
       }
     },
-    /** Fetch the installer. Progress events keep the overlay honest; failures leave the player
-     *  on the build they have. */
+    /** Fetch the installer — or, for a page-only update, the page's archive. Progress events keep
+     *  the overlay honest; failures leave the player on the build they have. */
     async download() {
       if (state.phase !== "available" || !manifest) return;
-      const url = manifest.files?.[assetKey()];
+      const web = state.mode === "web";
+      const url = web ? manifest.web?.url : manifest.files?.[assetKey()];
       if (!url) return;
       set({ phase: "downloading", percent: 0, error: null });
       try {
@@ -216,11 +229,18 @@ export function startUpdates({ onChange, log, fakeVersion = null } = {}) {
         set({ phase: "error", error: String(err?.message ?? err) });
       }
     },
-    /** Hand over to the installer (or open the dmg) and quit. */
+    /** Hand over to the installer (or open the dmg) and quit — or, for a page-only update, put the
+     *  new page in place and let the window reload onto it. */
     async install() {
       if (state.phase !== "ready" || !manifest?.installer) return;
       set({ phase: "installing" });
       try {
+        if (state.mode === "web") {
+          applyWebBundle(manifest.installer, String(manifest.web?.version ?? ""));
+          onApplied?.();
+          set({ ...IDLE });
+          return;
+        }
         if (process.platform === "linux") await replaceOnLinux(manifest.installer);
         else if (process.platform === "win32") await replaceOnWindows(manifest.installer);
         else if (process.platform === "darwin") await replaceOnMac(manifest.installer);

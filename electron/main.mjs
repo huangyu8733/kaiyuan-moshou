@@ -33,6 +33,7 @@ import { arrangeDataDir } from "./dataDir.mjs";
 import { SHELL_CONTRACT, createSandbox, downloadBundle, fetchBundleManifest, removeSandbox, sweepSandboxes } from "./replayBundles.mjs";
 import { readMapSite } from "./mapSites.mjs";
 import { wireMapSiteViews } from "./mapSitesView.mjs";
+import { webRoot } from "./webUpdate.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -506,6 +507,11 @@ app.whenReady().then(async () => {
       updateState = next;
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send("ow3:update", next);
     },
+    // A page-only update is applied in place: the window reloads onto the new copy, which is the
+    // whole point — no installer, no restart of the app.
+    onApplied: () => {
+      for (const win of BrowserWindow.getAllWindows()) win.webContents.reload();
+    },
   });
   ipcMain.handle("ow3:update-state", () => updateState ?? updates.state);
   ipcMain.handle("ow3:update-check", () => { updates.check(); });
@@ -518,10 +524,12 @@ app.whenReady().then(async () => {
 
   let url = DEV_URL;
   if (!url) {
-    if (!existsSync(join(DIST, "index.html"))) {
+    // The newest page the updater fetched, or the one packaged in the app (electron/webUpdate.mjs).
+    const root = webRoot();
+    if (!existsSync(join(root, "index.html"))) {
       throw new Error("No build to serve. Run `pnpm build` first, or `pnpm app:dev` against a running dev server.");
     }
-    server = await startServer({ root: DIST });
+    server = await startServer({ root });
     url = server.url;
     // The address is printed because until the beacon lands it is the number the OTHER machine
     // types, and the port is only USUALLY 8787 (server.mjs walks if it is taken). The protocol

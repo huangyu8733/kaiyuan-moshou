@@ -1,11 +1,16 @@
 {
-  "version": "0.3.85",
+  "version": "1.0.0",
   "notes": "https://warcraft.hhkj.me/zh/downloads",
   "files": {
-    "mac-arm64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-0.3.85-arm64.dmg",
-    "mac-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-0.3.85-x64.dmg",
-    "win-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-Setup-0.3.85-x64.exe",
-    "win-arm64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-Setup-0.3.85-arm64.exe",
-    "linux-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-0.3.85-x86_64.AppImage"
+    "mac-arm64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-1.0.0-arm64.dmg",
+    "mac-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-1.0.0-x64.dmg",
+    "win-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-Setup-1.0.0-x64.exe",
+    "win-arm64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-Setup-1.0.0-arm64.exe",
+    "linux-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-1.0.0-x86_64.AppImage"
+  },
+  "web": {
+    "version": "1.0.0",
+    "url": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/web-1.0.0.zip",
+    "size": 16983839
   }
 }
