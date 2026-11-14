@@ -5,7 +5,7 @@ import type { Command } from "./commands";
 import { PATHING_CELL, footprintCells, type PathingGrid } from "../sim/pathing";
 import { flyHeight } from "../sim/missile";
 import { footprintRadius, type PlacedFootprint, type Footprint } from "../sim/destructibles";
-import { displayHeroName } from "../i18n";
+import { displayHeroName, t } from "../i18n";
 import { GOLD_MINE_ID } from "../world/mapUnits";
 import { PlacedIndex, type PlacedRef } from "./placement";
 import { Authority } from "./authority";
@@ -2156,6 +2156,66 @@ export class RtsController {
     return it && !this.fogBlocksItem(it) ? it : null;
   }
 
+  /** Every ground item THIS PLAYER CAN SEE — Voice Control's "pick up …" candidates. The same fog
+   *  gate as `itemAt`, so a tag can never name an item in the dark. */
+  groundItems(): SimItem[] {
+    const out: SimItem[] = [];
+    for (const it of this.sim.items.values()) if (!this.fogBlocksItem(it)) out.push(it);
+    return out;
+  }
+
+  /** Does a unit the player has SELECTED see this point, by its own day/night sight? Voice Control
+   *  uses this for an enemy target: the troops being ordered must be able to see it, not merely
+   *  some distant ally. The fog test keeps a cliff between them from counting as sight. */
+  selectionSees(x: number, y: number): boolean {
+    if (this.getVision().stateAt(x, y) !== FogState.Visible) return false;
+    const day = this.sim.isDay;
+    for (const id of this.selected) {
+      const u = this.sim.units.get(id);
+      if (!u || u.hp <= 0) continue;
+      const sight = day ? u.sightDay : u.sightNight;
+      if (sight > 0 && Math.hypot(u.x - x, u.y - y) <= sight) return true;
+    }
+    return false;
+  }
+
+  /** The ACTIVE unit has nothing to do — a loot sweep may hand it the next item. */
+  primaryIdle(): boolean {
+    const id = this.primary;
+    const u = id !== null ? this.sim.units.get(id) : undefined;
+    return !!u && u.hp > 0 && u.order === "idle";
+  }
+
+  /** Hand a slot of one of our units to another of our units (the drag-to-hero path). */
+  giveItem(unitId: number, slot: number, targetId: number): boolean {
+    if (!this.controls(unitId)) return false;
+    const to = this.sim.units.get(targetId);
+    if (!to || to.owner !== this.localPlayer) return false;
+    return this.execute(this.localPlayer, { c: "giveitem", unitId, slot, targetId });
+  }
+
+  /** Drop a carried item beside its carrier — the inventory's right-click-on-the-ground path. */
+  dropItem(unitId: number, slot: number): boolean {
+    if (!this.controls(unitId)) return false;
+    const u = this.sim.units.get(unitId);
+    if (!u?.inventory?.[slot]) return false;
+    return this.execute(this.localPlayer, { c: "dropitem", unitId, slot, x: u.x + 32, y: u.y + 32 });
+  }
+
+  /** Send the ACTIVE unit to pick up a ground item — the order a right-click on it issues. False
+   *  when there is no active unit of ours, it carries no inventory, or the item is gone. */
+  pickUpGroundItem(itemId: number): boolean {
+    const id = this.primary;
+    const u = id !== null && this.orderees.has(id) ? this.sim.units.get(id) : undefined;
+    const it = this.sim.items.get(itemId);
+    if (!it || id === null || !this.controls(id) || !u?.inventory.length) return false;
+    if (!this.execute(this.localPlayer, { c: "getitem", unitId: id, itemId })) return false;
+    this.ack(false); // going to pick something up is a move, never the attack quote
+    // Yellow (neutral) twin-blink at the item's own hover/selection ring size.
+    this.flashRing(it.x, it.y, ITEM_RING_RADIUS, FLASH_YELLOW, true);
+    return true;
+  }
+
   /** Whether a ground item's model should be drawn — the renderer's half of the same fog
    *  rule the pick above enforces, so what you can name is exactly what you can see. */
   itemVisible(id: number): boolean {
@@ -2668,6 +2728,12 @@ export class RtsController {
    *  no registry row — the one they were seeded with (see destructibleDefs). */
   private defOf(simId: number): UnitDef | undefined {
     return this.registry.get(this.byId.get(simId)?.typeId ?? "") ?? this.destructibleDefs.get(simId);
+  }
+
+  /** `defOf`, for Voice Control: a destructible has a name and no registry row, and a spoken
+   *  name ("attack the elven gate") is only possible if its def can be read from its sim id. */
+  unitDef(simId: number): UnitDef | undefined {
+    return this.defOf(simId);
   }
 
   /** Play weapon-impact SFX for every hit landed this tick (attacker's weapon
@@ -3283,6 +3349,15 @@ export class RtsController {
     this.primary = this.firstOfGroup(this.focusedKey);
   }
 
+  /** 语音“子组二”：把焦点切到选中部队里的第 N 个类型组（1 起）。 */
+  selectSubgroup(index: number): boolean {
+    const groups = this.orderedGroups();
+    if (index < 1 || index > groups.length) return false;
+    this.focusedKey = groups[index - 1];
+    this.primary = this.firstOfGroup(this.focusedKey);
+    return true;
+  }
+
   /** Select ONLY this unit (double-clicking its icon in the multi-select grid). */
   selectSingle(simId: number): void {
     if (!this.sim.units.has(simId)) return;
@@ -3687,6 +3762,53 @@ export class RtsController {
     this.refocus();
     this.announceSelection();
     return true;
+  }
+
+  /** 语音“取消第二队”：清空第 N 队。返回它原来有没有成员。 */
+  clearGroup(key: string): boolean {
+    const had = (this.groups.get(key)?.length ?? 0) > 0;
+    if (this.groups.delete(key)) this.onGroup?.("set", key, []);
+    return had;
+  }
+
+  /** 语音“取消编组”：把当前选中的单位从所有控制组里移出，空组一并删掉。返回移出的条数。 */
+  ungroupSelection(): number {
+    let removed = 0;
+    for (const [key, ids] of [...this.groups]) {
+      const left = ids.filter((id) => !this.selected.has(id));
+      if (left.length === ids.length) continue;
+      removed += ids.length - left.length;
+      if (left.length) {
+        this.groups.set(key, left);
+        this.onGroup?.("set", key, left);
+      } else {
+        this.groups.delete(key);
+        this.onGroup?.("set", key, []);
+      }
+    }
+    return removed;
+  }
+
+  /** 语音读编队：第 N 队的成员 id（拷贝；没有该队时为空）。 */
+  groupMembers(key: string): number[] {
+    return [...(this.groups.get(key) ?? [])];
+  }
+
+  /** 语音“把步兵从二队移除”：把指定单位从某一队去掉，返回移出的条数。 */
+  removeFromGroup(key: string, ids: readonly number[]): number {
+    const g = this.groups.get(key);
+    if (!g?.length) return 0;
+    const drop = new Set(ids);
+    const left = g.filter((id) => !drop.has(id));
+    if (left.length === g.length) return 0;
+    if (left.length) {
+      this.groups.set(key, left);
+      this.onGroup?.("set", key, left);
+    } else {
+      this.groups.delete(key);
+      this.onGroup?.("set", key, []);
+    }
+    return g.length - left.length;
   }
 
   /**
@@ -8127,6 +8249,11 @@ export class RtsController {
     this.orderMode = "item";
   }
 
+  /** 语音“交换物品一和三”：把主选单位的两个物品栏格子互换。 */
+  swapInventory(from: number, to: number): boolean {
+    return this.primary !== null && this.execute(this.localPlayer, { c: "swapitem", unitId: this.primary, from, to });
+  }
+
   /** Learn (or rank up) a hero ability on the primary-selected hero (own only). */
   learnSkill(abilityId: string): boolean {
     return this.primary !== null && this.execute(this.localPlayer, { c: "learnskill", unitId: this.primary, abilityId });
@@ -10381,17 +10508,7 @@ export class RtsController {
     {
       const g = this.groundPoint(cssX, cssY);
       const gitem = g ? this.itemAt(g[0], g[1], ITEM_PICK_RADIUS) : null;
-      const id = this.primary;
-      const u = id !== null && this.orderees.has(id) ? this.sim.units.get(id) : undefined;
-      if (gitem && id !== null && this.controls(id) && u?.inventory.length) {
-        const ok = this.execute(this.localPlayer, { c: "getitem", unitId: id, itemId: gitem.id });
-        if (ok) {
-          this.ack(false); // going to pick something up is a move, never the attack quote
-          // Yellow (neutral) twin-blink at the item's own hover/selection ring size.
-          this.flashRing(gitem.x, gitem.y, ITEM_RING_RADIUS, FLASH_YELLOW, true);
-          return;
-        }
-      }
+      if (gitem && this.pickUpGroundItem(gitem.id)) return;
     }
     // Acknowledge the order with the focused unit's voice — attack quote if it
     // targets a hostile unit, otherwise the move quote.
@@ -11250,17 +11367,39 @@ export class RtsController {
     if (this.interfaceShown) {
       for (const e of this.entries) {
         const u = this.frameUnit(e.simId);
-        if (!u || e.hidden || u.owner !== this.localPlayer || u.hp <= 0) continue;
-        const name = this.registry.get(e.typeId)?.name;
+        if (!u || e.hidden || u.hp <= 0) continue;
+        const name = this.unitDef(e.simId)?.name;
         if (!name) continue;
+        // OUR bodies can be selected by name; THEIRS cannot — but they can be ATTACKED by it,
+        // which is half of what a name tag is for. A foe only wears one while it can be seen
+        // (the same fog test the health bars use), and is drawn in the foe's colour so it is
+        // never mistaken for one of ours.
+        const mine = u.owner === this.localPlayer;
+        if (!mine && this.drawnFromMemory(e.simId)) continue;
         specs.push({
           x: u.x,
           y: u.y,
           z: this.standZ(e, u.x, u.y) + e.moveHeight + (e.ride ? e.ride.off[2] : 0),
           selRadius: e.selRadius,
           name,
-          n: labels.shown(e.simId),
-          selected: this.selected.has(e.simId),
+          n: mine ? labels.shown(e.simId) : null,
+          selected: mine && this.selected.has(e.simId),
+          foe: !mine,
+        });
+      }
+      // What LIES ON THE GROUND: an item wears its name so it can be said ("pick up the potion").
+      // No number — items are not selectable — and drawn in the item colour, never the foe's.
+      for (const it of this.groundItems()) {
+        const name = this.items.get(it.itemId)?.name || t("voice.item.unknown");
+        specs.push({
+          x: it.x,
+          y: it.y,
+          z: this.groundOrDeck(it.x, it.y) + 48,
+          selRadius: ITEM_RING_RADIUS,
+          name,
+          n: null,
+          selected: false,
+          item: true,
         });
       }
     }

@@ -3,6 +3,7 @@ import { voiceClick, voicePoint, voicePointed } from "../ui/gamepad";
 import { dressAsGameTip } from "../ui/gameTipSkin";
 import { sound, stem, words, type LexEntry } from "./parser";
 import type { VoiceHost } from "./control";
+import { t } from "../i18n";
 
 // Voice Control in the MENUS: "click single player", "move the cursor to options", "select echo
 // isles", "change my race to orc", "change the second player to insane", "put the red player on
@@ -190,6 +191,32 @@ function labelBeside(r: DOMRect, side: "left" | "right", pool: ReturnType<typeof
   return bestText;
 }
 
+/** The text a control sits in front of, on its right: everything on that line, nearest first.
+ *  ONE entry is enough for a checkbox's caption, but a campaign row's arrow button has no text of
+ *  its own — its title and its chapter name are TWO frames to its right ("恐怖之潮" under
+ *  "暗夜精灵族哨兵战役"), and both are things a player says. */
+function besideText(r: DOMRect, pool: ReturnType<typeof texts>, limit = 2): string {
+  const cy = r.top + r.height / 2;
+  const near: Array<{ text: string; gap: number }> = [];
+  for (const t of pool) {
+    const ty = t.r.top + t.r.height / 2;
+    if (Math.abs(ty - cy) > Math.max(r.height, t.r.height) * 1.1) continue;
+    const gap = t.r.left - r.right;
+    if (gap < -4 || gap > 320) continue;
+    near.push({ text: t.text, gap });
+  }
+  near.sort((a, b) => a.gap - b.gap);
+  return near.slice(0, limit).map((n) => n.text).join(" ").trim();
+}
+
+/** What a button says: its own caption, or — an icon button, like a campaign row's arrow —
+ *  whatever is written beside it. A frame's id ("CampaignArrowButton0") is no caption at all. */
+function buttonLabel(el: HTMLElement, pool: ReturnType<typeof texts>): string {
+  const own = (el.innerText ?? "").replace(/\s+/g, " ").trim();
+  if (own && !/^[A-Za-z][A-Za-z0-9_]*$/.test(own)) return own;
+  return besideText(el.getBoundingClientRect(), pool) || own || frameWords(el.dataset.frame);
+}
+
 function readScreen(): MenuItem[] {
   const root = scope();
   const pool = texts(root);
@@ -201,7 +228,7 @@ function readScreen(): MenuItem[] {
   };
   for (const el of root.querySelectorAll<HTMLElement>(".fdf-button")) {
     if (el.matches(".fdf-checkbox, .fdf-popup") || el.closest(".fdf-popup") || !visible(el)) continue;
-    add("button", el, el.innerText?.trim() || frameWords(el.dataset.frame));
+    add("button", el, buttonLabel(el, pool));
   }
   for (const el of root.querySelectorAll<HTMLElement>(".fdf-checkbox")) {
     if (!visible(el)) continue;
@@ -339,7 +366,7 @@ export function makeMenuVoiceHost(): VoiceHost {
     // "click" / "click it" alone: whatever the cursor was last put on.
     if (ws.length <= 2 && VERB_CLICK.has(ws[0]) && (ws.length === 1 || ws[1] === "it" || ws[1] === "that" || ws[1] === "this")) {
       const el = voicePointed();
-      if (!el) { say("point at something first."); return true; }
+      if (!el) { say(t("voice.menu.pointFirst")); return true; }
       voiceClick(el);
       show(`“${text}”`, 1500);
       return true;
@@ -350,7 +377,7 @@ export function makeMenuVoiceHost(): VoiceHost {
     if (VERB_HOVER.has(ws[0]) || cursorAt >= 0) {
       const rest = keysOf(ws.slice(cursorAt >= 0 ? cursorAt + 1 : 1).join(" "));
       const it = best(rest, items, (i) => i.keys);
-      if (!it) { say("nothing on screen by that name."); return true; }
+      if (!it) { say(t("voice.menu.noSuchName")); return true; }
       voicePoint(it.el);
       show(`“${text}” → ${it.label}`, 1500);
       return true;
@@ -364,11 +391,11 @@ export function makeMenuVoiceHost(): VoiceHost {
     if (want !== undefined) {
       const rest = keysOf(ws.slice(ws[0] === "turn" ? 2 : 1).join(" "));
       const box = best(rest, items.filter((i) => i.kind === "checkbox"), (i) => i.keys);
-      if (!box) { say("no checkbox by that name."); return true; }
-      if (box.disabled) { say(`${box.label} can't be changed here.`); return true; }
+      if (!box) { say(t("voice.menu.noCheckbox")); return true; }
+      if (box.disabled) { say(t("voice.menu.locked", { label: box.label })); return true; }
       const on = box.el.classList.contains("fdf-checked");
       if (want === null || want !== on) voiceClick(box.el);
-      show(`“${text}” → ${box.label}: ${want === null ? (on ? "off" : "on") : want ? "on" : "off"}`, 2000);
+      show(`“${text}” → ${box.label}: ${want === null ? (on ? t("voice.d.off") : t("voice.d.on")) : want ? t("voice.d.on") : t("voice.d.off")}`, 2000);
       return true;
     }
 
@@ -417,10 +444,10 @@ export function makeMenuVoiceHost(): VoiceHost {
       }
       if (!row) {
         const colour = COLOURS.find((c) => ws.join(" ").includes(c));
-        if (colour && items.some((i) => i.slot) && ws.includes("player")) { say(`no ${colour} player.`); return true; }
+        if (colour && items.some((i) => i.slot) && ws.includes("player")) { say(t("voice.menu.noColour", { colour })); return true; }
       }
       if (row || VERB_SET.has(ws[0])) {
-        if (row || value.length) { say("no such choice."); return true; }
+        if (row || value.length) { say(t("voice.menu.noChoice")); return true; }
       }
     }
 
@@ -444,8 +471,8 @@ export function makeMenuVoiceHost(): VoiceHost {
     const rest = keysOf(ws.slice(start).join(" ").replace(/\bmap\b/g, ""));
     // The verb may BE the name: "select", "open", "start", "play" are captions on some screens.
     const it = best(rest, items, (i) => i.keys) ?? best(keysOf(ws.join(" ")), items, (i) => i.keys);
-    if (!it) { say("nothing on screen by that name."); return true; }
-    if (it.disabled) { say(`${it.label} is not available.`); return true; }
+    if (!it) { say(t("voice.menu.noSuchName")); return true; }
+    if (it.disabled) { say(t("voice.menu.unavailable", { label: it.label })); return true; }
     voiceClick(it.el);
     show(`“${text}” → ${it.label}`, 1500);
     return true;

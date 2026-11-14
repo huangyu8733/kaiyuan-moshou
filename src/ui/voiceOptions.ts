@@ -2,8 +2,8 @@ import type { FdfScreen } from "./fdf/render";
 import type { DataSource } from "../vfs/types";
 import { setGameTip } from "./gameTip";
 import { showVoiceDownload } from "./voiceDownload";
-import { onVoiceModelInstalled, voiceModelInstalled, voiceModelInstalledNow } from "../voice/model";
-import { WHISPER_MODEL } from "../voice/whisperModels";
+import { onVoiceModelInstalled, voiceModel, voiceModelInstalled, voiceModelInstalledNow } from "../voice/model";
+import { t } from "../i18n";
 
 // Options → Gameplay → "Voice Control": the one row with two faces (src/overrides/ui/
 // OptionsMenu.fdf). Until the speech model is on this machine the row is a BUTTON that fetches
@@ -16,15 +16,11 @@ import { WHISPER_MODEL } from "../voice/whisperModels";
 
 /** What the row explains on hover — the same for both faces, plus the download's size on the
  *  button. In the game's tooltip markup: gold for the name and the key, as a command button's
- *  tooltip golds its hotkey. */
-const TIP_CHECKBOX =
-  "|cffffcc00Voice Control|r|n" +
-  "Hold the |cffffcc00Period (.)|r key and speak a command; let go to send it.|n" +
-  "\"train three footmen\", \"attack move here\", \"group one\", \"build a farm here\",|n" +
-  "\"use healing salve on grunt\", \"finish the altar\" — or any command button's name.|n" +
-  "\"Here\" is the middle of the screen (say \"cursor\" for the mouse). A spell finds|n" +
-  "the unit that has it and aims itself. Heard on this computer only.";
-const TIP_DOWNLOAD = `${TIP_CHECKBOX}|n|nNeeds a one-time |cffffcc00${Math.round(WHISPER_MODEL.bytes / 1_000_000)} MB|r download of its speech model first.`;
+ *  tooltip golds its hotkey. The spoken examples stay English in every locale: the recogniser
+ *  listens for those words, and a translated one would teach a command nobody can say. */
+const tipCheckbox = (): string => t("voice.tip");
+const tipDownload = (): string =>
+  `${tipCheckbox()}|n|n${t("voice.tipDownload", { mb: Math.round(voiceModel().bytes / 1_000_000) })}`;
 
 /** What a screen lends the row: who to tell when Voice Control comes on (so its working AND
  *  committed copies both say "on"), and where the download dialog goes. */
@@ -69,9 +65,9 @@ export function bindVoiceRow(screen: FdfScreen, hooks: VoiceRowHooks): void {
     // On the BOX: a TEXT frame takes no pointer (every FDF frame is pointer-events: none), so
     // the label cannot carry a hover of its own.
     const box = screen.frame("VoiceControlCheckBox");
-    if (box) setGameTip(box, TIP_CHECKBOX);
+    if (box) setGameTip(box, tipCheckbox());
     const btn = screen.frame("VoiceDownloadButton");
-    if (btn) setGameTip(btn, TIP_DOWNLOAD);
+    if (btn) setGameTip(btn, tipDownload());
   };
   bound = { screen, sync, enabled };
   sync();

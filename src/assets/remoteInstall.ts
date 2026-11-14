@@ -16,7 +16,8 @@ import type { ByteReader, CascFiles } from "../vfs/casc";
 export interface InstallManifest {
   archives: string[];
   maps: string[];
-  /** A map's own Chinese dictionary beside it (`<map>.w3x.zhCN.json`, i18n/mapLanguage.ts).
+  /** A map's own sidecar beside it — its dictionary (`<map>.w3x.zhCN.json`,
+   *  i18n/mapLanguage.ts) or its voice pack (`<map>.w3x.voice.json`, voice/mapVoice.ts).
    *  Optional because a shell older than this field serves none. */
   languageFiles?: string[];
   /** Present when the install is 1.30+ (issue #102); null for an MPQ-era one. */

@@ -116,6 +116,10 @@ export interface VoiceLabelSpec {
   n: number | null;
   /** Is it selected — drawn brighter, so the player sees which "Fiend 4" they now hold. */
   selected: boolean;
+  /** An enemy's tag: what to ATTACK, drawn in the foe's colour rather than ours. */
+  foe?: boolean;
+  /** A GROUND ITEM's tag: what to PICK UP, drawn in the item colour. */
+  item?: boolean;
 }
 
 /** Where the hover slab floats and what it says. */
@@ -351,7 +355,7 @@ interface VoiceTag {
   root: HTMLDivElement;
   name: HTMLSpanElement;
   num: HTMLSpanElement;
-  last: { name: string; n: number | null; selected: boolean; left: number; top: number; hidden: boolean };
+  last: { name: string; n: number | null; selected: boolean; foe: boolean; item: boolean; left: number; top: number; hidden: boolean };
 }
 
 function makeVoiceTag(layer: HTMLElement): VoiceTag {
@@ -364,7 +368,7 @@ function makeVoiceTag(layer: HTMLElement): VoiceTag {
   num.className = "voice-tag-num";
   root.append(name, num);
   layer.appendChild(root);
-  return { root, name, num, last: { name: "\0", n: -1, selected: false, left: NaN, top: NaN, hidden: true } };
+  return { root, name, num, last: { name: "\0", n: -1, selected: false, foe: false, item: false, left: NaN, top: NaN, hidden: true } };
 }
 
 function makeCrewLabel(layer: HTMLElement): CrewLabel {
@@ -869,6 +873,14 @@ export class WorldOverlays {
       if (last.selected !== s.selected) {
         last.selected = s.selected;
         tag.root.classList.toggle("selected", s.selected);
+      }
+      if (last.foe !== !!s.foe) {
+        last.foe = !!s.foe;
+        tag.root.classList.toggle("voice-tag-foe", !!s.foe);
+      }
+      if (last.item !== !!s.item) {
+        last.item = !!s.item;
+        tag.root.classList.toggle("voice-tag-item", !!s.item);
       }
       if (last.hidden) {
         last.hidden = false;

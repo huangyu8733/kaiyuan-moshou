@@ -22,6 +22,7 @@ const ZH: Readonly<Record<string, string>> = {
   HOTKEYS_GRID: "网格",
   HOTKEYS_CUSTOM: "自定义",
   SHOW_HOTKEYS_ON_BUTTONS: "在命令按钮上显示快捷键",
+  SHARE_REPLAYS: "共享回放",
   DETECT_GAMEPAD: "检测手柄",
   UNPAIR_GAMEPAD: "断选手柄",
   VOICE_CONTROL: "语音控制",

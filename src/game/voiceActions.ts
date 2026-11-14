@@ -1,6 +1,7 @@
 import type { CommandButton } from "../ui/hud";
 import type { RtsController } from "./rts";
-import type { UnitRegistry } from "../data/units";
+import type { UnitDef, UnitRegistry } from "../data/units";
+import type { VoicePack } from "../voice/packs";
 import type { AbilityRegistry } from "../data/abilities";
 import type { TechRegistry } from "../data/techtree";
 import type { UpgradeRegistry } from "../data/upgrades";
@@ -9,6 +10,7 @@ import { isOffField, type SimUnit } from "../sim/world";
 import { FogState } from "../sim/vision";
 import { describe, type LexEntry, type Pick, type Region, type Subject, type VoiceIntent, type VoiceTarget } from "../voice/parser";
 import type { VoiceHost } from "../voice/control";
+import { displayHeroName, t, t as tr } from "../i18n";
 
 // Voice Control's HANDS: an intent the parser read (src/voice/parser.ts) carried out through the
 // paths a click and a hotkey already take. Nothing here issues an order the player could not
@@ -27,11 +29,37 @@ import type { VoiceHost } from "../voice/control";
 // see — the enemy for a curse, the most hurt friend for a heal, the thickest knot of enemies for
 // an area. A building said "here" is put somewhere on the screen it fits, beside our others.
 
+/** One live quest as the console reads it: title, description, and the items still open. */
+export interface QuestInfo {
+  title: string;
+  description: string;
+  items: string[];
+  required: boolean;
+}
+
 /** What the match lends Voice Control (render/mapViewer.ts builds it). */
 export interface VoiceDriver {
   rts(): RtsController | null;
   localPlayer(): number;
   units: UnitRegistry;
+  /** The def behind a sim unit — a destructible has no registry row but does have a name. */
+  unitDef(simId: number): UnitDef | undefined;
+  /** The voice packs in force for this match: the common grammar, its kind's, its map's. */
+  packs?(): ReadonlyArray<VoicePack>;
+  /** Is a cinematic running (the console hidden)? The one moment the HUD takes no commands
+   *  but "skip it" is still worth saying. */
+  cinematicPlaying(): boolean;
+  /** Is the game paused by the player (F10)? The one moment the HUD takes no commands but
+   *  "continue game" is still worth saying. */
+  paused(): boolean;
+  /** Ask the match to skip its cinematic. False when the map registered no skip trigger. */
+  skipCinematic(): boolean;
+  /** Every live quest (enabled, discovered, not finished) — the console's F9 list. */
+  quests(): QuestInfo[];
+  /** The script dialog's buttons, in screen order; empty when no dialog is up. */
+  dialogChoices(): Array<{ text: string; disabled: boolean; quit: boolean }>;
+  /** Press the dialog's button at `index` — the same path a click takes. */
+  chooseDialog(index: number): boolean;
   abilities: AbilityRegistry;
   tech: TechRegistry;
   upgrades: UpgradeRegistry;
@@ -63,6 +91,18 @@ export interface VoiceDriver {
   jumpToSelection(): void;
   /** The "-" key: every army unit of ours (the HUD driver's own `selectAllArmy`). */
   selectAllArmy(): boolean;
+  /** 只选画面内的己方单位（框选的整屏版）。 */
+  selectScreen(): void;
+  /** 盟友与共享状态（F11 面板读取的同一张表）。 */
+  alliancePeers(): Array<{ id: number; name: string; ally: boolean; vision: boolean; control: boolean }>;
+  /** 给盟友开/关共享视野或共享控制；不可写（局域网客户端 / Lock Teams）时返回 false。 */
+  setAllianceGrant(other: number, what: "vision" | "control", on: boolean): boolean;
+  /** 在世界坐标打一个地图信号。 */
+  pingAt(wx: number, wy: number): void;
+  /** 第 N 队（1..0）的成员 id；没有该队时为空。 */
+  groupMemberIds(n: number): number[];
+  /** 把指定单位从第 N 队移出，返回移出的条数。 */
+  removeFromGroup(n: number, ids: number[]): number;
   /** The creep camps the minimap marks, from this player's eyes. */
   creepCamps(): Array<{ x: number; y: number; level: number }>;
   recallGroup(n: number): boolean;
@@ -78,9 +118,14 @@ export interface VoiceDriver {
   /** The inventory pockets' names, null for an empty one. */
   inventory(): Array<{ name: string; usable: boolean } | null>;
   useInventory(slot: number): void;
+  /** 商店购买/出售：与点击货架、把物品拖到商店同一条路。 */
+  buyItem(shopId: number, itemId: string): void;
+  sellInventory(unitId: number, slot: number, shopId: number): void;
   /** The message log (what was heard) and the gold error line (what went wrong). */
   message(text: string): void;
   error(text: string): void;
+  /** 语音收音时压低游戏音量，结束后恢复。 */
+  duckAudio(on: boolean): void;
   /** Voice Control's "Listening…" line. */
   status(text: string | null): void;
   /** Ride the camera on the first of these units still alive, then the next (Ctrl+C's lock,
@@ -105,6 +150,19 @@ const NAME_VERBS = /^(train|build|research|upgrade to|upgrade|learn|summon|creat
 
 export function makeVoiceHost(d: VoiceDriver): VoiceHost {
   let vocab: string[] | null = null;
+  /** The quest the last "任务" / "下一个任务" read, so next/previous walk the F9 list. */
+  let questAt = -1;
+  /** A loot sweep: while it runs, the active unit is fed the nearest visible ground item. */
+  let lootTimer: number | null = null;
+  let lootSeen = -1;
+  let lootMisses = 0;
+  const stopLoot = (): void => {
+    if (lootTimer !== null) { window.clearInterval(lootTimer); lootTimer = null; }
+    lootSeen = -1;
+    lootMisses = 0;
+  };
+  /** 语音“撤退”的独立标记：单位 id → 撤退目的地。按下“.”时据此不把撤退中的部队停住。 */
+  const retreats = new Map<number, { x: number; y: number }>();
   const rts = (): RtsController | null => d.rts();
   const me = (): number => d.localPlayer();
 
@@ -186,26 +244,37 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
   /** A target, read from the local player's eyes. `prefer` is the side a bare "the hero" means
    *  for this verb (an attack means theirs, a camera jump means ours). `from` is where "nearest"
    *  is measured: the selection for an order, the screen for the camera. */
-  /** How far "move up" walks: about half a screen at the default zoom — far enough to be a
-   *  move, short enough to stay in sight. Ours (WC3 had no such command). */
+  /** How far "move up" walks: about half a screen at the default zoom — far enough to be a move,
+   *  short enough to stay in sight. "A bit" halves it again, "far" doubles it (parser.ts). */
   const STEP_DISTANCE = 800;
   /** How far from a camp's minimap marker its creeps stand (the marker is the camp's centre). */
   const CAMP_RADIUS = 600;
   /** How far short of a fogged camp the walk there stops before the attack-move takes over. */
   const CAMP_APPROACH = 450;
   type Spot = { cursor: true } | { unit: SimUnit } | { point: [number, number] } | { fail: string };
-  const resolve = (t: VoiceTarget, prefer: "enemy" | "mine", from: [number, number] = anchor(), friendly = false): Spot => {
+  const resolve = (t: VoiceTarget, prefer: "enemy" | "mine", from: [number, number] = anchor(), friendly = false, walk = false): Spot => {
     const r = rts();
-    if (!r) return { fail: "No match." };
-    const sideOk = (u: SimUnit, side: string): boolean => side === "any" || sideOf(u) === side;
+    if (!r) return { fail: tr("voice.err.noMatch") };
+    const sideOk = (u: SimUnit, side: string): boolean =>
+      side === "any" || sideOf(u) === side || (side === "enemy" && sideOf(u) === "neutral");
     const known = (u: SimUnit): boolean => r.getVision().stateAt(u.x, u.y) !== FogState.Unexplored;
     switch (t.kind) {
+      case "grounditem": return { fail: tr("voice.err.notAPlace") };
       case "step": {
-        // "move up": a walk of STEP_DISTANCE from where they stand (the camera's centre for a
-        // camera step), screen-up being north — clamped onto the playable map.
+        // "move up": a walk in that direction. A plain direction WALKS TO THE EDGE — "keep going"
+        // — so it can be stopped mid-way with "stop"; "a bit" keeps the half-step, and a camera
+        // step stays STEP_DISTANCE (the view should not jump across the map). Screen-up is north.
         const len = Math.hypot(t.dx, t.dy) || 1;
-        const reach = STEP_DISTANCE * t.scale;
         const [x0, y0, w, h] = d.mapBounds();
+        if (walk && t.scale >= 1) {
+          const ux = t.dx / len, uy = t.dy / len;
+          const edge = 64;
+          const tx = ux > 0 ? (x0 + w - edge - from[0]) / ux : ux < 0 ? (x0 + edge - from[0]) / ux : Infinity;
+          const ty = uy > 0 ? (y0 + h - edge - from[1]) / uy : uy < 0 ? (y0 + edge - from[1]) / uy : Infinity;
+          const reach = Math.max(0, Math.min(tx, ty));
+          return { point: [from[0] + ux * reach, from[1] + uy * reach] };
+        }
+        const reach = STEP_DISTANCE * t.scale;
         const x = Math.max(x0 + 64, Math.min(x0 + w - 64, from[0] + (t.dx / len) * reach));
         const y = Math.max(y0 + 64, Math.min(y0 + h - 64, from[1] + (t.dy / len) * reach));
         return { point: [x, y] };
@@ -213,7 +282,7 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
       case "cursor": return { cursor: true };
       case "screen": {
         const c = d.screenCentre();
-        return c ? { point: c } : { fail: "Can't see the ground there." };
+        return c ? { point: c } : { fail: tr("voice.err.cantSeeGround") };
       }
       case "region": {
         const [x0, y0, w, h] = d.mapBounds();
@@ -226,10 +295,10 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
         if (side === "mine" && !t.pick && !t.region) {
           const first = r.heroBar().find((h) => !h.dead && r.simView.units.get(h.simId)?.hp);
           const u = first ? r.simView.units.get(first.simId) : undefined;
-          return u ? { unit: u } : { fail: "You have no hero." };
+          return u ? { unit: u } : { fail: tr("voice.err.noHeroOwn") };
         }
-        const u = choose((x) => x.isHero && !x.isIllusion && x.hp > 0 && (side === "mine" ? x.owner === me() : visible(x) && sideOk(x, side)), t.pick, t.region, from);
-        return u ? { unit: u } : { fail: side === "mine" ? "You have no hero." : "No hero in sight." };
+        const u = choose((x) => x.isHero && !x.isIllusion && x.hp > 0 && (side === "mine" ? x.owner === me() : r.selectionSees(x.x, x.y) && sideOk(x, side)), t.pick, t.region, from);
+        return u ? { unit: u } : { fail: side === "mine" ? tr("voice.err.noHeroOwn") : tr("voice.err.noHeroSight") };
       }
       case "unit": {
         const side = t.side;
@@ -242,17 +311,23 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
           if (ours[0]) return { unit: ours[0] };
         }
         // A BUILDING is found wherever the player has seen it (it stays on the map in memory —
-        // "the tavern", "the fountain"); a unit only where it can be seen now.
-        const seen = (x: SimUnit): boolean => (x.building ? known(x) : visible(x));
+        // "the tavern", "the fountain"); a unit only where the SELECTED troops can see it now.
+        // The name is the DEF's (a destructible has no registry row) and, for a hero, its PROPER
+        // name — "玛维" is the Warden, not the unit type.
+        const nameOf = (x: SimUnit): string => {
+          const def = d.unitDef(x.id)?.name ?? d.units.get(x.typeId)?.name ?? "";
+          return x.properName ? displayHeroName(x.properName, def) : def;
+        };
+        const seen = (x: SimUnit): boolean => (x.building ? known(x) : r.selectionSees(x.x, x.y));
         const u = choose((x) => x.hp > 0 && x.typeId === t.entry.id && (x.owner === me() ? side !== "enemy" : seen(x) && sideOk(x, side)), t.pick, t.region, from)
-          ?? choose((x) => x.hp > 0 && d.units.get(x.typeId)?.name === t.entry.phrase && x.owner !== me() && visible(x) && sideOk(x, side), t.pick, t.region, from);
-        return u ? { unit: u } : { fail: `No ${t.entry.phrase} in sight.` };
+          ?? choose((x) => x.hp > 0 && nameOf(x) === t.entry.phrase && x.owner !== me() && r.selectionSees(x.x, x.y) && sideOk(x, side), t.pick, t.region, from);
+        return u ? { unit: u } : { fail: tr("voice.err.noUnitSight", { name: t.entry.phrase }) };
       }
       case "base": {
         const own = t.side !== "enemy";
         // An enemy base is somewhere we have SEEN — a building stays on the map in memory.
         const u = choose((x) => !!x.building && x.hp > 0 && d.units.get(x.typeId)?.buffType === "townhall" && (own ? x.owner === me() : known(x) && sideOf(x) === "enemy"), t.pick, t.region, from);
-        return u ? { unit: u } : { fail: own ? "You have no town hall." : "No enemy base found." };
+        return u ? { unit: u } : { fail: own ? tr("voice.err.noTownHall") : tr("voice.err.noEnemyBase") };
       }
       case "mine": {
         // A gold mine is not a unit in the sim — it is `SimMine`, its own table — so it is chosen
@@ -264,7 +339,7 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
           .filter((m) => m.gold > 0 && r.getVision().stateAt(m.x, m.y) !== FogState.Unexplored && inRegion(m.x, m.y, t.region))
           .sort((a, b) => Math.hypot(a.x - origin[0], a.y - origin[1]) - Math.hypot(b.x - origin[0], b.y - origin[1]));
         const m = t.pick === "next" ? stepNext("mine", list) : list[0];
-        return m ? { point: [m.x, m.y] } : { fail: t.region ? "No gold mine found there." : "No gold mine found." };
+        return m ? { point: [m.x, m.y] } : { fail: t.region ? tr("voice.err.noMineThere") : tr("voice.err.noMine") };
       }
       case "creeps": {
         const cam = d.cameraFocus();
@@ -275,20 +350,62 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
           .filter((c) => inRegion(c.x, c.y, t.region) && (!t.tier || tierOf(c.level) === t.tier))
           .sort((a, b) => Math.hypot(a.x - origin[0], a.y - origin[1]) - Math.hypot(b.x - origin[0], b.y - origin[1]));
         const c = t.pick === "next" ? stepNext(`creeps:${t.tier ?? ""}`, list) : list[0];
-        return c ? { point: [c.x, c.y] } : { fail: t.tier ? `No ${t.tier} creep camp found.` : "No creep camp found." };
+        return c ? { point: [c.x, c.y] } : {
+          fail: t.tier
+            ? tr("voice.err.noCampTier", { tier: t.tier === "green" ? tr("voice.d.tier.green") : t.tier === "orange" ? tr("voice.d.tier.orange") : tr("voice.d.tier.red") })
+            : tr("voice.err.noCamp"),
+        };
       }
       case "trees": {
         const tree = r.simWorld.nearestTree(from[0], from[1], 2500);
-        return tree ? { point: [tree.x, tree.y] } : { fail: "No trees nearby." };
+        return tree ? { point: [tree.x, tree.y] } : { fail: tr("voice.err.noTrees") };
+      }
+      case "enemies": {
+        // "Attack the enemy": the army is sent into the THICKEST KNOT of enemies its selected
+        // troops can see — an attack-move on the ground there, so every kind and number in the
+        // group is fought, not just the one unit a right-click would pick. A hero in the knot
+        // counts double; a tie goes to the knot nearest the selection.
+        const pool = [...r.simView.units.values()].filter((x) =>
+          x.hp > 0 && !x.isIllusion && sideOf(x) === "enemy" && r.selectionSees(x.x, x.y) && inRegion(x.x, x.y, t.region));
+        if (!pool.length) return { fail: t.region ? tr("voice.err.noEnemiesThere") : tr("voice.err.noEnemies") };
+        const away = (u: SimUnit): number => Math.hypot(u.x - from[0], u.y - from[1]);
+        let best = pool[0];
+        let weight = -1;
+        for (const x of pool) {
+          let n = 0;
+          for (const y of pool) if (Math.hypot(x.x - y.x, x.y - y.y) <= 700) n += y.isHero ? 2 : 1;
+          if (n > weight || (n === weight && away(x) < away(best))) { best = x; weight = n; }
+        }
+        return { point: [best.x, best.y] };
       }
       case "army": {
         const army = mine().filter((u) => !u.building && !d.units.get(u.typeId)?.classification.includes("peon"));
-        if (!army.length) return { fail: "You have no army." };
+        if (!army.length) return { fail: tr("voice.err.noArmy") };
         const x = army.reduce((sum, u) => sum + u.x, 0) / army.length;
         const y = army.reduce((sum, u) => sum + u.y, 0) / army.length;
         return { point: [x, y] };
       }
     }
+  };
+
+  /** 记下这次撤退的部队与目的地；它们只要还在往那里走，就算“撤退中”。 */
+  const markRetreat = (ids: number[], target: VoiceTarget): void => {
+    const spot = resolve(target, "mine");
+    if ("fail" in spot) return;
+    const p: [number, number] = "unit" in spot ? [spot.unit.x, spot.unit.y] : "point" in spot ? spot.point : anchor();
+    for (const id of ids) retreats.set(id, { x: p[0], y: p[1] });
+  };
+
+  /** 这次移动还是不是“撤退”：死了、停了、或目的地已经换掉，标记就作废。 */
+  const stillRetreating = (u: SimUnit): boolean => {
+    const m = retreats.get(u.id);
+    if (!m) return false;
+    const dest = u.path.length ? u.path[u.path.length - 1] : null;
+    if (u.hp <= 0 || u.order !== "move" || !dest || Math.hypot(dest[0] - m.x, dest[1] - m.y) > 600) {
+      retreats.delete(u.id);
+      return false;
+    }
+    return true;
   };
 
   /** Where on screen a spot is, to click it there. */
@@ -301,15 +418,15 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
 
   /** A spot, clicked: a unit target through the card's own unit-aim, anything else through the
    *  world click at the place on screen where it is (fog, range and legality are the click's). */
-  const click = (spot: Exclude<Spot, { fail: string }>): boolean => {
+  const click = (spot: Exclude<Spot, { fail: string }>, queued = false): boolean => {
     const r = rts();
     if (!r) return false;
     if ("unit" in spot && r.tryTargetArmedAt(spot.unit.id)) return true;
     const at = screenOf(spot);
-    if (at && r.orderClickAt(at.x, at.y, false)) return true;
+    if (at && r.orderClickAt(at.x, at.y, queued)) return true;
     // Off the edge of the view: a point order still goes, the minimap's way.
     const p: [number, number] | null = "unit" in spot ? [spot.unit.x, spot.unit.y] : "point" in spot ? spot.point : null;
-    return !!p && r.minimapClick(p[0], p[1], false, false) === "ordered";
+    return !!p && r.minimapClick(p[0], p[1], false, queued) === "ordered";
   };
 
   /**
@@ -350,7 +467,7 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
   /** The order is armed (a button pressed that wants a target): finish it at the spot, the way
    *  the click after the press would. An unsaid target leaves it armed for the player's own
    *  click — except a SPELL or an ITEM, which aims itself (`assist`). */
-  const aim = (t: VoiceTarget | undefined, prefer: "enemy" | "mine"): boolean => {
+  const aim = (t: VoiceTarget | undefined, prefer: "enemy" | "mine", walk = false, queued = false): boolean => {
     const r = rts();
     if (!r) return false;
     const armed = armedAim();
@@ -360,19 +477,19 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
       if (assist(armed, t ? d.screenCentre() : null)) return true;
       if (!t) {
         d.status(null);
-        d.error("No target for that in sight — click one.");
+        d.error(tr("voice.err.noTarget"));
         return false;
       }
     }
     if (!t) return true;
     const gift = !!armed && isGift(armed.def);
-    const spot = resolve(t, gift ? "mine" : prefer, anchor(), gift);
+    const spot = resolve(t, gift ? "mine" : prefer, anchor(), gift, walk);
     if ("fail" in spot) {
       d.press("cancel");
       d.error(spot.fail);
       return false;
     }
-    return click(spot);
+    return click(spot, queued);
   };
 
   /**
@@ -461,6 +578,39 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
   // a mine) holds no order and is nobody's idle worker — rts.ts isIdleWorker asks `isOffField` too.
   const idleWorker = (u: SimUnit): boolean => u.isPeon && u.order === "idle" && !u.building && !busyBuilding(u) && !isOffField(u) && !u.garrisonHost;
 
+  // 自动修理：语音打开后每两秒把最近的工人派去补最近的受损己方建筑。
+  let autoRepairTimer: number | null = null;
+  const closeAutoRepair = (): void => {
+    if (autoRepairTimer !== null) { window.clearInterval(autoRepairTimer); autoRepairTimer = null; }
+  };
+  /** 派一个工人去修一座建筑：点名目标/建筑名优先，否则找血最少的己方建筑。 */
+  const repairNearest = (entry?: LexEntry, target?: VoiceTarget): boolean => {
+    const r = rts();
+    if (!r) return false;
+    let broken: SimUnit | undefined;
+    if (target) {
+      const spot = resolve(target, "mine");
+      if ("unit" in spot && spot.unit.owner === me() && spot.unit.building) broken = spot.unit;
+    }
+    if (!broken && entry) {
+      broken = mine().find((u) => u.building && (u.typeId === entry.id
+        || (d.units.get(u.typeId)?.name ?? "").toLowerCase() === entry.phrase.toLowerCase()));
+    }
+    if (!broken) {
+      broken = mine().filter((u) => u.building && u.building.constructionLeft <= 0 && u.hp < u.maxHp)
+        .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+    }
+    if (!broken || !broken.building || broken.building.constructionLeft > 0 || broken.hp >= broken.maxHp) return false;
+    const sel = r.selectedUnitIds().map((id) => r.simView.units.get(id))
+      .filter((u): u is SimUnit => !!u && !!u.worker && !u.building && !busyBuilding(u) && !isOffField(u));
+    const pool = sel.length ? sel
+      : mine().filter((u) => !!u.worker && !u.building && !busyBuilding(u) && !isOffField(u) && !u.garrisonHost);
+    pool.sort((a, b) => Number(idleWorker(b)) - Number(idleWorker(a))
+      || Math.hypot(a.x - broken!.x, a.y - broken!.y) - Math.hypot(b.x - broken!.x, b.y - broken!.y));
+    for (const w of pool) if (r.execute(me(), { c: "repair", unitId: w.id, buildingId: broken.id, queued: false })) return true;
+    return false;
+  };
+
   /**
    * The units a SUBJECT names, best first: idle ones first (a worker said with no number means an
    * IDLE one), then the nearest to the middle of the screen. `from` keeps only those gathering
@@ -544,7 +694,7 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
 
   const needSelection = (): boolean => {
     if (rts()?.selectedUnitIds().length) return true;
-    d.error("Select something first.");
+    d.error(t("voice.err.selectFirst"));
     return false;
   };
 
@@ -577,7 +727,17 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
     const sel = new Set(r.selectedUnitIds());
     const can = mine().filter((u) => u.building && d.tech.get(u.typeId).trains.includes(unitId));
     can.sort((a, b) => Number(sel.has(b.id)) - Number(sel.has(a.id)));
-    return can[0] ?? null;
+    if (can.length) return can[0];
+    // 酒馆/中立商店：己方建筑造不了时，找最近一家在服务范围内卖它的店（雇佣英雄走这条路）。
+    const centre = d.screenCentre() ?? anchor();
+    const shops = [...r.simView.units.values()].filter((u) => {
+      if (!u.building || u.hp <= 0 || u.owner === me() || u.constructing > 0) return false;
+      if (!r.simWorld.canUseShop(u.id, me())) return false;
+      return d.tech.get(u.typeId).sellunits.includes(unitId) || r.simWorld.shopStockInfo(u.id, unitId)?.kind === "unit";
+    });
+    shops.sort((a, b) => Number(sel.has(b.id)) - Number(sel.has(a.id))
+      || Math.hypot(a.x - centre[0], a.y - centre[1]) - Math.hypot(b.x - centre[0], b.y - centre[1]));
+    return shops[0] ?? null;
   };
 
   /**
@@ -633,7 +793,35 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
     if (r.selectedUnitIds().join(",") === rest) for (const id of busy) r.scriptSelect(id, true);
   };
 
+  /** "Search the area": keep handing the active unit the nearest visible item. A tick only acts
+   *  when the unit is idle, so it walks to one item at a time; two failed tries on the same item
+   *  (a full bag, a locked chest) end the sweep instead of pacing forever. */
+  const startLoot = (): void => {
+    stopLoot();
+    const r = rts();
+    if (!r || !r.groundItems().length) { d.error(t("voice.d.noItem")); return; }
+    d.message(t("voice.d.lootStart"));
+    let ticks = 0;
+    lootTimer = window.setInterval(() => {
+      ticks++;
+      const live = rts();
+      if (!live || !d.canAct() || ticks > 120) { stopLoot(); return; }
+      if (!live.primaryIdle()) return;
+      const items = live.groundItems();
+      if (!items.length) { stopLoot(); d.message(t("voice.d.lootDone")); return; }
+      const from = anchor();
+      items.sort((a, b) => Math.hypot(a.x - from[0], a.y - from[1]) - Math.hypot(b.x - from[0], b.y - from[1]));
+      const it = items[0];
+      if (it.id === lootSeen) {
+        if (++lootMisses >= 2) { stopLoot(); d.error(t("voice.d.lootStuck")); return; }
+      } else { lootSeen = it.id; lootMisses = 0; }
+      if (!live.pickUpGroundItem(it.id)) { stopLoot(); d.error(t("voice.d.cantPick")); }
+    }, 500);
+  };
+
   const run = (i: VoiceIntent): void => {
+    // Any order but another "loot all" ends a sweep.
+    if (!(i.kind === "pick" && i.all)) stopLoot();
     const r = rts();
     if (!r) return;
     switch (i.kind) {
@@ -649,6 +837,13 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
           if (!sel.length || sel.every((u) => canGather(u, res))) { run({ kind: "harvest", res, target: i.target }); return; }
         }
         if (!needSelection()) return;
+        // "Attack the footman" means the FOE's footman: a spoken name with no side, aimed at a
+        // unit by an attack order, is on their side of the field. Without this it found our own
+        // footman first and the game refused the order — an attack command that did nothing.
+        const aimed = i.target;
+        if ((i.order === "attack" || i.order === "attackmove") && aimed?.kind === "unit" && (!aimed.side || aimed.side === "any")) {
+          aimed.side = "enemy";
+        }
         // A creep camp is ATTACKED, not attack-moved to: an attack-move fights everything it
         // walks past, so an army sent to a green camp took on the red one beside its path. The
         // order goes on one creep of THAT camp, which walks there without stopping; when it falls
@@ -692,36 +887,76 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
               const leader = spot.unit.id;
               let any = false;
               for (const id of sel) {
-                if (r.execute(me(), { c: "order", unitId: id, order: { kind: "follow", targetId: leader }, queued: false })) any = true;
+                if (r.execute(me(), { c: "order", unitId: id, order: { kind: "follow", targetId: leader }, queued: i.queued === true })) any = true;
               }
               if (!any) d.error(`They cannot follow the ${i.target.kind === "unit" ? i.target.entry.phrase : "hero"}.`);
               return;
             }
           }
-          const spot = resolve(i.target, "mine");
+          const spot = resolve(i.target, "mine", anchor(), false, true);
           if ("fail" in spot) { d.error(spot.fail); return; }
           const at = screenOf(spot);
-          if (at) r.moveAt(at.x, at.y, false);
+          if (at) r.moveAt(at.x, at.y, i.queued === true);
           return;
         }
         // Attack-move IS the attack order aimed at the ground (WC3's A-click), so it arms the
         // same button; an attack aimed at a unit is an attack on that unit.
         const button = i.order === "attackmove" ? "attack" : i.order;
         d.press(button);
-        if (aim(i.target, i.order === "move" || i.order === "rally" ? "mine" : "enemy") && i.target && i.order !== "rally") ride();
+        const walk = i.order === "move" || i.order === "attackmove" || i.order === "patrol";
+        if (aim(i.target, i.order === "move" || i.order === "rally" ? "mine" : "enemy", walk, i.queued === true) && i.target && i.order !== "rally") ride();
         return;
       }
       case "retreat": {
         // "Fall back": the whole army — the "-" key's selection — walks home (our town hall), or
         // to the place said. A MOVE, not an attack-move: falling back is not stopping to fight.
-        if (!d.selectAllArmy()) { d.error("You have no army."); return; }
+        if (!d.selectAllArmy()) { d.error(t("voice.err.noArmy")); return; }
         d.press("move");
-        if (aim(i.target ?? { kind: "base", side: "mine" }, "mine")) ride();
+        const target: VoiceTarget = i.target ?? { kind: "base", side: "mine" };
+        if (aim(target, "mine")) {
+          markRetreat(r.selectedUnitIds(), target);
+          ride();
+        }
         return;
       }
       case "stop": if (needSelection()) r.stopSelected(); return;
       case "hold": if (needSelection()) r.holdSelected(); return;
       case "cancel": d.press("cancel"); return;
+      case "cancelqueued": {
+        // 找属于我们的生产队列（中立酒馆按“买家”算），再取消点名的那项或整条队列。
+        const wanted = i.entry;
+        const producers = [...r.simView.units.values()].filter((u) => {
+          const q = u.building?.queue;
+          if (!q?.length) return false;
+          return u.owner === me() || q.some((job) => "buyer" in job && job.buyer === me());
+        });
+        const anyMatch = producers.some((u) => u.building?.queue.some((job) => !wanted || job.unitId === wanted.id));
+        if (!anyMatch) {
+          d.error(t("voice.d.noQueued", { name: wanted?.phrase ?? t("voice.d.item", { n: 1 }) }));
+          return;
+        }
+        // 选中的生产建筑优先；没选就按镜头距离最近的一栋。
+        const selected = new Set(r.selectedUnitIds());
+        const centre = d.screenCentre() ?? anchor();
+        producers.sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id))
+          || Math.hypot(a.x - centre[0], a.y - centre[1]) - Math.hypot(b.x - centre[0], b.y - centre[1]));
+        // “清空队列”只清选中的/最近的一栋；“取消所有排队的步兵”才扫全部生产建筑。
+        const targets = i.all && wanted ? producers : producers.slice(0, 1);
+        let removed = 0;
+        for (const b of targets) {
+          const q = b.building?.queue ?? [];
+          // 从后往前取消，前面的下标才不会跟着移动。
+          const slots: number[] = [];
+          for (let k = q.length - 1; k >= 0; k--) if (!wanted || q[k].unitId === wanted.id) slots.push(k);
+          for (const k of slots) if (r.execute(me(), { c: "canceltrain", buildingId: b.id, index: k })) removed++;
+        }
+        if (!removed) { d.error(t("voice.d.cancelFailed")); return; }
+        d.message(i.all
+          ? t(wanted ? "voice.d.cancelAllQueued" : "voice.d.clearQueue", { name: wanted?.phrase ?? "" })
+          : t("voice.d.cancelQueued", { name: wanted?.phrase ?? "" }));
+        return;
+      }
+      case "cardpage": d.press(i.page === "build" ? "build" : "learnpage"); return;
       case "harvest": {
         // Gathering is the workers' RIGHT-CLICK on a mine or a tree, so it is one here too —
         // given a selection at a time (a selection holds 12; "all peasants" may be more).
@@ -733,7 +968,7 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
           // Whoever is selected that can gather it — a Ghoul in the trees as much as a Peasant.
           const sel = r.selectedUnitIds().map((id) => r.simView.units.get(id)).filter((u): u is SimUnit => !!u && !u.building && canGather(u, i.res) && !busyBuilding(u));
           units = sel.length ? sel : pickSubject({ worker: true, count: 1, counted: false, idle: true }).filter((u) => canGather(u, i.res));
-          if (!units.length) { d.error("Select a worker first."); return; }
+          if (!units.length) { d.error(t("voice.err.selectWorker")); return; }
         }
         // A subject that cannot work the resource is told so rather than walked to it (an
         // Acolyte to the trees).
@@ -820,7 +1055,7 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
           at = screenOf(spot);
         }
         if (at) d.placeAt(at.x, at.y);
-        else d.error("No room for that on screen — place it with the mouse.");
+        else d.error(t("voice.err.noRoom"));
         return;
       }
       case "research": {
@@ -836,7 +1071,7 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
         // The learn page, then its button.
         if (!findButton((x) => x.id.startsWith("learn:"))) {
           const page = findButton((x) => x.id === "learnpage");
-          if (!page) { d.error("Select a hero with a skill point."); return; }
+          if (!page) { d.error(t("voice.err.selectHeroPoint")); return; }
           d.press("learnpage");
         }
         const b = findButton((x) => x.id === `learn:${i.entry.id}` || (x.id.startsWith("learn:") && sayable(x.name).toLowerCase() === i.entry.phrase.toLowerCase()));
@@ -892,6 +1127,352 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
         if (r.aimingTarget()) aim(i.target ?? (portal ? { kind: "base", side: "mine" } : undefined), "mine");
         return;
       }
+      case "buy": {
+        // “买治疗药水”：找一家能服务本玩家、有货、门口有买家的商店——和点击货架同一条路。
+        const shops = [...r.simView.units.values()].filter((u) =>
+          u.building && u.hp > 0 && r.simWorld.shopServes(u.id, me()) && !!r.simWorld.shopBuyer(u.id, me()));
+        const from = anchor();
+        shops.sort((a, b) => Math.hypot(a.x - from[0], a.y - from[1]) - Math.hypot(b.x - from[0], b.y - from[1]));
+        const nameOf = (id: string): string => sayable(d.items.get(id)?.name ?? "");
+        const wanted = i.entry;
+        const matches = (id: string): boolean => !wanted || id === wanted.id || nameOf(id).toLowerCase() === wanted.phrase.toLowerCase();
+        let chosen: { shop: SimUnit; itemId: string } | null = null;
+        for (const shop of shops) {
+          const wares = r.simWorld.shopWaresOf(shop.id).items.filter((id) => matches(id) && r.simWorld.shopStock(shop.id, id) !== 0);
+          // 没点名时挑最便宜的一件，别一开口就把钱袋买空。
+          wares.sort((a, b) => ((d.items.get(a)?.gold ?? 0) + (d.items.get(a)?.lumber ?? 0)) - ((d.items.get(b)?.gold ?? 0) + (d.items.get(b)?.lumber ?? 0)));
+          const itemId = i.slot !== undefined ? wares[i.slot] : wares[0];
+          if (itemId) { chosen = { shop, itemId }; break; }
+        }
+        if (!chosen) { d.error(t("voice.d.noShop")); return; }
+        d.buyItem(chosen.shop.id, chosen.itemId);
+        d.message(t("voice.d.buyDone", { name: d.items.get(chosen.itemId)?.name ?? chosen.itemId }));
+        return;
+      }
+      case "sell": {
+        // 携带者：先看选中，再找离镜头最近的己方英雄；商店选最近的能收物品的一家。
+        const nameOf = (id: string): string => sayable(d.items.get(id)?.name ?? "");
+        const wanted = i.entry;
+        const slotOf = (u: SimUnit): number => {
+          if (i.slot !== undefined) return u.inventory?.[i.slot] ? i.slot : -1;
+          return (u.inventory ?? []).findIndex((it) => !!it && (!wanted || it.itemId === wanted.id || nameOf(it.itemId).toLowerCase() === wanted.phrase.toLowerCase()));
+        };
+        const sel = r.selectedUnitIds().map((id) => r.simView.units.get(id)).filter((u): u is SimUnit => !!u);
+        let carrier = sel.find((u) => slotOf(u) >= 0);
+        if (!carrier) {
+          const centre = d.screenCentre() ?? anchor();
+          carrier = mine().filter((u) => !u.building && slotOf(u) >= 0)
+            .sort((a, b) => Math.hypot(a.x - centre[0], a.y - centre[1]) - Math.hypot(b.x - centre[0], b.y - centre[1]))[0];
+        }
+        if (!carrier) { d.error(t("voice.d.noCarrierItem", { name: wanted?.phrase ?? t("voice.d.item", { n: (i.slot ?? 0) + 1 }) })); return; }
+        const slot = slotOf(carrier);
+        const shops = [...r.simView.units.values()].filter((u) =>
+          u.building && u.hp > 0 && r.simWorld.shopServes(u.id, me()) && r.simWorld.canPawnAt(u));
+        shops.sort((a, b) => Math.hypot(a.x - carrier!.x, a.y - carrier!.y) - Math.hypot(b.x - carrier!.x, b.y - carrier!.y));
+        const shop = shops[0];
+        if (!shop) { d.error(t("voice.d.noShop")); return; }
+        const itemId = carrier.inventory?.[slot]?.itemId;
+        d.sellInventory(carrier.id, slot, shop.id);
+        d.message(t("voice.d.sellDone", { name: itemId ? d.items.get(itemId)?.name ?? itemId : t("voice.d.item", { n: slot + 1 }) }));
+        return;
+      }
+      case "revive": {
+        // 己方阵亡、还没被复活的英雄：点名优先，否则等级最高的那位。
+        const fallen = [...r.simWorld.fallen.values()].filter((f) => f.owner === me() && !f.revivingAt);
+        const wanted = i.entry;
+        const pick = wanted
+          ? fallen.find((f) => f.typeId === wanted.id
+              || (d.units.get(f.typeId)?.name ?? "").toLowerCase() === wanted.phrase.toLowerCase()
+              || f.properName.toLowerCase() === wanted.phrase.toLowerCase())
+          : fallen.sort((a, b) => b.level - a.level)[0];
+        if (!pick) { d.error(t("voice.d.noFallen")); return; }
+        // 祭坛（`Revive`）优先，酒馆按它货架上是否卖这位英雄算；近的先去。
+        const from = anchor();
+        const homes = mine()
+          .filter((u) => u.building && (d.tech.get(u.typeId).revive || r.simWorld.shopWaresOf(u.id).units.includes(pick.typeId)))
+          .sort((a, b) => Math.hypot(a.x - from[0], a.y - from[1]) - Math.hypot(b.x - from[0], b.y - from[1]));
+        for (const b of homes) {
+          if (!r.execute(me(), { c: "revive", buildingId: b.id, heroId: pick.id })) continue;
+          d.message(t("voice.d.reviveDone", { name: displayHeroName(pick.properName, d.units.get(pick.typeId)?.name ?? pick.typeId) }));
+          return;
+        }
+        d.error(t("voice.d.reviveFailed"));
+        return;
+      }
+      case "board": {
+        // 选中的部队右键运输单位 = 装载；没点名目标时找最近的己方可见运输。
+        const sel = r.selectedUnitIds().map((id) => r.simView.units.get(id)).filter((u): u is SimUnit => !!u);
+        if (!sel.length) { d.error(t("voice.d.selectFirst")); return; }
+        let host: SimUnit | undefined;
+        if (i.target) {
+          const spot = resolve(i.target, "mine", anchor(), true);
+          if ("unit" in spot && r.simWorld.isTransport(spot.unit)) host = spot.unit;
+        }
+        if (!host) {
+          const from = anchor();
+          host = mine().filter((u) => !u.building && r.simWorld.isTransport(u) && visible(u) && r.simWorld.holdRoom(u) > 0)
+            .sort((a, b) => Math.hypot(a.x - from[0], a.y - from[1]) - Math.hypot(b.x - from[0], b.y - from[1]))[0];
+        }
+        if (!host) { d.error(t("voice.d.noTransport")); return; }
+        const at = d.toScreen(host.x, host.y);
+        if (!at || !r.orderClickAt(at.x, at.y, false)) { d.error(t("voice.d.boardFailed")); return; }
+        d.message(t("voice.d.boardDone", { name: d.unitDef(host.id)?.name ?? host.typeId }));
+        return;
+      }
+      case "unload": {
+        // 选中的运输 / 掩体把载员放下：运输逐人卸货，掩体走 Stand Down（与按钮同路）。
+        const sel = r.selectedUnitIds().map((id) => r.simView.units.get(id)).filter((u): u is SimUnit => !!u);
+        const hosts = sel.filter((u) => u.garrison && u.garrison.length > 0);
+        if (!hosts.length) { d.error(t("voice.d.noCargo")); return; }
+        let any = false;
+        for (const h of hosts) {
+          if (h.building && !r.simWorld.isTransport(h)) {
+            any = r.execute(me(), { c: "standdown", buildingId: h.id }) || any;
+            continue;
+          }
+          for (const pid of [...h.garrison]) any = r.unloadCargo(h.id, pid) || any;
+        }
+        if (!any) { d.error(t("voice.d.noCargo")); return; }
+        d.message(t("voice.d.unloadDone"));
+        return;
+      }
+      case "repair": {
+        if (!repairNearest(i.entry, i.target)) { d.error(t("voice.d.repairFailed")); return; }
+        d.message(t("voice.d.repairDone"));
+        return;
+      }
+      case "autorepair": {
+        if (i.on) {
+          if (autoRepairTimer === null) autoRepairTimer = window.setInterval(() => { repairNearest(); }, 2000);
+        } else closeAutoRepair();
+        d.message(t(i.on ? "voice.d.autoRepairOn" : "voice.d.autoRepairOff"));
+        return;
+      }
+      case "diplomacy": {
+        const allies = d.alliancePeers().filter((p) => p.ally);
+        if (!allies.length) { d.error(t("voice.d.noAllies")); return; }
+        if (i.action === "status") {
+          const text = allies.map((p) => t("voice.d.allianceRow", {
+            name: p.name,
+            vision: p.vision ? "✔" : "—",
+            control: p.control ? "✔" : "—",
+          })).join("；");
+          d.message(t("voice.d.allianceStatus", { text }));
+          return;
+        }
+        let picked = allies;
+        if (i.target) {
+          const spot = resolve(i.target, "mine", anchor(), true);
+          if ("unit" in spot) picked = allies.filter((p) => p.id === spot.unit.owner);
+        }
+        let ok = 0;
+        for (const p of picked) if (d.setAllianceGrant(p.id, i.action, i.on)) ok++;
+        if (!ok) { d.error(t("voice.d.allianceLocked")); return; }
+        d.message(i.on
+          ? t(i.action === "vision" ? "voice.d.shareVisionOn" : "voice.d.shareControlOn")
+          : t(i.action === "vision" ? "voice.d.shareVisionOff" : "voice.d.shareControlOff"));
+        return;
+      }
+      case "ping": {
+        let point: [number, number] | null = d.screenCentre();
+        if (i.target) {
+          const spot = resolve(i.target, "mine");
+          if ("point" in spot) point = spot.point;
+          else if ("unit" in spot) point = [spot.unit.x, spot.unit.y];
+        }
+        if (!point) { d.error(t("voice.d.noPing")); return; }
+        d.pingAt(point[0], point[1]);
+        d.message(t("voice.d.pinged"));
+        return;
+      }
+      case "ungroupone": {
+        if (i.n === undefined) { d.error(t("voice.d.whichGroup")); return; }
+        const members = d.groupMemberIds(i.n);
+        if (!members.length) { d.error(t("voice.d.groupEmpty", { n: String(i.n) })); return; }
+        const wanted = i.entry;
+        const ids = wanted
+          ? members.filter((id) => {
+            const u = r.simView.units.get(id);
+            return !!u && (u.typeId === wanted.id || (d.units.get(u.typeId)?.name ?? "").toLowerCase() === wanted.phrase.toLowerCase());
+          })
+          : r.selectedUnitIds().filter((id) => members.includes(id));
+        const removed = ids.length ? d.removeFromGroup(i.n, ids) : 0;
+        if (!removed) { d.error(t("voice.d.nothingRemoved", { n: String(i.n) })); return; }
+        d.message(t("voice.d.ungroupOneDone", { n: String(i.n), count: String(removed) }));
+        return;
+      }
+      case "subgroup": {
+        // “下一组”/“子组二”：只在当前选择里切换焦点，和 Tab 一样不改变选中内容。
+        if (i.index !== undefined) {
+          if (!r.selectSubgroup(i.index)) { d.error(t("voice.d.noSubgroup", { n: String(i.index) })); return; }
+        } else r.cycleFocus(i.next === false);
+        return;
+      }
+      case "focus": {
+        if (!needSelection()) return;
+        // “集火步兵”/“集火敌人英雄”：按类型挑最近的可见敌人，再用攻击按钮点它。
+        const spot = resolve(i.target ?? { kind: "enemies" }, "enemy");
+        if ("fail" in spot) { d.error(spot.fail); return; }
+        d.press("attack");
+        if (!click(spot)) d.error(t("voice.d.focusFailed"));
+        else {
+          d.message(t("voice.d.focus"));
+          ride();
+        }
+        return;
+      }
+      case "swap": {
+        if (i.from === i.to) { d.error(t("voice.d.swapSlots")); return; }
+        if (!r.swapInventory(i.from, i.to)) { d.error(t("voice.d.swapFailed")); return; }
+        d.message(t("voice.d.swapDone", { from: String(i.from + 1), to: String(i.to + 1) }));
+        return;
+      }
+      case "pick": {
+        if (i.all) { startLoot(); return; }
+        // "Pick up the potion" / "捡起来": the named item if one is in sight, otherwise the
+        // nearest item this player can see. The hero who picks it up is the ACTIVE unit — the
+        // same rule as a right-click on the item (game/rts.ts pickUpGroundItem).
+        const wanted = i.entry
+          ? r.groundItems().filter((it) => {
+              if (it.itemId === i.entry!.id) return true;
+              const name = sayable(d.items.get(it.itemId)?.name ?? "");
+              return name.toLowerCase() === i.entry!.phrase.toLowerCase();
+            })
+          : r.groundItems();
+        const centre = d.screenCentre() ?? anchor();
+        const item = wanted
+          .slice()
+          .sort((a, b) => Math.hypot(a.x - centre[0], a.y - centre[1]) - Math.hypot(b.x - centre[0], b.y - centre[1]))[0];
+        if (!item) { d.error(t("voice.d.noItem")); return; }
+        if (!r.pickUpGroundItem(item.id)) { d.error(t("voice.d.cantPick")); return; }
+        d.message(t("voice.d.pickDone", { name: d.items.get(item.itemId)?.name || t("voice.item.unknown") }));
+        return;
+      }
+      case "give": {
+        // The hero already carrying the item hands it to another hero — the drag-to-hero path.
+        const slotOf = (u: SimUnit): number => (u.inventory ?? []).findIndex((it) =>
+          !!it && (it.itemId === i.entry?.id || sayable(d.items.get(it.itemId)?.name ?? "") === i.entry?.phrase));
+        const giver = mine().find((u) => slotOf(u) >= 0);
+        if (!giver) { d.error(t("voice.d.noCarrier", { name: i.entry?.phrase ?? "" })); return; }
+        const spot = resolve(i.target, "mine");
+        if ("fail" in spot) { d.error(spot.fail); return; }
+        if (!("unit" in spot) || spot.unit.owner !== me() || spot.unit.id === giver.id) { d.error(t("voice.d.giveToHero")); return; }
+        const slot = slotOf(giver);
+        if (slot < 0 || !r.giveItem(giver.id, slot, spot.unit.id)) { d.error(t("voice.d.giveFailed")); return; }
+        d.message(t("voice.d.giveDone", { name: i.entry?.phrase ?? t("voice.item.unknown") }));
+        return;
+      }
+      case "drop": {
+        // Drop a carried item beside its carrier — the inventory's right-click-on-the-ground path.
+        const slotOf = (u: SimUnit): number => {
+          if (i.slot !== undefined) return u.inventory?.[i.slot] ? i.slot : -1;
+          return (u.inventory ?? []).findIndex((it) =>
+            !!it && (it.itemId === i.entry?.id || sayable(d.items.get(it.itemId)?.name ?? "") === i.entry?.phrase));
+        };
+        const carrier = mine().find((u) => slotOf(u) >= 0);
+        if (!carrier) { d.error(t("voice.d.noCarrier", { name: i.entry?.phrase ?? "" })); return; }
+        const slot = slotOf(carrier);
+        if (slot < 0 || !r.dropItem(carrier.id, slot)) { d.error(t("voice.d.dropFailed")); return; }
+        d.message(t("voice.d.dropDone", { name: i.entry?.phrase ?? t("voice.d.item", { n: slot + 1 }) }));
+        return;
+      }
+      case "heal": {
+        // The nearest healing structure: a Fountain of Health (nfnp) or anything whose name says
+        // fountain/well — campaign maps heal at Moon Wells and fountains, not at town halls.
+        const named = (u: SimUnit): string => d.unitDef(u.id)?.name ?? "";
+        const pool = [...r.simView.units.values()].filter((u) =>
+          u.hp > 0 && (u.building || u.typeId === "nfnp") &&
+          (u.typeId === "nfnp" || /fountain|well|泉|井|healing/i.test(named(u))));
+        if (!pool.length) { d.error(t("voice.d.noHeal")); return; }
+        const from = anchor();
+        pool.sort((a, b) => Math.hypot(a.x - from[0], a.y - from[1]) - Math.hypot(b.x - from[0], b.y - from[1]));
+        const f = pool[0];
+        const at = d.toScreen(f.x, f.y);
+        if (at) r.moveAt(at.x, at.y, false);
+        else r.minimapClick(f.x, f.y, false, false);
+        d.message(t("voice.d.healDone", { name: named(f) || t("voice.d.heal") }));
+        return;
+      }
+      case "cinematic": {
+        // The ESC skip: the map's own skip trigger does the work, as it does for the key.
+        if (!d.skipCinematic()) { d.error(t("voice.d.noCinematic")); return; }
+        d.message(t("voice.d.cinematic"));
+        return;
+      }
+      case "quest": {
+        const list = d.quests();
+        if (!list.length) { d.error(t("voice.d.noQuest")); return; }
+        // F9's own panel, opened only when it is not already up (the same toggle the panel
+        // intent uses), then the objective read into the message log.
+        if (!d.panelOpen("quests")) d.togglePanel("quests");
+        if (i.mode === "list") {
+          d.message(t("voice.d.questListRead", { text: list.map((q) => q.title).filter(Boolean).join("；") }));
+          return;
+        }
+        if (i.mode === "progress") {
+          const left = list.flatMap((q) => q.items);
+          d.message(left.length ? t("voice.d.questLeft", { text: left.join("；") }) : t("voice.d.questAllDone"));
+          return;
+        }
+        const read = (q: QuestInfo): void => {
+          d.message(t("voice.d.questBrief", { text: [q.title, q.description, ...q.items].filter(Boolean).join("；") }));
+        };
+        if (i.mode === "next" || i.mode === "previous") {
+          if (questAt < 0) questAt = i.mode === "next" ? 0 : list.length - 1;
+          else questAt = (questAt + (i.mode === "next" ? 1 : -1) + list.length) % list.length;
+          read(list[questAt]);
+          return;
+        }
+        const q = list.find((x) => x.required) ?? list[0];
+        questAt = list.indexOf(q);
+        read(q);
+        return;
+      }
+      case "dialog": {
+        const choices = d.dialogChoices();
+        if (!choices.length) { d.error(t("voice.d.noDialog")); return; }
+        let index = i.index;
+        if (index === undefined) {
+          const open = choices.map((b, n) => ({ ...b, n })).filter((b) => !b.disabled);
+          if (!open.length) { d.error(t("voice.d.dialogUnavailable")); return; }
+          // A number is not said: "接受" takes the first non-quit button; "拒绝" prefers a
+          // negative button (never Quit), else the last non-quit one; "继续" prefers Continue/OK.
+          if (i.choice === "decline" || i.choice === "close") {
+            const no = open.find((b) => !b.quit && /decline|no\b|cancel|leave|refuse|拒绝|否|取消|离开/i.test(b.text));
+            const pick = no ?? [...open].reverse().find((b) => !b.quit);
+            if (!pick) { d.error(t("voice.d.dialogUnavailable")); return; }
+            index = pick.n;
+          } else if (i.choice === "continue") {
+            const yes = open.find((b) => !b.quit && /continue|ok\b|next|继续|确定|好/i.test(b.text)) ?? open.find((b) => !b.quit);
+            if (!yes) { d.error(t("voice.d.dialogUnavailable")); return; }
+            index = yes.n;
+          } else {
+            index = open.find((b) => !b.quit)?.n;
+          }
+        }
+        const text = index === undefined ? "" : choices[index]?.text ?? "";
+        if (index === undefined || index < 0 || !d.chooseDialog(index)) { d.error(t("voice.d.dialogUnavailable")); return; }
+        d.message(t("voice.d.dialogDone", { text }));
+        return;
+      }
+      case "regroup": {
+        // 目标英雄：优先当前选中的（多个英雄时取英雄栏里最靠左的），否则英雄栏第一个。
+        // 其他所有部队向它当前位置靠拢；英雄自己不下移动命令，免得打断它正在打/施法。
+        const bar = r.heroBar().filter((h) => !h.dead);
+        const selected = new Set(r.selectedUnitIds());
+        const order = [...bar.filter((h) => selected.has(h.simId)), ...bar.filter((h) => !selected.has(h.simId))];
+        const hero = order.map((h) => r.simView.units.get(h.simId)).find((u) => !!u && u.hp > 0);
+        if (!hero || hero.hp <= 0) { d.error(t("voice.d.noHero")); return; }
+        if (!d.selectAllArmy()) { d.error(t("voice.d.noArmy")); return; }
+        const at = screenOf({ unit: hero });
+        if (!at) { d.error(t("voice.err.heroOffscreen")); return; }
+        const heroSelected = r.selectedUnitIds().includes(hero.id);
+        if (heroSelected) r.scriptSelect(hero.id, false);
+        r.moveAt(at.x, at.y, false);
+        if (heroSelected) r.scriptSelect(hero.id, true);
+        d.message(t("voice.d.regroupDone"));
+        return;
+      }
       case "panel": {
         // The F-key's own toggle, asked only when the panel is not already where it was asked
         // to be ("open the menu" with the menu open does nothing).
@@ -933,9 +1514,10 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
       }
       case "select": {
         // "Select army" is the "-" key, through the HUD's own door.
-        if (i.what === "army") { if (!d.selectAllArmy()) d.error("You have no army."); return; }
-        if (i.what === "idle") { if (!r.cycleIdleWorker()) d.error("No idle workers."); else d.jumpToSelection(); return; }
-        if (i.what === "hero") { if (!d.selectHero(i.index ?? 0)) d.error("No such hero."); return; }
+        if (i.what === "army") { if (!d.selectAllArmy()) d.error(t("voice.err.noArmy")); return; }
+        if (i.what === "idle") { if (!r.cycleIdleWorker()) d.error(t("voice.err.noIdle")); else d.jumpToSelection(); return; }
+        if (i.what === "hero") { if (!d.selectHero(i.index ?? 0)) d.error(t("voice.err.noHero")); return; }
+        if (i.what === "screen") { d.selectScreen(); return; }
         if (i.subject && selectSubject(i.subject)) d.jumpToSelection();
         return;
       }
@@ -943,7 +1525,18 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
         const key = String(i.n);
         if (i.mode === "assign") { if (needSelection()) r.assignGroup(key); return; }
         if (i.mode === "add") { if (needSelection()) r.appendGroup(key); return; }
+        if (i.mode === "clear") {
+          if (!r.clearGroup(key)) d.error(t("voice.d.groupEmpty", { n: i.n }));
+          else d.message(t("voice.d.groupCleared", { n: i.n }));
+          return;
+        }
         if (!d.recallGroup(i.n)) d.error(`Group ${i.n} is empty.`);
+        return;
+      }
+      case "ungroup": {
+        const n = r.ungroupSelection();
+        if (!n) d.error(t("voice.d.ungroupNone"));
+        else d.message(t("voice.d.ungroupDone", { n }));
         return;
       }
       case "camera": {
@@ -962,10 +1555,43 @@ export function makeVoiceHost(d: VoiceDriver): VoiceHost {
     }
   };
 
+  /**
+   * 按下“.”的瞬间：把“只是走路”的选中单位停住，免得说完话它们已经走远了。
+   * 正在打 / 被打 / 攻击移动 / 施法 / 保持位置时不碰——那时停下来是白挨打或打断自己；
+   * 采矿、送资源、建造、修理也不碰，那是经济节奏。
+   */
+  const freezeForVoice = (): void => {
+    const r = rts();
+    if (!r || !d.canAct()) return;
+    const ids = r.selectedUnitIds();
+    if (!ids.length) return;
+    const sel = ids.map((id) => r.simView.units.get(id)).filter((u): u is SimUnit => !!u && u.hp > 0);
+    if (!sel.length) return;
+    const combat = sel.some((u) =>
+      u.targetId !== null || u.order === "attack" || u.order === "attackmove"
+      || u.order === "attackground" || u.order === "cast" || u.order === "hold");
+    if (combat) return;
+    // 撤退中的部队也不停：它们的目的就是离开这里。
+    if (sel.some(stillRetreating)) return;
+    // 有敌人正把我们当目标，也算交战——哪怕我们自己还在走。
+    const set = new Set(ids);
+    for (const u of r.simView.units.values()) {
+      if (u.hp <= 0 || u.owner === me()) continue;
+      if (u.targetId !== null && set.has(u.targetId)) return;
+    }
+    if (!sel.some((u) => !u.building && (u.order === "move" || u.order === "patrol" || u.order === "follow"))) return;
+    r.stopSelected();
+  };
+
   return {
     acceptsInput: () => d.canAct(),
     lexicon: () => lexicon(d, mine()),
     vocabulary: () => (vocab ??= gameVocabulary(d)),
+    packs: () => d.packs?.() ?? [],
+    cinematic: () => d.cinematicPlaying(),
+    paused: () => d.paused(),
+    freeze: () => freezeForVoice(),
+    duck: (on) => d.duckAudio(on),
     perform: (intents, heard) => {
       // The echo: what was heard, then what it was read as — in the message log, where the game
       // prints what a player said.
@@ -1041,7 +1667,9 @@ function lexicon(d: VoiceDriver, own: SimUnit[]): LexEntry[] {
       const fog = r.getVision().stateAt(u.x, u.y);
       if (u.building ? fog === FogState.Unexplored : fog !== FogState.Visible) continue;
       seen.add(u.typeId);
-      const def = d.units.get(u.typeId);
+      // A DESTRUCTIBLE has no registry row but does have a name ("精灵之门", the gate a campaign
+      // puts in the way), so the map's own def is read when the registry has none.
+      const def = d.units.get(u.typeId) ?? d.unitDef(u.id);
       if (!def?.name) continue;
       const kind = def.isBuilding ? "building" : def.isHero ? "hero" : "unit";
       out.push({ kind, id: u.typeId, phrase: def.name });
@@ -1052,22 +1680,35 @@ function lexicon(d: VoiceDriver, own: SimUnit[]): LexEntry[] {
     }
   }
   // What every unit of ours CARRIES, by the item's name — "use healing salve" finds the hero
-  // holding it whoever is selected.
+  // holding it whoever is selected. The same forms name an item LYING ON THE GROUND, so
+  // "pick up the potion" can say which one.
+  const itemForms = (id: string, name: string): void => {
+    const full = sayable(name);
+    if (!full) return;
+    out.push({ kind: "item", id, phrase: full });
+    // The way an item is SAID: "Potion of Healing" is a "healing potion", "Scroll of Town
+    // Portal" a "town portal" (or a "tp"), "Healing Salve" a "salve".
+    const of = /^(\w+) of (.+)$/i.exec(full);
+    if (of) out.push({ kind: "item", id, phrase: `${of[2]} ${of[1]}` }, { kind: "item", id, phrase: of[2] });
+    const last = full.split(/\s+/).pop() ?? "";
+    if (last.length >= 4 && last !== full) out.push({ kind: "item", id, phrase: last });
+    if (/town portal/i.test(full)) out.push({ kind: "item", id, phrase: "tp" });
+  };
   for (const u of own) {
     for (const it of u.inventory ?? []) {
       const name = it ? d.items.get(it.itemId)?.name : undefined;
-      if (!it || !name) continue;
-      const full = sayable(name);
-      out.push({ kind: "item", id: it.itemId, phrase: full });
-      // The way an item is SAID: "Potion of Healing" is a "healing potion", "Scroll of Town
-      // Portal" a "town portal" (or a "tp"), "Healing Salve" a "salve".
-      const of = /^(\w+) of (.+)$/i.exec(full);
-      if (of) out.push({ kind: "item", id: it.itemId, phrase: `${of[2]} ${of[1]}` }, { kind: "item", id: it.itemId, phrase: of[2] });
-      const last = full.split(/\s+/).pop() ?? "";
-      if (last.length >= 4 && last !== full) out.push({ kind: "item", id: it.itemId, phrase: last });
-      if (/town portal/i.test(full)) out.push({ kind: "item", id: it.itemId, phrase: "tp" });
+      if (it && name) itemForms(it.itemId, name);
     }
   }
+  if (r) {
+    for (const it of r.groundItems()) {
+      const name = d.items.get(it.itemId)?.name;
+      if (name) itemForms(it.itemId, name);
+    }
+  }
+  // The match's own voice packs (voice/packs.ts): words that only make sense on THIS kind of map
+  // or THIS map — "肉山", "神符" — each pointing at an id the match already knows.
+  for (const pack of d.packs?.() ?? []) if (pack.entries) out.push(...pack.entries);
   return out;
 }
 
@@ -1161,5 +1802,8 @@ function gameVocabulary(d: VoiceDriver): string[] {
     if (name) out.add(name);
   }
   for (const it of d.items.all()) if (it.name) out.add(it.name);
+  // A custom map's own sentences ("清野", "推塔") are words the model may never have heard in this
+  // context; the sidecar's spelling is primed beside the map's names.
+  for (const pack of d.packs?.() ?? []) for (const p of pack.phrases ?? []) if (p.say) out.add(p.say);
   return [...out].map(sayable).filter(Boolean);
 }

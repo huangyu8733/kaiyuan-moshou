@@ -302,7 +302,7 @@ export async function devBoot(hooks: DevBootHooks): Promise<void> {
     const cut = name.lastIndexOf("\\");
     const dir = cut >= 0 ? name.slice(0, cut + 1) : "";
     const base = name.slice(cut + 1).replace(/\.w3[mx]$/i, "");
-    for (const candidate of [`${name}.zhCN.json`, `${dir}${base}.zhCN.json`]) {
+    for (const candidate of [`${name}.zhCN.json`, `${dir}${base}.zhCN.json`, `${name}.voice.json`, `${dir}${base}.voice.json`]) {
       if (sidecars.has(candidate) && !files.has(candidate)) files.set(candidate, await fetchFile(candidate));
     }
   }

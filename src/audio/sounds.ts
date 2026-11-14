@@ -364,6 +364,8 @@ export class SoundBoard {
   /** Named loops asked for while the AudioContext was still gated (see startPendingLoops). */
   private pendingLoops = new Map<string, { tag: string; group?: number }>();
   private muted = false;
+  /** 语音收音期间压低总音量（setDucked），不改变玩家设的音量。 */
+  private ducked = false;
   /** A match is still behind its loading screen — see `setLoadingGate`. */
   private loadingGate = false;
   private volume = 0.85;
@@ -451,7 +453,7 @@ export class SoundBoard {
       if (!Ctor) return;
       this.ctx = new Ctor();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : this.volume;
+      this.applyMasterGain();
       this.master.connect(this.ctx.destination);
       this.applyListener(); // push the camera frame captured before the first gesture
     }
@@ -589,7 +591,7 @@ export class SoundBoard {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
-    if (this.master) this.master.gain.value = muted ? 0 : this.volume;
+    this.applyMasterGain();
   }
 
   isMuted(): boolean {
@@ -598,7 +600,19 @@ export class SoundBoard {
 
   setVolume(v: number): void {
     this.volume = Math.max(0, Math.min(1, v));
-    if (this.master && !this.muted) this.master.gain.value = this.volume;
+    this.applyMasterGain();
+  }
+
+  /** 语音收音时把游戏声音压低，免得自己的音效被麦克风收进去；说完恢复。 */
+  setDucked(ducked: boolean): void {
+    if (this.ducked === ducked) return;
+    this.ducked = ducked;
+    this.applyMasterGain();
+  }
+
+  private applyMasterGain(): void {
+    if (!this.master) return;
+    this.master.gain.value = this.muted ? 0 : this.volume * (this.ducked ? 0.1 : 1);
   }
 
   /** Play a unit voice line (or death cry). Voice acknowledgements are exclusive

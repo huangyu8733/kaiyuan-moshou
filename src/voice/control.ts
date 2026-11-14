@@ -2,7 +2,8 @@ import { withInputOverride } from "../ui/inputSource";
 import type { Options } from "../data/options";
 import { preloadVoiceModel, transcribe, voiceModelInstalled, WHISPER_RATE } from "./model";
 import { describe, Lexicon, parse, type LexEntry, type VoiceIntent } from "./parser";
-import { t } from "../i18n";
+import type { VoicePack } from "./packs";
+import { currentLocale, t } from "../i18n";
 
 // Voice Control's PUSH-TO-TALK: hold ".", speak, let go (Options → Gameplay → "Voice Control").
 //
@@ -35,6 +36,17 @@ export interface VoiceHost {
   /** More names worth priming the recogniser with, after the lexicon's (every unit, ability and
    *  item name in the game; the menu's own words). Built once. */
   vocabulary(): readonly string[];
+  /** The map-kind and map packs in force (voice/packs.ts). Absent on the menus. */
+  packs?(): ReadonlyArray<VoicePack>;
+  /** Is a cinematic running? Its "skip" is the one command the HUD still takes then. */
+  cinematic?(): boolean;
+  /** Is the game paused by the player (F10)? "continue game" is the one command the HUD still
+   *  takes then. */
+  paused?(): boolean;
+  /** "." 按下的瞬间（开始收音之前）：把只是行军的选中单位停住，等说完再走。 */
+  freeze?(): void;
+  /** 麦克风收音开始/结束：压低游戏声音，避免喇叭里的音效进麦克风。 */
+  duck?(on: boolean): void;
   /** Carry the intents out. */
   perform(intents: VoiceIntent[], heard: string): void;
   /** A host that understands sentences ITSELF (the menus, src/voice/menu.ts) takes the text
@@ -79,6 +91,10 @@ let menuHost: VoiceHost | null = null;
 /** Who a press is for right now: the match if it is taking commands, else the menus. */
 function active(): VoiceHost | null {
   if (host?.acceptsInput()) return host;
+  // 过场里控制台收起了，命令一律不收——唯独“跳过过场”值得说，所以这一刻仍然听。
+  if (host?.cinematic?.()) return host;
+  // 暂停时同理：只收“继续游戏”，否则语音在暂停期间完全没有入口。
+  if (host?.paused?.()) return host;
   if (menuHost?.acceptsInput()) return menuHost;
   return null;
 }
@@ -218,6 +234,7 @@ async function begin(h: VoiceHost): Promise<void> {
   if (!(await openMic()) || !ctx || current) return;
   // The utterance starts with the pre-roll — the audio from just BEFORE the key went down.
   current = { h, lexicon: new Lexicon(h.lexicon()), chunks: preroll, rate: ctx.sampleRate, listening: true };
+  h.duck?.(true);
   preroll = [];
   h.status(t("voice.listening"));
   if (!keyHeld) release(); // let go while the microphone was opening
@@ -228,6 +245,7 @@ function release(): void {
   if (!u || !u.listening) return;
   setTimeout(() => {
     u.listening = false;
+    u.h.duck?.(false);
     void finish(u);
   }, TAIL_MS);
 }
@@ -259,6 +277,11 @@ function resample(chunks: Float32Array[], rate: number): Float32Array {
  * couple of hundred tokens; the worker keeps the END of it, so the most likely names go LAST.
  */
 function promptFor(h: VoiceHost, lexicon: Lexicon): string {
+  // Chinese priming is Chinese: the names are the map's own (Chinese) names, and the examples are
+  // sentences this player would actually say. The English bias list is not offered — its words
+  // are spellings of English names, and a multilingual model primed with them leans English.
+  const zh = currentLocale() === "zhCN";
+  const examples = zh ? COMMAND_EXAMPLES_ZH : COMMAND_EXAMPLES;
   const seen = new Set<string>();
   const names: string[] = [];
   const add = (p: string): void => {
@@ -275,11 +298,11 @@ function promptFor(h: VoiceHost, lexicon: Lexicon): string {
   const likely = take(names, PROMPT_NAMES_CHARS).reverse();
   // The words the developer has heard it get wrong, those this match can use first (a word of
   // one of its own names), and none already among the names.
-  const bias = PROMPT_BIAS.filter((w) => !likely.some((n) => n.toLowerCase().includes(w)));
+  const bias = zh ? [] : PROMPT_BIAS.filter((w) => !likely.some((n) => n.toLowerCase().includes(w)));
   bias.sort((a, b) => Number(said.includes(b)) - Number(said.includes(a)));
-  const room = PROMPT_CHARS - COMMAND_EXAMPLES.length - likely.join(", ").length;
+  const room = PROMPT_CHARS - examples.length - likely.join(", ").length;
   const words = take(bias, Math.max(0, room)).reverse();
-  return `Warcraft III: ${words.join(", ")}. ${COMMAND_EXAMPLES} ${likely.join(", ")}.`;
+  return `Warcraft III: ${words.join(", ")}. ${examples} ${likely.join(", ")}.`;
 }
 
 /** The first of `list` that fit in `chars` characters, comma-joined. */
@@ -310,10 +333,21 @@ const PROMPT_NAMES_CHARS = 240;
 const COMMAND_EXAMPLES =
   "Fall back. Go back. TP out. Select army, worker, my main building, the altar. Attack move to a green camp. " +
   "Pan the camera to the red camp, the goblin merchant, the tavern. Build a ziggurat, an orc burrow, a moon well, " +
-  "a farm here. Send two acolytes to gold. Move up. Follow the archmage. Select fiend 4.";
+  "a farm here. Send two acolytes to gold. Move up. Follow the archmage. Select fiend 4. " +
+  "Skip the cinematic. What is my objective? Choose the first option. Scout. Focus fire. Jungle. Push the lane.";
+
+/** The same priming for a Chinese player: the sentences Chinese speech arrives as, with the
+ *  names the map supplies ("步兵", "月亮井", "剑圣") spelled into it. Command examples stay whole
+ *  sentences for the same reason the English ones do — a word after an example of itself is the
+ *  word the decoder is likeliest to write. */
+const COMMAND_EXAMPLES_ZH =
+  "撤退。回城。选中所有部队、农民、主基地、祭坛。攻击移动到绿色野怪营地。" +
+  "镜头移到红色营地、地精商店、酒馆。在这里建造通灵塔、兽族地洞、月亮井、农场。" +
+  "派两个侍僧去采金。向上移动。跟随大法师。选中四号恶魔。" +
+  "跳过过场。现在要做什么。选择第一个选项。侦察。集火。打野。推线。";
 
 /** The words the developer has heard the recogniser miss (lower case, as said), offered to it in
- *  the prompt when there is room (`promptFor`). */
+ *  the prompt when there is room (`promptFor`). English only — see `promptFor`. */
 const PROMPT_BIAS = [
   "blood mage", "troll", "headhunter", "shaman", "tauren", "spirit walker", "obsidian statue", "arcane",
   "mortar", "siege", "demolisher", "ballista", "glaive", "huntress", "warden", "grove", "entangle",
@@ -336,6 +370,15 @@ async function finish(u: Utterance): Promise<void> {
     u.h.status(null);
     u.h.error(t("voice.noCatch"));
     return;
+  }
+  // A quiet microphone (a headset across the room, a laptop's own) is the commonest cause of a
+  // name heard wrong: Whisper is trained on normalised speech, so the peaks are put back at full
+  // scale before it listens. Silence around them is left alone — pads and pauses are words' ends.
+  let peak = 0;
+  for (let i = 0; i < audio.length; i++) peak = Math.max(peak, Math.abs(audio[i]));
+  if (peak > 0.001 && peak < 0.9) {
+    const gain = 0.95 / peak;
+    for (let i = 0; i < audio.length; i++) audio[i] *= gain;
   }
   u.h.status("…");
   let text: string;
@@ -377,14 +420,27 @@ function run(h: VoiceHost, heard: string, lexicon: Lexicon): string[] {
     h.handle(heard);
     return [heard];
   }
-  const intents = parse(heard, { lexicon });
+  const intents = parse(heard, { lexicon, packs: h.packs?.() ?? [] });
   if (!intents.length) {
     h.error(t("voice.notACommand", { heard }));
     return [];
   }
-  console.info("[voice]", JSON.stringify(heard), "→", intents.map(describe).join(" · "));
-  withInputOverride("voice", () => h.perform(intents, heard));
-  return intents.map(describe);
+  // 过场里只放行“跳过过场”：那一秒控制台不接命令，别的话没有意义，更不能借语音绕过它。
+  const inCinematic = !!h.cinematic?.() && !h.acceptsInput();
+  // 暂停时只放行“继续游戏/暂停”、喊话和打开面板，免得语音在冻结的对局里下无效命令。
+  const inPause = !inCinematic && !!h.paused?.() && !h.acceptsInput();
+  const use = inCinematic
+    ? intents.filter((i) => i.kind === "cinematic")
+    : inPause
+      ? intents.filter((i) => i.kind === "pause" || i.kind === "chat" || (i.kind === "panel" && i.open === true))
+      : intents;
+  if (!use.length) {
+    h.error(t(inPause ? "voice.d.pauseOnly" : "voice.d.cinematicOnly"));
+    return [];
+  }
+  console.info("[voice]", JSON.stringify(heard), "→", use.map(describe).join(" · "));
+  withInputOverride("voice", () => h.perform(use, heard));
+  return use.map(describe);
 }
 
 /**
@@ -418,6 +474,7 @@ export function voicePrerollState(): { micOpen: boolean; seconds: number } {
 }
 
 function cancelUtterance(): void {
+  current?.h.duck?.(false);
   current = null;
 }
 
@@ -438,6 +495,8 @@ window.addEventListener("keydown", (e) => {
   // HUD's handler must not see it either.
   e.stopImmediatePropagation();
   if (e.repeat) return;
+  // 先停住行军的部队，再开始收音：等识别完再停，位置已经变了。
+  h.freeze?.();
   keyHeld = true;
   void begin(h);
 });

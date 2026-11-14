@@ -256,8 +256,9 @@ export async function loadNativeInstall(): Promise<PickedInstall> {
 
   const files: InstallFiles = new Map();
   for (const path of manifest.maps) files.set(path, lazyMapFile(fileUrl, path));
-  // The maps' own `.zhCN.json` beside them, if the folder has any (i18n/mapLanguage.ts). They key
-  // `InstallFiles` like every other loose file; the map list asks `installMaps`, which drops them.
+  // The maps' own sidecars beside them, if the folder has any (i18n/mapLanguage.ts,
+  // voice/mapVoice.ts). They key `InstallFiles` like every other loose file; the map list asks
+  // `installMaps`, which drops them.
   for (const path of manifest.languageFiles ?? []) files.set(path, lazyMapFile(fileUrl, path));
 
   // Only an MPQ-era folder needs its archives: a CASC mount reads the content store instead,

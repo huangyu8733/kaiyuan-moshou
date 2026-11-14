@@ -25,16 +25,19 @@ importers:
       onnxruntime-web:
         specifier: 1.31.0-dev.20260914-8d85527a0
         version: 1.31.0-dev.20260914-8d85527a0
+      pinyin-pro:
+        specifier: ^3.29.5
+        version: 3.29.5
       ws:
         specifier: ^8.21.1
         version: 8.21.1
     devDependencies:
-      '@warcraft-open/ui':
-        specifier: link:packages/ui
-        version: link:packages/ui
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
+      '@warcraft-open/ui':
+        specifier: link:packages/ui
+        version: link:packages/ui
       electron:
         specifier: ^44.3.0
         version: 44.3.0
@@ -50,6 +53,9 @@ importers:
       gl-matrix:
         specifier: ^3.4.3
         version: 3.4.4
+      husky:
+        specifier: ^9.1.7
+        version: 9.1.7
       mdx-m3-viewer:
         specifier: ^5.12.0
         version: 5.12.0(patch_hash=4e971affaf220a2718132299cdff5d1548aa0852b0127e5d3553970ad97a27e2)
@@ -1298,6 +1304,11 @@ packages:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
     engines: {node: '>= 14'}
 
+  husky@9.1.7:
+    resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   inflight@1.0.6:
     resolution: {integrity: sha512-k92I/b08q4wvFscXCLvqfsHCrjrF7yiXsQuIVvVE7N82W3+aqpzuUdBbfhWcy/FZR3/4IgflMgKLOsvPDrGCJA==}
     deprecated: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
@@ -1541,6 +1552,9 @@ packages:
   picomatch@4.0.7:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
+
+  pinyin-pro@3.29.5:
+    resolution: {integrity: sha512-Fk5YoRmtdHqJWqAuzYVG/NzvzeCbaG+ZEwbY6Nbps3QAIrvQQEtcm49frcyCM8i2b5najnzPDtYqrHRYTTiuwQ==}
 
   pkijs@3.4.0:
     resolution: {integrity: sha512-emEcLuomt2j03vxD54giVB4SxTjnsqkU692xZOZXHDVoYyypEm+b3jpiTcc+Cf+myooc+/Ly0z01jqeNHVgJGw==}
@@ -3111,6 +3125,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  husky@9.1.7: {}
+
   inflight@1.0.6:
     dependencies:
       once: 1.4.0
@@ -3318,6 +3334,8 @@ snapshots:
   picocolors@1.1.1: {}
 
   picomatch@4.0.7: {}
+
+  pinyin-pro@3.29.5: {}
 
   pkijs@3.4.0:
     dependencies:

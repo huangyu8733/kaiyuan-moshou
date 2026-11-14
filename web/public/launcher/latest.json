@@ -9,8 +9,8 @@
     "linux-x64": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/Warcraft-Open-1.0.0-x86_64.AppImage"
   },
   "web": {
-    "version": "1.0.2",
-    "url": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/web-1.0.2.zip",
-    "size": 16988329
+    "version": "1.0.8",
+    "url": "https://warcraft.oss-cn-hangzhou.aliyuncs.com/warcraft-open/downloads/web-1.0.8.zip",
+    "size": 16995656
   }
 }

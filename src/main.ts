@@ -88,6 +88,7 @@ import { tooltipSkinVars } from "./ui/hud";
 import { blpToCanvas } from "./render/blputil";
 import { initI18n, t } from "./i18n";
 import { findMapLanguageByName, installReader, loadMapLanguage, localizedMapInfo, setMapLanguage } from "./i18n/mapLanguage";
+import { findMapVoiceByName, loadMapVoice, setMapVoice } from "./voice/mapVoice";
 
 // The engine's own UI language (?lang= → remembered → browser), stamped on <html> before the
 // first screen exists — the load gate and the menus translate through it (src/i18n/).
@@ -1034,6 +1035,20 @@ async function startGame(
     if (name) language = await findMapLanguageByName(reader, () => install.list(), name);
   }
   setMapLanguage(language);
+  // A MAP'S OWN VOICE PACK (voice/mapVoice.ts): `<map>.voice.json` beside it, read from the
+  // PLAYER'S language block. Cleared when the map has none, so one map's words never answer the
+  // next. The same by-name fallback as the language file, for a host that spells the folder
+  // differently.
+  let voice = reader && mapPath ? await loadMapVoice(reader, mapPath) : null;
+  if (!voice && reader && install) {
+    const voiceName = map instanceof File ? map.name : info.name;
+    if (voiceName) voice = await findMapVoiceByName(reader, () => install.list(), voiceName);
+  }
+  setMapVoice(voice);
+  // `warcraft-open.mapVoice` answers "did this map's own voice commands load?".
+  ((window as unknown as { warcraftOpen: Record<string, unknown> }).warcraftOpen ??= {}).mapVoice = voice
+    ? { live: true, locale: voice.locale, names: voice.pack.entries?.length ?? 0, commands: voice.pack.phrases?.length ?? 0 }
+    : { live: false };
   // A one-line answer for the question "why is this map still in its author's language?": type
   // `warcraft-open.mapLanguage` in the console. `live:false` means no dictionary for this map at all
   // (nothing beside it, or the install cannot see it) — which is what the `[i18n]` lines above

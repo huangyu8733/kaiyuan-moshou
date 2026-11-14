@@ -25,9 +25,10 @@ const MPQ = /\.mpq$/i;
 const MAP = /\.(w3m|w3x)$/i;
 // What may be written into `Maps\Download\`: a map, or its own language sidecar beside it.
 const DOWNLOADED_NAME = /^[^\\/:*?"<>|\u0000-\u001f]+\.(w3m|w3x)(\.[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{2,8})?\.json)?$/i;
-// A map's own dictionary beside it (src/i18n/mapLanguage.ts): served like any loose file, never
-// listed as a map. The sidecar follows the language it translates into.
-const LANGUAGE_FILE = /\.(zhCN|enUS)\.json$/i;
+// A map's own sidecars beside it: its dictionary (src/i18n/mapLanguage.ts) and its voice pack
+// (src/voice/mapVoice.ts). Served like any loose file, never listed as a map. The dictionary
+// follows the language it translates into; the voice pack is one file with a block per language.
+const LANGUAGE_FILE = /\.(zhCN|enUS|voice)\.json$/i;
 const IDX = /^[0-9a-f]{10}\.idx$/i;
 const DATA_FILE = /^data\.\d{3}$/i;
 const CONFIG_HASH = /^[0-9a-f]{32}$/i;

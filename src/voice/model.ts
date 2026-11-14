@@ -1,22 +1,20 @@
 import ortWasm from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
 import ortMjs from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url";
-import { WHISPER_MODEL, whisperFiles, type WhisperReply, type WhisperRequest } from "./whisperModels";
+import { WHISPER_MODELS, whisperFileUrl, whisperFiles, whisperModelFor, type WhisperModel, type WhisperReply, type WhisperRequest } from "./whisperModels";
+import { currentLocale } from "../i18n";
 
-// Voice Control's speech recogniser: OpenAI's Whisper, English-only, run on this computer in a
-// worker (src/voice/whisperWorker.ts, transformers.js over onnxruntime-web's WebAssembly build).
+// Voice Control's speech recogniser: OpenAI's Whisper, run on this computer in a worker
+// (src/voice/whisperWorker.ts, transformers.js over onnxruntime-web's WebAssembly build).
 //
-// It replaced Vosk's small model, which was chosen for the slow PC and paid for it in accuracy:
-// it misheard "altar" as "alter" and "finish" as "fish", and a grammar can only narrow what it
-// guesses between, not make it hear better. Whisper is a far better listener of English, and it
-// is PRIMED rather than constrained — the names on the card and the map go in as a prompt
-// (`transcribe`), so "Blademaster" is the likely spelling without "fish" being forbidden. What
-// it hears is then free text, which the parser reads with a tolerance for near misses
-// (parser.ts `Lexicon.match`).
-//
-// Whisper small.en (~250 MB, `WHISPER_MODEL`) is downloaded once, from the Hugging Face hub (the one host the files are published on,
-// with the CORS header a page needs), into the browser's own Cache Storage, where transformers.js
-// looks before it ever goes to the network again. Nothing else leaves the machine: the audio of
-// a command goes to a worker on this page.
+// ONE MODEL PER UI LANGUAGE (src/voice/whisperModels.ts): English listens with the English-only
+// `whisper-small.en`, Chinese with the multilingual `whisper-small` told to transcribe Chinese.
+// Both are ~250 MB and downloaded once — from THIS project's own bucket, not huggingface.co,
+// which is unreachable from much of the network the game runs on — into the browser's own Cache
+// Storage, where transformers.js looks before it ever goes to the network again. Nothing else
+// leaves the machine: the audio of a command goes to a worker on this page.
+
+/** The model this UI language listens with. */
+export const voiceModel = (): WhisperModel => whisperModelFor(currentLocale());
 
 let worker: Worker | null = null;
 let nextId = 1;
@@ -62,7 +60,7 @@ const listeners = new Set<(installed: boolean) => void>();
 async function inCache(): Promise<boolean> {
   try {
     const cache = await caches.open("transformers-cache");
-    for (const url of whisperFiles()) if (!(await cache.match(url))) return false;
+    for (const url of whisperFiles(voiceModel())) if (!(await cache.match(url))) return false;
     return true;
   } catch {
     return false; // no Cache Storage (a locked-down private window): nowhere to keep a model
@@ -99,7 +97,8 @@ export interface VoiceInstallProgress {
  * failure or when `signal` aborts (Cancel), which stops the worker and with it the download.
  */
 export async function installVoiceModel(onProgress: (p: VoiceInstallProgress) => void, signal: AbortSignal): Promise<void> {
-  const total0 = WHISPER_MODEL.bytes;
+  const model = voiceModel();
+  const total0 = model.bytes;
   onProgress({ fraction: 0, received: 0, total: total0 });
   await new Promise<void>((resolve, reject) => {
     const onAbort = (): void => {
@@ -122,7 +121,7 @@ export async function installVoiceModel(onProgress: (p: VoiceInstallProgress) =>
         reject(new Error(m.error));
       }
     };
-    send({ type: "load" });
+    send({ type: "load", model });
   });
   installed = true;
   onProgress({ fraction: 1, received: total0, total: total0 });
@@ -137,7 +136,7 @@ let loaded = false;
 export function preloadVoiceModel(): void {
   if (loaded) return;
   loaded = true;
-  send({ type: "load" });
+  send({ type: "load", model: voiceModel() });
 }
 
 /** Whisper's own sample rate: every model in the family hears 16 kHz mono. */
@@ -149,7 +148,7 @@ export function transcribe(audio: Float32Array, prompt: string): Promise<string>
   loaded = true;
   return new Promise((resolve, reject) => {
     waiting.set(reqId, { resolve, reject });
-    send({ type: "transcribe", id: reqId, audio, prompt }, [audio.buffer]);
+    send({ type: "transcribe", id: reqId, audio, prompt, model: voiceModel() }, [audio.buffer]);
   });
 }
 
@@ -169,8 +168,11 @@ export function forgetOldVoiceModels(): void {
   // model or a test left behind — and an older build's copy of the ONNX runtime, which
   // transformers.js caches beside the model under the bundle's FINGERPRINTED url, so every update
   // of the game would otherwise leave one more ~27 MB behind. The cache is Voice Control's alone.
+  // BOTH language models are kept: switching the UI language must not re-download 250 MB.
   const keep = (url: string): boolean =>
-    url.includes(`/${WHISPER_MODEL.repo}/`) || [ortWasm, ortMjs].some((own) => url.endsWith(own.replace(/^\.?\//, "/")));
+    WHISPER_MODELS.some((m) => url.startsWith(whisperFileUrl(m, ""))) ||
+    WHISPER_MODELS.some((m) => url.includes(`/${m.id}/`)) ||
+    [ortWasm, ortMjs].some((own) => url.endsWith(own.replace(/^\.?\//, "/")));
   void (async () => {
     try {
       const cache = await caches.open("transformers-cache");

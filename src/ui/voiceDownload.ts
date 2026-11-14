@@ -1,7 +1,6 @@
 import { showGlueDialog } from "./glueDialog";
 import { showPatchDialog } from "./patchDialog";
-import { installVoiceModel } from "../voice/model";
-import { WHISPER_MODEL } from "../voice/whisperModels";
+import { installVoiceModel, voiceModel } from "../voice/model";
 import type { DataSource } from "../vfs/types";
 import { loadOptions, saveOptions } from "../data/options";
 import { applyVoiceOptions } from "../voice/control";
@@ -19,16 +18,17 @@ import { t } from "../i18n";
 // Both are mounted straight out of the player's install; nothing here draws chrome of its own.
 // Cancel or Escape aborts the fetch and nothing half-written is kept.
 
-const MB = (WHISPER_MODEL.bytes / 1_000_000).toFixed(0);
+/** The download's size, for the question and the bar — the model this language listens with. */
+const MB = (): string => (voiceModel().bytes / 1_000_000).toFixed(0);
 
 /** The words. Ours — the game never fetched anything but itself — set in its markup: gold
  *  (`|cffffcc00`) for the key and the size, as the game golds a hotkey in a tooltip. */
 const TEXT = {
-  ask: (): string => t("voiceDownload.ask", { mb: MB }),
+  ask: (): string => t("voiceDownload.ask", { mb: MB() }),
   title: (): string => t("voiceDownload.title"),
   titleDone: (): string => t("voiceDownload.titleDone"),
   titleFailed: (): string => t("voiceDownload.titleFailed"),
-  fetching: (): string => t("voiceDownload.fetching", { mb: MB }),
+  fetching: (): string => t("voiceDownload.fetching", { mb: MB() }),
   done: (): string => t("voiceDownload.done"),
   failed: (why: string): string => t("voiceDownload.failed", { why }),
 };

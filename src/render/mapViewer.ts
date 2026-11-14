@@ -29,7 +29,7 @@ import { localizedHotkey } from "../jass/natives/text";
 import { setWidePlayerTable } from "../data/enums";
 import { ScriptFrameOverlay } from "../ui/scriptFrames";
 import { EVENT_PLAYER_END_CINEMATIC, EVENT_PLAYER_LEAVE } from "../jass/interpreter";
-import { MAP_CONTROL, type CinematicScene, type DestructableSnapshot, type DialogObj, type EngineHooks, type RectObj, type Runtime } from "../jass/runtime";
+import { MAP_CONTROL, type CinematicScene, type DestructableSnapshot, type DialogButtonObj, type DialogObj, type EngineHooks, type RectObj, type Runtime } from "../jass/runtime";
 import { makeHeightSampler, makeWaterSampler, makeCliffLevelSampler, makeFootprintMaxSampler, type HeightSampler, type FootprintMaxSampler } from "../game/heightmap";
 import MdlxModel from "mdx-m3-viewer/dist/cjs/parsers/mdlx/model";
 import { WalkableSurfaces, type WalkableGeoset } from "./walkableHeight";
@@ -53,6 +53,8 @@ import { SoundBoard } from "../audio/sounds";
 import { VoiceChat } from "../audio/voiceChat";
 import { onVoiceControlChange, setVoiceHost, voiceControlOn } from "../voice/control";
 import { VoiceLabels } from "../game/voiceLabels";
+import { voicePacks } from "../voice/packs";
+import { mapVoice } from "../voice/mapVoice";
 import { mountVoiceHints } from "../ui/voiceHints";
 import { dressAsGameTip } from "../ui/gameTipSkin";
 import { anyModalOpen } from "../ui/modal";
@@ -264,6 +266,13 @@ const MAX_STEPS_PER_FRAME = 5;
 const SKIP_FADE_OUT = 0.5;
 const SKIP_FADE_HOLD = 0.25;
 const SKIP_FADE_IN = 0.5;
+
+/**
+ * 语音说“跳过”时地图还没准备好（战役章节常把跳过触发器在开场 2~3 秒后才 Enable），
+ * 先记下这个请求并在这段时间内重试；过了这个窗口仍不答应就放弃，不凭空黑屏。
+ * 只给 VOICE 用：ESC 仍然和原版一样，地图不答应的按键不算跳过。
+ */
+const SKIP_PENDING_SECS = 4;
 
 /** Time constant of the hold-to-follow camera's spring (issue #114) — see `followHeld`.
  *  Critically damped, so the lag it costs a group moving at speed `v` is `2·τ·v`: 45 ms
@@ -1692,6 +1701,8 @@ export class MapViewerScene {
   private userUi = true;
   /** EnableUserControl — false while a cinematic owns the mouse, keyboard and camera. */
   private userControl = true;
+  /** 过场开始前玩家选中的部队：过场里按 WC3 清空选择，结束后还给玩家。 */
+  private preCinematicSelection: number[] = [];
   /** SetGameSpeed / GetGameSpeed — the common.j gamespeed index. 2 = MAP_SPEED_NORMAL. */
   private gameSpeed = 2;
   /** The PLAYER's Game Speed (src/data/gameSpeed.ts) — a different thing from the script's
@@ -4332,10 +4343,23 @@ export class MapViewerScene {
       enableUserControl: (enable) => {
         this.userControl = enable;
         if (!enable) {
+          // 过场里照 WC3 清空选择，但记下来：结束后还给玩家，语音命令才有对象。
+          this.preCinematicSelection = this.rts?.selectedUnitIds() ?? [];
           this.rts?.clearSelection(); // a cinematic runs with nothing selected, as in WC3
           this.rts?.clearHover(); // …and with nothing lit up under the cursor either
           this.hud?.clearOrderMode();
           this.keys.clear(); // a key held when control was taken must not pan on resume
+        } else if (this.rts) {
+          const restore = this.preCinematicSelection;
+          this.preCinematicSelection = [];
+          // 脚本自己在结尾选中了什么就尊重脚本；否则把进场前的部队还给玩家，
+          // 已经阵亡/换主的单位不再选。
+          if (restore.length && this.rts.selectedUnitIds().length === 0) {
+            for (const id of restore) {
+              const u = this.rts.simView.units.get(id);
+              if (u && u.hp > 0 && u.owner === this.localPlayer) this.rts.scriptSelect(id, true);
+            }
+          }
         }
       },
       displayCineFilter: (filter) => this.cinematic?.setFilter(filter),
@@ -5330,6 +5354,7 @@ export class MapViewerScene {
     this.userUi = true;
     this.userControl = true;
     this.originHidden = false; // a map's BlzHideOriginFrames is that map's
+    this.cinematicSkipPending = 0;
     document.body.classList.remove("cine-on", "dialog-on");
     this.gameSpeed = 2; // MAP_SPEED_NORMAL
     this.cinePortraitFor = "";
@@ -5440,39 +5465,7 @@ export class MapViewerScene {
       // registers a trigger on its quit button and gives it no action. Order matters: the
       // script's own dialog-button triggers run first (they can still read GetClickedButton),
       // and the quit is what tears the match down.
-      onClick: (button) => {
-        // A replay's dialogs were answered in the match, so nothing here is the watcher's to
-        // press — except LEAVING. The end-of-match screen's Quit Game takes them out of the
-        // replay to the main menu (or closes a replay window — main.ts onExit), with no score
-        // screen between: the figures were the recorded players'. Its Continue Game is drawn
-        // greyed (showDialog), since there is no game to continue.
-        if (this.replayPlayback) {
-          if (button.quit && !button.disabled) {
-            this.remoteDialog = null;
-            this.showDialog(null);
-            void this.leave(false);
-          }
-          return;
-        }
-        const engine = this.mapScript;
-        const dialog = engine?.interp.rt.dialogs.find((d) => d.handleId === button.dialogId);
-        if (dialog) {
-          dialog.visibleFor.delete(this.localPlayer);
-          dialog.revision++;
-        }
-        // A RELAYED dialog (item F7) belongs to no script here, so dismissing it is dropping
-        // it. Without this the per-frame update below would hand it straight back and the
-        // screen could never be closed.
-        this.remoteDialog = null;
-        this.showDialog(null);
-        engine?.interp.fireDialogClick(button.handleId, button.dialogId, this.localPlayer);
-        if (button.quit) {
-          this.scriptPaused = false; // as above: the dialog's own PauseGame goes with it
-          // `DialogAddQuitButton(d, doScoreScreen, …)` — the melee victory and defeat screens
-          // both pass true, which is what puts the score screen between the match and the menu.
-          void this.leave(button.doScoreScreen);
-        }
-      },
+      onClick: (button) => this.clickDialogButton(button),
     });
     if (!this.globalStrings) {
       const lib = new FdfLibrary(this.vfs);
@@ -10127,6 +10120,47 @@ export class MapViewerScene {
       rts: () => this.rts,
       localPlayer: () => this.localPlayer,
       units: this.registry,
+      unitDef: (simId) => this.rts?.unitDef(simId),
+      packs: () => voicePacks(this.campaign ? "campaign" : mapDataSet() === "melee" ? "melee" : "custom", this.mapDisplayName),
+      cinematicPlaying: () => !this.interfaceShown,
+      paused: () => this.playerPaused,
+      duckAudio: (on) => this.sounds?.setDucked(on),
+      skipCinematic: () => {
+        // The ESC skip, exactly: the map's own trigger must be listening, or nothing is covered.
+        if (this.interfaceShown) return false;
+        const interp = this.mapScript?.interp;
+        if (!interp?.playerEventAnswered(this.localPlayer, EVENT_PLAYER_END_CINEMATIC)) {
+          // 战役章节的跳过触发器常常在开场几秒后才 Enable（NightElfX01 是 2.5 秒）。玩家刚
+          // 进图就喊“跳过”时先排队，等地图开始答应再跳，而不是直接拒绝。
+          this.cinematicSkipPending = SKIP_PENDING_SECS;
+          return true;
+        }
+        this.beginCinematicSkip();
+        return true;
+      },
+      quests: () => {
+        const rt = this.mapScript?.interp.rt;
+        if (!rt) return [];
+        // Colour codes go; TRIGSTR_ placeholders are the runtime's to resolve (the F9 log does
+        // the same through `resolveTrigStr`).
+        const clean = (s: string): string => rt.resolveTrigStr(s).replace(/\|[cC][0-9a-fA-F]{8}|\|[rR]/g, "").trim();
+        return rt.quests
+          .filter((q) => q.enabled && q.discovered && !q.completed && !q.failed)
+          .map((q) => ({
+            title: clean(q.title),
+            description: clean(q.description),
+            items: q.items.filter((it) => !it.completed).map((it) => clean(it.description)).filter(Boolean),
+            required: !!q.required,
+          }));
+      },
+      dialogChoices: () => this.visibleDialog()?.buttons.map((b) => ({ text: b.text, disabled: !!b.disabled, quit: !!b.quit })) ?? [],
+      chooseDialog: (index) => {
+        const d = this.visibleDialog();
+        const b = d?.buttons[index];
+        if (!b || b.disabled) return false;
+        this.clickDialogButton(b);
+        return true;
+      },
       abilities: this.abilities,
       tech: this.tech,
       upgrades: this.upgrades,
@@ -10145,16 +10179,53 @@ export class MapViewerScene {
       panTo: (wx, wy) => driver.panTo(wx, wy),
       jumpToSelection: () => this.jumpToSelection(),
       selectAllArmy: () => driver.selectAllArmy(false),
+      selectScreen: () => this.rts?.selectBox(0, 0, this.canvas.clientWidth, this.canvas.clientHeight, false),
+      alliancePeers: () => [...this.meleeTeams.keys()]
+        .filter((id) => id !== this.localPlayer)
+        .sort((a, b) => a - b)
+        .map((id) => ({
+          id,
+          name: this.playerNames.get(id) ?? `Player ${id + 1}`,
+          ally: this.rts?.playersAreCoAllied(this.localPlayer, id) ?? false,
+          vision: this.rts?.getPlayerAlliance(this.localPlayer, id, AllianceType.SharedVision) ?? false,
+          control: this.rts?.getPlayerAlliance(this.localPlayer, id, AllianceType.SharedControl) ?? false,
+        })),
+      setAllianceGrant: (other, what, on) => {
+        // 与 F11 面板勾选同一条写路径（含回放记录）；局域网客户端与 Lock Teams 不可写。
+        if (!this.rts || (this.rts.frozenClient ?? false) || this.lockTeams) return false;
+        if (!this.rts.playersAreCoAllied(this.localPlayer, other)) return false;
+        const type = what === "vision" ? AllianceType.SharedVision : AllianceType.SharedControl;
+        this.replayRecorder?.push({ k: "ally", p: this.localPlayer, other, type, on });
+        this.rts.setPlayerAlliance(this.localPlayer, other, type, on);
+        return true;
+      },
+      pingAt: (x, y) => {
+        this.hud?.ping({ x, y, duration: 3, r: 255, g: 255, b: 60, extraEffects: true });
+        this.noteSpacebarPoint(x, y);
+      },
+      groupMemberIds: (n) => this.rts?.groupMembers(String(n)) ?? [],
+      removeFromGroup: (n, ids) => this.rts?.removeFromGroup(String(n), ids) ?? 0,
       creepCamps: () => this.rts?.creepCamps() ?? [],
       recallGroup: (n) => driver.recallControlGroup(String(n), true),
       selectHero: (i) => driver.selectHero(i, true),
       panelOpen: (panel) => this.panelOpen(panel),
       togglePanel: (panel) => { this.togglePanel(panel); },
-      pause: (on) => { if (on !== this.playerPaused) this.askPause(on); },
+      pause: (on) => {
+        if (on === this.playerPaused) return;
+        // 和 F10 菜单里的 Pause/Resume 按钮同一条路：先收起菜单，再同步面板暂停，最后请求暂停。
+        this.gameMenu?.hide();
+        this.syncPanelPause();
+        this.askPause(on);
+      },
       openChat: (scope) => this.hud?.openChat(scope ? { scope } : { scope: hasChatAllies(this.localPlayer, this.chatWorld()) ? "allies" : "all" }),
       sendChat: (text, scope) => this.sendChat(text, scope ? { scope } : { scope: hasChatAllies(this.localPlayer, this.chatWorld()) ? "allies" : "all" }),
       inventory: () => (this.rts?.inventorySlots() ?? []).map((sl) => (sl ? { name: sl.name, usable: sl.usable } : null)),
       useInventory: (slot) => driver.useInventory(slot),
+      buyItem: (shopId, itemId) => this.buyItem(shopId, itemId),
+      sellInventory: (unitId, slot, shopId) => {
+        // 与把物品从物品栏拖到商店同一条路；被拒绝时说商店自己的话。
+        if (!this.rts?.execute(this.localPlayer, { c: "sellitem", unitId, slot, shopId })) this.refuse(SHOP_ERROR.nopatron);
+      },
       message: (text) => this.hud?.showMessage(text, -1),
       error: (text) => this.hud?.showError(text),
       status: (text) => {
@@ -10173,7 +10244,7 @@ export class MapViewerScene {
     }));
     this.detachers.push(() => setVoiceHost(null));
     // The name tags and the hint box, while Voice Control is on.
-    const hints = mountVoiceHints(ui, () => this.voiceHintNames());
+    const hints = mountVoiceHints(ui, () => this.voiceHintNames(), () => this.voiceHintContext());
     const show = (on: boolean): void => {
       this.syncVoiceTags();
       hints.setEnabled(on);
@@ -10191,7 +10262,9 @@ export class MapViewerScene {
   /** The names the hint box's examples are worded with: this race's worker, soldier and farm. */
   private voiceHintNames(): { worker: string; soldier: string; farm: string } {
     const rts = this.rts;
-    const fallback = { worker: "worker", soldier: "footmen", farm: "farm" };
+    // Before the match has a worker or a barracks, the hint box still shows the SHAPE of the
+    // command — in the player's own language, not the developer's placeholders.
+    const fallback = { worker: tr("voice.hints.worker"), soldier: tr("voice.hints.soldier"), farm: tr("voice.hints.farm") };
     if (!rts) return fallback;
     const types = new Set<string>();
     for (const u of rts.simView.units.values()) if (u.owner === this.localPlayer) types.add(u.typeId);
@@ -10217,6 +10290,15 @@ export class MapViewerScene {
       }
     }
     return { worker: worker ?? fallback.worker, soldier: soldier ?? fallback.soldier, farm: farm ?? fallback.farm };
+  }
+
+  /** Which command groups the hint box may show for THIS match: a chapter's words on a campaign,
+   *  a skirmish's on a melee map, and a custom map's own sentences only on that map. */
+  private voiceHintContext(): { kind: "campaign" | "melee" | "custom"; mapLines: string[] } {
+    const kind = this.campaign ? "campaign" : mapDataSet() === "melee" ? "melee" : "custom";
+    if (kind !== "custom") return { kind, mapLines: [] };
+    const says = (mapVoice()?.pack.phrases ?? []).map((p) => p.say).filter((s): s is string => !!s);
+    return { kind, mapLines: [...new Set(says)] };
   }
 
   /**
@@ -12829,6 +12911,51 @@ export class MapViewerScene {
     // it up would float the Quest Log over the film — and the Game Menu holds the sim
     // PAUSED, which would stop the cinematic the player is watching dead.
     if (!this.interfaceShown) this.closePanels();
+  }
+
+  /** 当前这个本地玩家看得见的脚本对话框：中继来的优先，其次脚本里显示给他的那个。 */
+  private visibleDialog(): DialogObj | null {
+    return this.remoteDialog ?? this.mapScript?.interp.rt.dialogs.find((d) => d.visibleFor.has(this.localPlayer)) ?? null;
+  }
+
+  /**
+   * 按下一个对话框按钮——鼠标点击与语音选择走同一条路。
+   *
+   * WC3 的任何按钮点击都会关掉对话框，QUIT 按钮还会结束比赛；顺序也一样：脚本自己的
+   * 对话框触发器先跑（它们还能读 GetClickedButton），退出是最后拆掉比赛的动作。
+   */
+  private clickDialogButton(button: DialogButtonObj): void {
+    // A replay's dialogs were answered in the match, so nothing here is the watcher's to
+    // press — except LEAVING. The end-of-match screen's Quit Game takes them out of the
+    // replay to the main menu (or closes a replay window — main.ts onExit), with no score
+    // screen between: the figures were the recorded players'. Its Continue Game is drawn
+    // greyed (showDialog), since there is no game to continue.
+    if (this.replayPlayback) {
+      if (button.quit && !button.disabled) {
+        this.remoteDialog = null;
+        this.showDialog(null);
+        void this.leave(false);
+      }
+      return;
+    }
+    const engine = this.mapScript;
+    const dialog = engine?.interp.rt.dialogs.find((d) => d.handleId === button.dialogId);
+    if (dialog) {
+      dialog.visibleFor.delete(this.localPlayer);
+      dialog.revision++;
+    }
+    // A RELAYED dialog (item F7) belongs to no script here, so dismissing it is dropping
+    // it. Without this the per-frame update below would hand it straight back and the
+    // screen could never be closed.
+    this.remoteDialog = null;
+    this.showDialog(null);
+    engine?.interp.fireDialogClick(button.handleId, button.dialogId, this.localPlayer);
+    if (button.quit) {
+      this.scriptPaused = false; // as above: the dialog's own PauseGame goes with it
+      // `DialogAddQuitButton(d, doScoreScreen, …)` — the melee victory and defeat screens
+      // both pass true, which is what puts the score screen between the match and the menu.
+      void this.leave(button.doScoreScreen);
+    }
   }
 
   /** Put a dialog on screen — or take it down — and with it the MOUSE (issue #104).
@@ -17344,6 +17471,7 @@ export class MapViewerScene {
     this.userUi = true;
     this.userControl = true;
     this.originHidden = false; // a map's BlzHideOriginFrames is that map's
+    this.cinematicSkipPending = 0;
     // A Lua map's front end goes with it: the state itself is GC'd with the interpreter, but
     // its host functions were registered in that interpreter's runtime, and dropping them
     // here is what keeps "nothing a match puts on the page outlives it" true of this too.
@@ -19001,6 +19129,9 @@ export class MapViewerScene {
    */
   private cinematicSkip: { t: number; fired: boolean } | null = null;
 
+  /** 语音排队的跳过：地图还没 Enable 跳过触发器时，按秒倒计时重试（见 SKIP_PENDING_SECS）。 */
+  private cinematicSkipPending = 0;
+
   /**
    * ESC during a cinematic — **the screen goes out before the skip lands.**
    *
@@ -19037,6 +19168,16 @@ export class MapViewerScene {
   /** Drive the skip cover and fire the skip itself at black. On the SIM's clock, like the rest
    *  of the cinematic (see the `cinematic.update` call site). */
   private tickCinematicSkip(dt: number): void {
+    // A skip said before the map's trigger was listening: retry briefly, then let it go.
+    if (this.cinematicSkipPending > 0) {
+      if (this.interfaceShown) this.cinematicSkipPending = 0;
+      else if (!this.cinematicSkip && this.mapScript?.interp.playerEventAnswered(this.localPlayer, EVENT_PLAYER_END_CINEMATIC)) {
+        this.cinematicSkipPending = 0;
+        this.beginCinematicSkip();
+      } else {
+        this.cinematicSkipPending -= dt;
+      }
+    }
     const skip = this.cinematicSkip;
     if (!skip) return;
     skip.t += dt;
