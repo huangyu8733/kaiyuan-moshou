@@ -489,10 +489,12 @@ export class DevToolsDrawer {
       this.section(t("dev.section.economy"), [
         mk(t("dev.cheat.gold"), "gold"), mk(t("dev.cheat.lumber"), "lumber"), mk(t("dev.cheat.food"), "food"),
       ]),
-      // `whosyourdaddy`, `riseandshine`, `lightsout` and `sharpandshiny` — the original game's cheats.
+      // `whosyourdaddy`, `riseandshine`, `lightsout`, `sharpandshiny`, `allyourbasearebelongtous`
+      // and `somebodysetupusthebomb` — the original game's cheats.
       this.section(t("dev.section.cheats"), [
         mk(t("dev.cheat.fastBuild"), "fastbuild"), mk(t("dev.cheat.godMode"), "godmode"),
         mk(t("dev.cheat.day"), "day"), mk(t("dev.cheat.night"), "night"), mk(t("dev.cheat.upgrades"), "upgrades"),
+        mk(t("dev.cheat.victory"), "victory"), mk(t("dev.cheat.defeat"), "defeat"),
       ]),
       this.section(t("dev.section.selection"), [
         sel(t("dev.cheat.hp"), "hp"), sel(t("dev.cheat.mp"), "mp"), sel(t("dev.cheat.cooldown"), "cooldown"), kill,
@@ -501,6 +503,8 @@ export class DevToolsDrawer {
     );
     setGameTip(this.cheatButtons.get("fastbuild")!, t("dev.cheat.fastBuildTip"));
     setGameTip(this.cheatButtons.get("upgrades")!, t("dev.cheat.upgradesTip"));
+    setGameTip(this.cheatButtons.get("victory")!, t("dev.cheat.victoryTip"));
+    setGameTip(this.cheatButtons.get("defeat")!, t("dev.cheat.defeatTip"));
     return page;
   }
 

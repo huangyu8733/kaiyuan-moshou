@@ -30,7 +30,7 @@ import { readSettings, useSettingsDir, writeSettings } from "./settings.mjs";
 import { createLogStore } from "./logStore.mjs";
 import { createReplayStore } from "./replayStore.mjs";
 import { arrangeDataDir } from "./dataDir.mjs";
-import { SHELL_CONTRACT, createSandbox, downloadBundle, fetchBundleManifest, removeSandbox, sweepSandboxes } from "./replayBundles.mjs";
+import { SHELL_CONTRACT, createSandbox, downloadBundle, fetchBundleManifest, removeSandbox, sweepSandboxes, withMapPath } from "./replayBundles.mjs";
 import { readMapSite } from "./mapSites.mjs";
 import { wireMapSiteViews } from "./mapSitesView.mjs";
 import { webRoot } from "./webUpdate.mjs";
@@ -169,8 +169,11 @@ async function watchInVersion(mainWin, request) {
   const version = String(request?.version ?? "");
   const options = request?.options && typeof request.options === "object" ? request.options : {};
   if (typeof fetch !== "function") throw new Error("This version of the app cannot download replay files.");
-  const bytes = replayFiles.read(name);
-  if (!bytes) throw new Error("That replay could not be read.");
+  const raw = replayFiles.read(name);
+  if (!raw) throw new Error("That replay could not be read.");
+  // The map as THIS build found it in the install, written into the header the window plays
+  // (replayBundles.mjs `withMapPath`).
+  const bytes = typeof request?.mapPath === "string" && request.mapPath ? withMapPath(raw, request.mapPath) : raw;
   const manifest = await fetchBundleManifest(version);
   if (!manifest) throw new Error(`Warcraft Open ${version} has no replay files to download.`);
   if (manifest.contract > SHELL_CONTRACT) throw new Error(`Update Warcraft Open to watch a replay from version ${version}.`);

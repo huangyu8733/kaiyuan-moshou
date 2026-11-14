@@ -1,5 +1,5 @@
 import War3MapViewer from "mdx-m3-viewer/dist/cjs/viewer/handlers/w3x/viewer";
-import { dataSetFolder, isRoc } from "../data/edition";
+import { dataSetFolder, isRoc, mapDataSet } from "../data/edition";
 import { dbg } from "../dev/dbg";
 import { decodeGameText } from "../data/text";
 import ModelViewer from "mdx-m3-viewer/dist/cjs/viewer/viewer";
@@ -13,7 +13,7 @@ import { LayeredDataSource } from "../vfs/layered";
 import { tilesetOverlay } from "../vfs/tileset";
 import { createAssetSolver, type MapFileLayer, type Solver } from "./assetSolver";
 import { SkyDome, skyModelPath, type SkyViewer } from "./sky";
-import { CAMERA_MARGIN, CELL, cameraBoundsOf, parseW3E, type TerrainData, type WorldRect } from "../world/terrain";
+import { CAMERA_MARGIN, CELL, cameraBoundsOf, parseW3E, playableRect, type TerrainData, type WorldRect } from "../world/terrain";
 import { brushPoints, parseCellRarity, pickCell } from "./terrainBrush";
 import { parseDoo } from "../world/doodads";
 import { collectMapDestructibles, findDestructibleAt, type MapDestructible } from "../world/mapDestructibles";
@@ -103,8 +103,13 @@ import { replaySink, type ReplaySink } from "../game/replaySink";
 import { ReplayUploader, installId } from "../game/replayUpload";
 import { autosaveReplay, shareReplays } from "../data/options";
 
+/** What an anonymous install id looks like (game/replayUpload.ts `installId`: a random UUID, or
+ *  "unknown" without localStorage — which says nothing and is not written onto a seat). */
+const INSTALL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** The one uploader for the page (issue #158) — replays waiting from an earlier session are sent
- *  on the first match's close as well as this one's. */
+ *  on the first match's close as well as this one's. Only a MULTIPLAYER match's replay is ever
+ *  offered to it, by the host (MapViewerScene.closeReplay). */
 const replayUploader = new ReplayUploader(shareReplays);
 
 /** The match that just closed, if it was recorded: where its `LastReplay` went and when it is
@@ -150,7 +155,7 @@ declare const __OW3_COMMIT__: string;
 declare const __OW3_SIM_FINGERPRINT__: string;
 import { animStride, renderSize, videoSettings } from "./videoQuality";
 import { edgeScrollScale, keyScrollScale } from "./scrollOptions";
-import { gamepadPan, setGamepadHost } from "../ui/gamepad";
+import { centreGamepadCursor, gamepadPan, setGamepadHost } from "../ui/gamepad";
 import { TerrainCull } from "./terrainCull";
 import type { PickVolume } from "./modelCollision";
 import { setSimProfiler } from "../sim/profile";
@@ -1575,8 +1580,17 @@ export class MapViewerScene {
    *  paused match changes one and not the other. */
   private pauseUiOn = false;
   private pauseUiHard = false;
+  /** Whether the veil was last laid down (`veiled`), for the same reason. */
+  private pauseUiVeil = false;
   /** The dim over the battlefield while the world is stopped (`.pause-veil`). */
   private pauseVeil: HTMLElement | null = null;
+  /** Stopped for a reason the battlefield should be DIMMED for: everything but a replay's own
+   *  Pause button. A paused replay is a viewer holding the picture still to look at it — the
+   *  replay panel's Pause, or the stop at its last step — so the picture stays as bright as it
+   *  plays; open F10 over it and the panel's pause dims it as anywhere else. */
+  private get veiled(): boolean {
+    return this.panelPaused || this.scriptPaused || this.playerPaused || this.waitPaused;
+  }
   /** A script's own dialog (`DialogDisplay`) is on screen. Modal, like the four console
    *  panels — see `deadPanels` — and in single-player it stops the world with them
    *  (`syncPanelPause`). */
@@ -2766,6 +2780,7 @@ export class MapViewerScene {
     const creeps: CreepSeed[] = []; // Neutral Hostile (player 12+) guard + drop data
     const players: Array<{ x: number; y: number; owner: number }> = []; // pre-placed player units (custom maps)
     let buildVersion = 0;
+    this.w3iPlayable = null; // …until this map's w3i says otherwise (see minimapRect)
     const w3iBytes = archive.rawBytes("war3map.w3i");
     if (w3iBytes) {
       // TOLERANT (src/compat/w3i.ts). This is the THIRD reader of the same file and the one
@@ -2776,6 +2791,13 @@ export class MapViewerScene {
       // mid-structure, and every field read below sits BEFORE the truncation.
       const { info } = readW3i(w3iBytes);
       buildVersion = info.getBuildVersion();
+      // The playable area as the EDITOR declared it — the tiles of black border on the left
+      // and bottom, and the playable size — which is the rect it rendered war3mapMap.blp of.
+      const pi = info as unknown as { cameraBoundsComplements?: Int32Array; playableSize?: Int32Array };
+      const comp = pi.cameraBoundsComplements, size = pi.playableSize;
+      if (comp && size && size[0] > 0 && size[1] > 0) {
+        this.w3iPlayable = { left: comp[0], bottom: comp[2], cols: size[0], rows: size[1] };
+      }
       // The map's environment fog (w3i): useTerrainFog 0 = off; fogHeight is [z-start,
       // z-end] camera distance, fogColor is RGBA bytes. Applied to the world scene so the
       // terrain + units fade to the fog colour with distance, as in the real game.
@@ -3230,9 +3252,9 @@ export class MapViewerScene {
           race: races.get(s.id) ?? String(s.race),
           team: s.team,
           color: rts.playerColor(s.id),
-          // The recording player's own anonymous id (game/replayUpload.ts) — only theirs, and
-          // only with their consent to share (data/options.ts `shareReplays`).
-          ...(s.id === this.localPlayer && !this.observer && shareReplays() ? { id: installId() } : {}),
+          // The recording player's anonymous id (game/replayUpload.ts) is written onto their seat
+          // when the match turns out to be MULTIPLAYER — the wire attaches after this header is
+          // made (`attachMatchLink`) — since only a multiplayer replay goes to the collection.
         })),
       localPlayer: this.localPlayer,
       observer: this.observer,
@@ -3254,8 +3276,9 @@ export class MapViewerScene {
     });
     rts.onCheat = (player, kind) => this.replayRecorder?.push({ k: "cheat", p: player, kind });
     rts.onCheatSelected = (kind, ids) => this.replayRecorder?.push({ k: "cheatsel", kind, ids: [...ids] });
-    rts.onInputs = (player, scheme, samples) => this.takeInputs(player, scheme, samples);
-    this.beginInputTrack();
+    rts.onInputs = (player, scheme, samples, id) => this.takeInputs(player, scheme, samples, id);
+    // The recorder's own input track starts in `attachMatchLink`, if this is a multiplayer match.
+    this.replayNetworked = false;
   }
 
   /** The replay panel's controls (issue #158, ui/replayPanel.ts) — null in a live match. */
@@ -3446,15 +3469,16 @@ export class MapViewerScene {
   }
 
   /**
-   * This player's INPUT TRACK (issue #158, game/inputTrack.ts) — started with the match on the
-   * machine of anybody who PLAYS in it and has agreed to share (data/options.ts `shareReplays`):
-   * the recording machine keeps its own straight in the replay, and a LAN client, which records
-   * nothing, sends its own to the host in batches.
+   * This player's INPUT TRACK (issue #158, game/inputTrack.ts) — taken in a MULTIPLAYER match
+   * only (the developer's call: a multiplayer replay is the one that goes to the collection, and
+   * it always does), on the machine of everybody who PLAYS in it: the host keeps its own straight
+   * in the replay, and a LAN client, which records nothing, sends its own to the host in batches.
+   * Started from `attachMatchLink`, the moment the match is known to be one.
    */
   private beginInputTrack(): void {
     const rts = this.rts;
     this.inputTracker = null;
-    if (!rts || this.observer || this.replayPlayback || !shareReplays()) return;
+    if (!rts || !rts.networked || this.observer || this.replayPlayback) return;
     const client = rts.frozenClient;
     if (!client && !this.replayRecorder) return; // nothing is recording this match
     watchInputSource();
@@ -3490,14 +3514,22 @@ export class MapViewerScene {
     const samples = tracker.drain();
     if (!samples.length) return;
     if (this.replayRecorder) this.replayRecorder.inputs(this.localPlayer, hotkeyMode(), samples);
-    else if (rts.frozenClient) rts.sendInputs(hotkeyMode(), samples);
+    // A client's batch carries its anonymous install id, for the host to put on its seat.
+    else if (rts.frozenClient) rts.sendInputs(hotkeyMode(), samples, installId());
   }
 
   /** HOST: a batch of a client's input track. Checked sample by sample — it is another machine's
-   *  word going into our file — and a step later than now is pulled back to now. */
-  private takeInputs(player: number, scheme: string, samples: unknown[]): void {
+   *  word going into our file — and a step later than now is pulled back to now. Its anonymous
+   *  install id, when it carries one in the right shape, goes onto that player's seat: the host
+   *  writes its own in `attachMatchLink`, and this is how every other person's seat gets theirs,
+   *  so one player's matches can be told from another's in the collection. */
+  private takeInputs(player: number, scheme: string, samples: unknown[], id?: string): void {
     const rec = this.replayRecorder;
     if (!rec) return;
+    if (id && INSTALL_ID.test(id)) {
+      const seat = rec.header.seats.find((x) => x.player === player && x.kind === "human");
+      if (seat) seat.id = id.toLowerCase();
+    }
     const now = this.simTick - this.replayTick0;
     const good: InputSample[] = [];
     for (const s of samples) {
@@ -3544,6 +3576,8 @@ export class MapViewerScene {
     if (this.rts) this.rts.simWorld.deathTap = null;
     this.rts?.setCommandTap(null);
     if (!rec) return;
+    const networked = this.replayNetworked;
+    this.replayNetworked = false;
     const ticks = this.simTick - this.replayTick0;
     // A match that never began (left at the loading screen) is nothing to watch.
     if (ticks <= 0) return;
@@ -3556,9 +3590,11 @@ export class MapViewerScene {
     const written = rec.finish().then(async (bytes) => {
       await sink.saveLast(bytes, keep);
       console.info(`[replay] recorded ${rec.eventCount} inputs over ${(ticks / SIM_HZ).toFixed(0)} s (${bytes.length} bytes)`);
-      // …and offered to the collection (game/replayUpload.ts; nothing is sent until it has
-      // somewhere to send to, and never with the player's switch off).
-      void replayUploader.offer(bytes);
+      // …and, for a MULTIPLAYER match, offered to the collection (game/replayUpload.ts) — by
+      // the host, which is the one machine that recorded it. A single-player match's replay
+      // stays on this machine. (A dev build sends nothing unless VITE_REPLAY_UPLOAD_URL names a
+      // door.)
+      if (networked) void replayUploader.offer(bytes);
       return true;
     }).catch((err) => {
       console.warn("[replay] could not be saved:", err);
@@ -3598,6 +3634,9 @@ export class MapViewerScene {
     }
   }
   private replayShared = false;
+  /** The recording is a MULTIPLAYER match's — this machine is its host (`attachMatchLink`) — and
+   *  so goes to the collection when it closes. */
+  private replayNetworked = false;
 
   /**
    * CLIENT: the host's replay of the game that just ended. Kept as this machine's own
@@ -3671,9 +3710,17 @@ export class MapViewerScene {
       this.replayRecorder = null;
       this.rts.setCommandTap(null);
       this.rts.onInputs = null;
-      // …but its player's own input track is still theirs to give: sent to the host in batches.
-      this.beginInputTrack();
+    } else if (this.replayRecorder && setup.isHost) {
+      // The HOST of a multiplayer match: its recording is the match's, and goes to the
+      // collection when the match closes (`closeReplay`) — under the host's anonymous id, the one
+      // seat whose id this machine knows.
+      this.replayNetworked = true;
+      const seat = this.replayRecorder.header.seats.find((x) => x.player === this.localPlayer);
+      if (seat && !this.observer) seat.id = installId();
     }
+    // Everybody who PLAYS a multiplayer match gives their own input track — the host straight into
+    // the replay, a client to the host in batches.
+    this.beginInputTrack();
     void this.voiceChat.warm(); // open the microphone now, so the first press loses nothing
     // Arm the background pump HERE, not from the frame loop: rAF is stopped in a hidden
     // window, so a host whose tab is already covered when the match starts would otherwise
@@ -5315,6 +5362,40 @@ export class MapViewerScene {
       // (AMAI has to destroy its own buildings to leave, because a JASS script's only way out
       // is the defeat condition; we are not constrained that way.)
       this.rts.onPlayerLeft = (player) => this.mapScript?.interp.firePlayerEvent(player, EVENT_PLAYER_LEAVE);
+      // The INSTANT VICTORY / DEFEAT cheats (`allyourbasearebelongtous`, `somebodysetupusthebomb`,
+      // and the dev drawer's two buttons): the match is ended the way the MAP ends it, through
+      // Blizzard.j — so the screen, the sound and the score screen are the ones a real ending
+      // gets. Which functions depends on the map's kind (the w3i melee flag, mapDataSet), because
+      // Blizzard.j has two endings and they look different:
+      //   · a MELEE map: what MeleeCheckForVictors / MeleeCheckForLosersAndVictors do to one
+      //     player — `MeleeDoVictoryEnum`'s body (CachePlayerHeroData, then
+      //     RemovePlayerPreserveUnitsBJ(p, PLAYER_GAME_RESULT_VICTORY, false), which raises
+      //     MeleeVictoryDialogBJ: "Victory!", Continue Game, Quit Game) and `MeleeDoDefeatEnum`'s
+      //     (CachePlayerHeroData, MakeUnitsPassiveForTeam, MeleeDoDefeat);
+      //   · anything else (a campaign chapter, a custom map): CustomVictoryBJ(p, true, true) and
+      //     CustomDefeatBJ(p, GAMEOVER_DEFEAT_MSG) — a chapter's Continue goes on to the next one.
+      // A cheat is a replay input (RtsController.cheat), so a replay ends the same way.
+      this.rts.onEndCheat = (player, won) => {
+        const interp = this.mapScript?.interp;
+        if (!interp) return;
+        const who = interp.callFunction("Player", [{ k: "int", n: player }]);
+        if (mapDataSet() === "melee") {
+          interp.callFunction("CachePlayerHeroData", [who]);
+          // common.j's own constant, not a bare 0: it is a `playergameresult` HANDLE, and
+          // RemovePlayerPreserveUnitsBJ compares it with `==` against the global — an int never
+          // matches, and the player got GameOverDialogBJ's "has left the game" instead.
+          if (won) {
+            const victory = interp.rt.globals.get("PLAYER_GAME_RESULT_VICTORY");
+            if (victory) interp.callFunction("RemovePlayerPreserveUnitsBJ", [who, victory, { k: "bool", b: false }]);
+          } else {
+            interp.callFunction("MakeUnitsPassiveForTeam", [who]);
+            interp.callFunction("MeleeDoDefeat", [who]);
+          }
+          return;
+        }
+        if (won) interp.callFunction("CustomVictoryBJ", [who, { k: "bool", b: true }, { k: "bool", b: true }]);
+        else interp.callFunction("CustomDefeatBJ", [who, interp.callFunction("GetLocalizedString", [{ k: "string", s: "GAMEOVER_DEFEAT_MSG" }])]);
+      };
       // …and who has gone out of that door (or been defeated) — `RemovePlayer`, recorded by
       // `playerGameOver` and by `peerLeft`. A leaver's units stay on the field shared with its
       // team, so this is the only way a Computer+ teammate can tell somebody has left.
@@ -5360,7 +5441,19 @@ export class MapViewerScene {
       // script's own dialog-button triggers run first (they can still read GetClickedButton),
       // and the quit is what tears the match down.
       onClick: (button) => {
-        if (this.replayPlayback) return; // a replay's dialogs were answered in the match
+        // A replay's dialogs were answered in the match, so nothing here is the watcher's to
+        // press — except LEAVING. The end-of-match screen's Quit Game takes them out of the
+        // replay to the main menu (or closes a replay window — main.ts onExit), with no score
+        // screen between: the figures were the recorded players'. Its Continue Game is drawn
+        // greyed (showDialog), since there is no game to continue.
+        if (this.replayPlayback) {
+          if (button.quit && !button.disabled) {
+            this.remoteDialog = null;
+            this.showDialog(null);
+            void this.leave(false);
+          }
+          return;
+        }
         const engine = this.mapScript;
         const dialog = engine?.interp.rt.dialogs.find((d) => d.handleId === button.dialogId);
         if (dialog) {
@@ -10619,11 +10712,49 @@ export class MapViewerScene {
       for (let col = 0; col < columns; col++) corners[row * columns + col] = line[col]?.blight ? 1 : 0;
     }
     const color = same ? prev.color : this.blightMinimapColor();
-    const blight = color ? { version: ++this.minimapBlightSerial, columns, rows, corners, color } : null;
+    // The tiles the minimap's picture covers (minimapRect), so the layer lines up with it.
+    const r = this.minimapRect();
+    const [gx, gy] = map.centerOffset;
+    const tiles = r
+      ? { tileX: Math.round((r.minX - gx) / CELL), tileY: Math.round((r.minY - gy) / CELL), tileCols: Math.round((r.maxX - r.minX) / CELL), tileRows: Math.round((r.maxY - r.minY) / CELL) }
+      : { tileX: 0, tileY: 0, tileCols: columns - 1, tileRows: rows - 1 };
+    const blight = color ? { version: ++this.minimapBlightSerial, columns, rows, corners, color, ...tiles } : null;
     this.minimapBlightView = { map, corners, color, blight };
     this.minimapBlightStale = false;
     return blight;
   }
+  /** war3map.w3i's playable area in TILES: the border's depth on the left and bottom
+   *  (`cameraBoundsComplements[0]`/`[2]`) and the playable size. Null until a w3i is read. */
+  private w3iPlayable: { left: number; bottom: number; cols: number; rows: number } | null = null;
+
+  /**
+   * The world rect the minimap shows — the PLAYABLE AREA (docs/unplayable-area.md's middle
+   * rect), not the whole terrain grid. war3mapMap.blp is rendered of exactly that: its
+   * transparent letterbox follows the PLAYABLE aspect, never the grid's, across every stock
+   * map that tells the two apart — (2)BootyBay's grid is 192×96 (2:1) and its playable area
+   * 160×72, and the picture goes opaque at y = 70, which is (256 − 256·72/160)/2 and not the
+   * grid's 64; (2)EchoIsles (128×96 against 116×84) at y = 35, not 32. On (2)HillsOfGlory —
+   * 96×96 with 19 tiles of border along the bottom and 20 down the right, against 4 and 5 on
+   * the other sides — spreading the playable picture over the whole grid left a strip below
+   * the bottom gold mine the camera box could point at and the camera could never reach.
+   *
+   * The w3i's own numbers first, as the editor's; a w3i that never got that far (a protected
+   * map's truncated one) falls back on the terrain's boundary flags, which state the same
+   * rect (`playableRect`), and a map with neither on the whole grid.
+   */
+  private minimapRect(): WorldRect | null {
+    const map = this.viewer.map;
+    if (!map) return null;
+    const [cols, rows] = map.mapSize;
+    const [ox, oy] = map.centerOffset;
+    const p = this.w3iPlayable;
+    if (p && p.left >= 0 && p.bottom >= 0 && p.left + p.cols <= cols - 1 && p.bottom + p.rows <= rows - 1) {
+      return { minX: ox + p.left * CELL, minY: oy + p.bottom * CELL, maxX: ox + (p.left + p.cols) * CELL, maxY: oy + (p.bottom + p.rows) * CELL };
+    }
+    if (this.terrainData) return playableRect(this.terrainData);
+    return { minX: ox, minY: oy, maxX: ox + (cols - 1) * CELL, maxY: oy + (rows - 1) * CELL };
+  }
+
   private minimapBlightView: {
     map: W3xMap;
     corners: Uint8Array;
@@ -10822,11 +10953,8 @@ export class MapViewerScene {
       creepCamps: () => this.rts?.creepCamps() ?? [],
       minimapIcons: () => this.rts?.minimapIcons() ?? [],
       mapBounds: () => {
-        const map = this.viewer.map;
-        if (!map) return [0, 0, 1, 1];
-        const [cols, rows] = map.mapSize;
-        const [ox, oy] = map.centerOffset;
-        return [ox, oy, (cols - 1) * 128, (rows - 1) * 128];
+        const r = this.minimapRect();
+        return r ? [r.minX, r.minY, r.maxX - r.minX, r.maxY - r.minY] : [0, 0, 1, 1];
       },
       fogAt: (wx, wy) => this.rts?.getVision().stateAt(wx, wy) ?? 2, // 2 = visible (no fog before a match)
       fogStates: (xs, ys, out) => {
@@ -10877,6 +11005,8 @@ export class MapViewerScene {
         chatPrompt(this.chatTargetFor(target), this.multiplayerMatch, (p) => this.playerLabel(p), (k) => this.globalStrings?.strings.get(k)),
       sendChat: (text, target) => this.sendChat(text, target),
       chatHasAllies: () => hasChatAllies(this.localPlayer, this.chatWorld()),
+      // A REPLAY has nobody to talk to: its players are recorded inputs (game/replay.ts).
+      chatAllowed: () => !this.replayPlayback,
       setResources: (next) => this.consoleUi?.update(next),
       dayNight: () => this.rts?.timeOfDay() ?? { hour: MELEE.MELEE_STARTING_TOD, isDay: true },
       mountClock: (slot) => this.mountClock(slot),
@@ -11230,6 +11360,9 @@ export class MapViewerScene {
     else if (code === "riseandshine") this.rts.cheat("day");
     else if (code === "lightsout") this.rts.cheat("night");
     else if (code === "sharpandshiny") this.rts.cheat("upgrades");
+    // The original game's instant victory and defeat (RtsController.onEndCheat).
+    else if (code === "allyourbasearebelongtous") this.rts.cheat("victory");
+    else if (code === "somebodysetupusthebomb") this.rts.cheat("defeat");
     else return false;
     const key = on ? "CHEATENABLED" : "CHEATDISABLED";
     this.hud?.showMessage(this.globalStrings?.strings.get(key) ?? (on ? "Cheat enabled!" : "Cheat disabled!"), -1);
@@ -11275,13 +11408,10 @@ export class MapViewerScene {
    * chat: it is the only confirmation the message went anywhere).
    */
   private sendChat(text: string, target: ChatTarget): void {
-    // Watching a REPLAY, the match is the file's: a line typed now was never said in it, so it
-    // reaches no script and no player — it is shown to the watcher alone.
-    if (this.replayPlayback) {
-      if (text.trim().toLowerCase() === "/dev") this.hud?.toggleDevTools();
-      else this.showChat({ from: this.localPlayer, text, target: { scope: "observers" } });
-      return;
-    }
+    // Watching a REPLAY there is no chat at all (HudDriver.chatAllowed keeps the entry line
+    // shut): the match is the file's, and a line typed now was never said in it. This catches
+    // the one door that does not go through the entry line — a spoken "say …" (voiceActions).
+    if (this.replayPlayback) return;
     if (this.typedCheat(text)) return;
     target = this.chatTargetFor(target);
     const link = this.rts?.matchLinkHandle ?? null;
@@ -12440,7 +12570,34 @@ export class MapViewerScene {
    *  the console's F-keys, not just its last stretch (see togglePanel). */
   private loadingScreenUp = false;
   setLoadingScreen(on: boolean): void {
+    const lifting = this.loadingScreenUp && !on;
     this.loadingScreenUp = on;
+    if (lifting) this.forgetLoadingInput();
+  }
+
+  /**
+   * The match starts with a clean hand: nothing the player did while the loading screen was up
+   * carries into it. Keys held through the load are let go (a held arrow would otherwise pan
+   * from the first frame, and the key that dismissed the screen is not a command), a drag is
+   * dropped, and the cursor counts as being in the MIDDLE of the game frame until it really
+   * moves — a page cannot move the OS pointer, but it can refuse to act on where the pointer
+   * was left during the load, which is all edge-scrolling and hovering read. The gamepad's
+   * drawn cursor CAN be moved, and is put in the middle too.
+   */
+  private forgetLoadingInput(): void {
+    this.keys.clear();
+    if (this.rts) this.rts.subgroupOrders = false;
+    this.dragging = false;
+    this.midPanning = false;
+    this.moved = false;
+    this.syncFrame();
+    const f = this.frame;
+    this.lastCursor.x = (f.left + f.right) / 2;
+    this.lastCursor.y = (f.top + f.bottom) / 2;
+    this.lastMouse.x = this.canvas.clientWidth / 2;
+    this.lastMouse.y = this.canvas.clientHeight / 2;
+    this.showScrollArrow(0, 0);
+    centreGamepadCursor(this.lastCursor.x, this.lastCursor.y);
   }
 
   holdAtStart(on: boolean): void {
@@ -12610,13 +12767,17 @@ export class MapViewerScene {
       // A stopped world skews every average in the log — mark both edges so the report's
       // timeline says which flat stretch was a pause and which was a stall.
       perfLog.note(on ? "paused" : "resumed");
-      this.pauseVeil?.classList.toggle("on", on);
       // The portrait bust runs a rAF loop of its OWN (render/modelViewer.ts), on its own canvas
       // and its own viewer, so zeroing the world's step does not reach it — the head went on
       // breathing over a stopped battlefield. `stop` is already a pause there rather than a
       // teardown ("fresh dt on resume"), so the clip picks up mid-breath when the match does.
       if (on) this.portraitViewer?.stop();
       else if (this.portraitFor !== null || this.portraitTalkKey) this.portraitViewer?.start();
+    }
+    const veil = this.veiled;
+    if (veil !== this.pauseUiVeil) {
+      this.pauseUiVeil = veil;
+      this.pauseVeil?.classList.toggle("on", veil);
     }
     const hard = this.hardPaused;
     if (hard !== this.pauseUiHard) {
@@ -12681,6 +12842,10 @@ export class MapViewerScene {
    *  The rule is body-wide, as the cursor itself is — once the engine draws it, it is drawn
    *  over the whole screen, not clipped to the panel. */
   private showDialog(d: DialogObj | null): void {
+    // Watching a REPLAY, every button but a quit is the recorded match's to press, not the
+    // watcher's — the end screen's Continue Game above all, which has no game to continue. They
+    // are still SHOWN, greyed, so the screen is the one the match showed.
+    if (d && this.replayPlayback) d = { ...d, buttons: d.buttons.map((b) => (b.quit ? b : { ...b, disabled: true })) };
     this.dialog?.update(d);
     this.dialogUp = !!d;
     document.body.classList.toggle("dialog-on", !!d);
@@ -17272,7 +17437,7 @@ export class MapViewerScene {
     document.body.style.removeProperty("--ow3-reticle-cursor");
     this.canvas.style.removeProperty("--ow3-hand-cursor");
     this.reticleCursorRule = this.handCursorRule = "";
-    this.pauseUiOn = this.pauseUiHard = false;
+    this.pauseUiOn = this.pauseUiHard = this.pauseUiVeil = false;
     this.dialogUp = false;
     this.deadPanelKey = "";
     document.body.style.cursor = ""; // restore the default cursor off the map
@@ -18103,7 +18268,13 @@ export class MapViewerScene {
     // …and a MIDDLE-DRAG is the one hand on the camera while it is held: the map is pinned
     // under the cursor, so an arrow key, the stick or the cursor brushing a screen edge would
     // each slide it out from under the hand that is holding it.
-    if (this.userControl && !this.hardPaused && !this.midPanning) {
+    // …and NOTHING moves it while the LOADING SCREEN is up: the match is built and drawn behind
+    // the screen for seconds before it lifts, and a cursor resting on an edge (the pointer is
+    // hidden there, so the player cannot even see it) or an arrow key held through the load
+    // panned that hidden camera, so the match opened somewhere other than the start location.
+    // What was pressed while it was up is thrown away as it lifts (`forgetLoadingInput`).
+    const loading = this.loadingScreenUp || this.startHeld;
+    if (this.userControl && !this.hardPaused && !this.midPanning && !loading) {
       // …and a DIALOG on screen owns the keyboard: the game-over box, the F10 menu, Allies, a
       // script's own dialog. The world underneath a modal takes no commands and its camera
       // does not move (ui/modal.ts) — the arrows that slid the map behind "Victory!" were the

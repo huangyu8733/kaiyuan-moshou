@@ -16,7 +16,10 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
 const { version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-const out = join(root, "release", `web-${version}.zip`);
+// The PAGE's own version: it moves without an installer, so a UI-only fix can be `web-1.0.1.zip`
+// over a 1.0.0 app. Left out, it follows the app's version.
+const pageVersion = process.argv[2] || version;
+const out = join(root, "release", `web-${pageVersion}.zip`);
 
 mkdirSync(join(root, "release"), { recursive: true });
 rmSync(out, { force: true });

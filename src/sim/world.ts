@@ -2077,10 +2077,11 @@ export interface SimUnit {
    *  on the tick the last `hex` buff goes, however it went (the clock, a dispel). */
   hexForm: string;
   ethereal: boolean; // derived from buffs (Banish): can't attack, immune to physical damage
-  /** Pulled out of the air and stuck to the ground — derived from a `web` root buff the way
-   *  `ethereal` is derived from Banish's. While it is set the unit answers to `ground` rather
-   *  than `air` (targetKeyOf) and is drawn on the floor (flyHeight 0), which is the whole of
-   *  what Web does that Ensnare does not. False for everything that never flew. */
+  /** Pulled out of the air and stuck to the ground — derived from a NET on a flyer (a `web` or
+   *  an `ensnare` root buff) the way `ethereal` is derived from Banish's. While it is set the
+   *  unit answers to `ground` rather than `air` (targetKeyOf) and lies on the floor (flyHeight
+   *  0, reached through netAltitude, which also drags it clear of unwalkable ground). False for
+   *  everything that never flew. */
   webbed: boolean;
   /** Magic Immunity (`Amim`, and the creep copies that share its code) — the unit cannot be
    *  the target of a spell at all, and takes no spell damage. Carried by the Dryad, the
@@ -2245,7 +2246,7 @@ export interface SimUnit {
    * until the shape change is over (`morphT`): the statue grows its wings standing on the ground
    * and only leaves it once it is a Destroyer. Null for everything else, which is almost always.
    */
-  altitudeShift: { to: number; rate: number; wait: boolean } | null;
+  altitudeShift: { to: number; rate: number; wait: boolean; drag?: { x: number; y: number; rate: number } } | null;
   /**
    * Seconds left on a Scroll of Town Portal's channel, or 0.
    *
@@ -2287,6 +2288,12 @@ export interface SimUnit {
    *  hall when the clock runs out: the scroll's destination may have been knocked down
    *  inside the five seconds, and the two questions cannot share one answer. */
   portalDestId: number;
+  /** The SCROLL being channelled — the held item's entity id (HeldItem.id), or 0. Its charge is
+   *  spent when the party ARRIVES (resolveTeleport) and not on the press: a scroll whose
+   *  destination hall is knocked down inside the five seconds teleports nobody and is not used
+   *  up — "the scroll is consumed only if the teleportation succeeds" (the developer's account
+   *  of the original). The press still starts the item's cooldown. */
+  portalItem: number;
   /** The facing a building was RAISED with, in radians — what an Ancient turns back to when it
    *  plants itself again.
    *
@@ -3177,6 +3184,14 @@ const IAS_MAX = 4.0; // +400% — cannot swing faster than 5x its base attack ti
 const IAS_MIN = -0.8; // -80% — cannot be slowed below 1/5 of its base attack rate
 const DAMAGE_POINT_FLOOR = 0.02; // a swing always lands 0.02s before it may start the next
 const UNIT_MANA_REGEN = 0.67; // flat mana/sec for non-hero casters (approx WC3 base)
+/** How long a NET (Web, or Ensnare on a flyer) takes to bring its flyer down to the ground, and
+ *  to drag it clear of trees on the way (SimWorld.netAltitude). OURS: nothing in the data times
+ *  the fall — the buff simply holds the unit on the ground — so this is only long enough to SEE
+ *  it come down rather than blink there. */
+const NET_DROP_TIME = 0.4;
+/** The buff group Spirit Link's `[Bspl]` buff wears (spells.ts Aspl) — and so the link itself:
+ *  a member whose buff is gone is out of the link (see the tick's linkT clause). */
+export const SPIRIT_LINK_GROUP = "spiritlink";
 const AURA_REFRESH = 0.5; // aura buffs re-applied each tick with this TTL (fade on leave)
 /** Big Bad Voodoo's invulnerability is handed out on the same short leash an aura is, for
  *  the same reason: a broken CHANNEL has to strip it from everybody the same instant, and
@@ -8772,6 +8787,59 @@ export class SimWorld {
     u.altitudeShift = { to: 0, rate, wait: false };
   }
 
+  /**
+   * A NET (Web, or Ensnare on a flyer) taking a flyer down to the ground, or letting it go.
+   *
+   * The way down is a FALL rather than a snap, over NET_DROP_TIME (ours — nothing in the data
+   * times it), booked as an `altitudeShift` so the same per-tick flight that lifts a Destroyer
+   * carries it. The way back up returns to the type's own `moveheight` (see recomputeStats).
+   *
+   * And where it lands has to be somewhere a GROUND body can be: a Gargoyle netted over a
+   * forest cannot lie in the trees, so it is DRAGGED along the line toward whoever threw the
+   * net until it reaches the first walkable block nobody is standing on (the developer's
+   * account of the original: "dragged towards the caster of Ensnare/Web until it finds an
+   * empty, walkable cell it can take up"). The drag flies on the same clock as the drop, so
+   * the body lands where it is pulled to. Where the line holds no such block (the caster is
+   * gone, or stands in the trees itself) the nearest free block round about is taken instead.
+   */
+  private netAltitude(u: SimUnit, down: boolean, sourceId: number): void {
+    const typeHeight = this.unitReg?.get(u.typeId)?.moveHeight ?? 0;
+    const to = down ? 0 : typeHeight;
+    const rate = Math.abs(to - u.flyHeight) / NET_DROP_TIME;
+    u.altitudeShift = { to, rate: rate > 0 ? rate : Infinity, wait: false };
+    if (!down) return;
+    const spot = this.netLandingSpot(u, sourceId);
+    if (spot) {
+      const d = Math.hypot(spot[0] - u.x, spot[1] - u.y);
+      if (d > 0.5) u.altitudeShift.drag = { x: spot[0], y: spot[1], rate: d / NET_DROP_TIME };
+    }
+  }
+
+  /** Where a netted flyer may lie on the ground — its own spot when that is free, else the
+   *  first free walkable block along the line to the net's thrower, else the nearest one
+   *  round about. Null when it is already somewhere it can lie (or there is no grid). */
+  private netLandingSpot(u: SimUnit, sourceId: number): [number, number] | null {
+    if (!this.grid) return null;
+    const n = Math.max(1, footprintCells(this.unitReg?.get(u.typeId)?.collision || u.radius));
+    const free = (x: number, y: number): boolean => {
+      const [cx0, cy0] = this.grid.footprintOrigin(x, y, n);
+      return this.blockFree(cx0, cy0, n) && this.grid.playable(...this.grid.worldToCell(x, y));
+    };
+    if (free(u.x, u.y)) return null;
+    const src = this.units.get(sourceId);
+    if (src) {
+      const dist = Math.hypot(src.x - u.x, src.y - u.y);
+      const steps = Math.ceil(dist / (PATHING_CELL * 0.5));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const x = u.x + (src.x - u.x) * t;
+        const y = u.y + (src.y - u.y) * t;
+        if (free(x, y)) return [x, y];
+      }
+    }
+    return this.nearestFreeBlock(u.x, u.y, n, 12, false, (x, y) => free(x, y));
+  }
+
   /** Fly the altitude change `shiftAltitude` booked, one tick at a time. */
   private tickAltitude(u: SimUnit, dt: number): void {
     const a = u.altitudeShift;
@@ -8787,8 +8855,25 @@ export class SimWorld {
       u.footprint = 0;
       u.radius = this.unitReg?.get(u.typeId)?.collision || u.radius;
     }
+    // A net's DRAG (netAltitude): the body is hauled along the ground toward the thrower on
+    // the same clock as the fall. The unit is pinned, so nothing else moves it meanwhile.
+    if (a.drag) {
+      const dx = a.drag.x - u.x;
+      const dy = a.drag.y - u.y;
+      const d = Math.hypot(dx, dy);
+      const go = a.drag.rate * dt;
+      if (!Number.isFinite(go) || d <= go) {
+        u.x = a.drag.x;
+        u.y = a.drag.y;
+        a.drag = undefined;
+      } else {
+        u.x += (dx / d) * go;
+        u.y += (dy / d) * go;
+      }
+    }
     const step = a.rate * dt;
     if (!Number.isFinite(step) || Math.abs(a.to - u.flyHeight) <= step) {
+      if (a.drag) { u.flyHeight = a.to; return; } // still being hauled: hold the clock open
       u.flyHeight = a.to;
       u.altitudeShift = null;
     } else {
@@ -9771,6 +9856,7 @@ export class SimWorld {
       | "portalY"
       | "portalAbil"
       | "portalDestId"
+      | "portalItem"
       | "builtFacing"
       | "restFaceT"
       | "rootPending"
@@ -10072,6 +10158,7 @@ export class SimWorld {
       portalY: 0,
       portalAbil: "",
       portalDestId: 0,
+      portalItem: 0,
       builtFacing: unit.facing,
       restFaceT: 0,
       rootPending: null,
@@ -11569,12 +11656,24 @@ export class SimWorld {
     // the spoken half of issueAttack's own `t.invulnerable` refusal (issue #26) — the order was
     // already being turned down there, silently, and a click that vanishes reads as a bug.
     if (commanded && t.invulnerable) return "Notinvulnerable";
+    // "Ethereal units can only be hit by spells and Magic damage." — [Errors] `Notethereal`:
+    // a weapon that WOULD admit the target but for its being ethereal (weaponVs refuses
+    // every attack type MiscGame's EtherealDamageBonus zeroes). Only the named attack hears it,
+    // for the same reason as `Notinvulnerable` above — a right-click is a smart order.
+    if (commanded && t.ethereal && u.weapon && !this.canAttack(u, t) && this.etherealOnlyBar(u, t)) return "Notethereal";
     if (!u.weapon || this.canPursue(u)) return null;
     // Nothing in the loadout may strike it at all (a ground tower pointed at a Gryphon):
     // that is a different refusal and not one this method has the line for — issueAttack
     // turns the order down on `canAttack` and the cursor never went red in the first place.
     if (!this.canAttack(u, t)) return null;
     return this.inWeaponRange(u, t) ? null : "Notinrange";
+  }
+
+  /** Would one of `u`'s enabled weapons admit `t` (by its Targets Allowed) if `t` were not
+   *  ethereal? Tells the `Notethereal` refusal apart from a plain "cannot hit that kind". */
+  private etherealOnlyBar(u: SimUnit, t: SimUnit): boolean {
+    const key = targetKeyOf(t);
+    return u.weapons.some((w) => w.enabled && (!w.targets.length || w.targets.includes(key)));
   }
 
   /** Can this unit walk to a fight at all? A structure (and anything else the data gives no
@@ -13673,6 +13772,15 @@ export class SimWorld {
       // all take the same answer, and a unit with a second weapon of another type falls
       // through to it. `applyDamage` is the other half, for a blow already in the air.
       if (w.attackType === AttackType.Magic && t.magicImmune && gameNum("MagicImmunesResistDamage")) continue;
+      // …and the mirror image: an ETHEREAL unit (Banish, the Spirit Walker's Ethereal Form) is
+      // out of reach of every weapon whose attack type its `EtherealDamageBonus` column zeroes
+      // (MiscGame: 0 for Normal/Pierce/Siege/Chaos/Hero, 1.66 for Magic/Spells). The game does
+      // not aim such a weapon at it at all — [Errors] `Notethereal`, "Ethereal units can only be
+      // hit by spells and Magic damage." — so a Gargoyle's missile (pierce) never picks a
+      // Spirit Walker. Asked here for the same reason as the magic-immune rule above: the idle
+      // scan, an ordered attack, the cursor and a target that turns ethereal mid-fight all take
+      // this one answer. `applyDamage`'s multiplier stays as the half for a blow already flying.
+      if (t.ethereal && etherealDamageMultiplier(w.attackType) === 0) continue;
       // No Targets Allowed data at all (a summon or custom unit with no weapons row) → treat
       // the weapon as unrestricted rather than silently disarming the unit.
       if (!w.targets.length) return w;
@@ -13788,6 +13896,7 @@ export class SimWorld {
     let disarmed = false;
     let ethereal = false;
     let webbed = false;
+    let netSource = 0; // who threw the net that pulls this flyer down (the drag's direction)
     let invisible = false;
     let cloaked = false;
     let invuln = false;
@@ -13818,9 +13927,14 @@ export class SimWorld {
         slowMove = Math.max(slowMove, b.value); // pins movement
         // ENTANGLING ROOTS is the one net that also takes the weapon away (SimUnit.disarmed).
         if (b.group === "roots") disarmed = true;
-        // WEB is Ensnare with one extra clause, and the group is what tells them apart: the
-        // target is not merely held, it is pulled DOWN. See SimUnit.webbed.
-        if (b.group === "web") webbed = true;
+        // A NET ON A FLYER pulls it DOWN, and that is Web's whole point and Ensnare's second
+        // half: "Air units that are ensnared can be attacked as though they were land units"
+        // ([Aens] Ubertip, OrcAbilityStrings.txt). Entangling Roots never reaches a flyer.
+        // See SimUnit.webbed.
+        if ((b.group === "web" || b.group === "ensnare") && u.flying) {
+          if (!webbed) netSource = b.sourceId;
+          webbed = true;
+        }
       }
       else if (b.kind === "ethereal") {
         ethereal = true;
@@ -14098,7 +14212,7 @@ export class SimWorld {
     // both what the original shows and the only answer that survives the buff being dispelled,
     // expiring, or the caster dying. Touched only on the CHANGE, so a script's
     // SetUnitFlyHeight is left alone for every unit that is not being webbed right now.
-    if (webbed !== u.webbed) u.flyHeight = webbed ? 0 : (this.unitReg?.get(u.typeId)?.moveHeight ?? 0);
+    if (webbed !== u.webbed) this.netAltitude(u, webbed, netSource);
     u.webbed = webbed;
     // Magic Immunity is a plain property of the unit's ability list, not a buff — nothing
     // grants or removes it mid-life, so it is derived here alongside the rest. (`Amim` carries
@@ -15327,7 +15441,11 @@ export class SimWorld {
           const ranged = !!t.weapon?.ranged;
           for (const e of effects) {
             if (e.rangedOnly && !ranged) continue; // Trueshot only helps ranged units
-            if (e.meleeOnly && (ranged || !t.weapon)) continue; // Vampiric only helps melee units
+            // Vampiric only helps MELEE units, and a unit with ANY ranged weapon is not one:
+            // the Gargoyle's anti-air claw is a `normal` slot (UnitWeapons [ugar] weapTp1 =
+            // normal, rangeN1 = 128) and is its PRIMARY, but its ground attack is a missile
+            // (weapTp2 = missile, rangeN2 = 300), and the game leaves Gargoyles out of the aura.
+            if (e.meleeOnly && !this.meleeAttacker(t)) continue;
             // A percentage aura's amount is the TARGET's — 1% of a Peasant's 220 life is not
             // 1% of a Mountain Giant's 1300 (see AuraEffect.pctOfMax).
             const value = e.pctOfMax ? e.value * (e.kind === "manaRegen" ? t.maxMana : t.maxHp) : e.value;
@@ -15339,6 +15457,14 @@ export class SimWorld {
         }
       }
     }
+  }
+
+  /** A MELEE attacker in the auras' sense: armed, and with no ENABLED weapon that is ranged.
+   *  The primary slot alone is not the answer — a Gargoyle's primary (its anti-air claw) is
+   *  melee while its ground weapon is a missile, and Vampiric Aura passes it by. */
+  meleeAttacker(u: SimUnit): boolean {
+    if (!u.weapon) return false;
+    return !u.weapons.some((w) => w.enabled && w.ranged);
   }
 
   /** Memo for lifestealArtOf, keyed by buff group: an ability's art cannot change mid-match. */
@@ -20885,7 +21011,11 @@ export class SimWorld {
       if (u.drinkWellId) this.tickDrinkWalk(u); // …and a unit sent to a Moon Well stopping once it is in reach
       this.tickRenew(u); // an idle Wisp with Renew on, looking for something to mend
       if (u.cooldownLeft > 0) u.cooldownLeft -= dt;
-      if (u.linkT > 0 && (u.linkT -= dt) <= 0) u.linkGroup = []; // Spirit Link expired
+      // Spirit Link expired — or its BUFF is gone, which is the same thing: the link IS the
+      // `[Bspl]` buff the cast hangs on every member (spells.ts Aspl), so whatever took the buff
+      // off — Dispel Magic, Purge, Abolish or Devour Magic, a Wand of Negation, Mirror Image's
+      // wipe — ends that member's share of the damage (breakSpiritLink).
+      if (u.linkT > 0 && ((u.linkT -= dt) <= 0 || !u.buffs.some((b) => b.group === SPIRIT_LINK_GROUP))) this.breakSpiritLink(u);
       if (u.repathT > 0) u.repathT -= dt;
       if (u.chaseWaitT > 0) u.chaseWaitT -= dt;
       if (u.waitT > 0) u.waitT -= dt; // parked in a jam — counting down to the next try
@@ -21984,9 +22114,17 @@ export class SimWorld {
     // the first step of the next attack (the swing gate below then waits for the turn to
     // finish). Re-aiming the moment the hit landed had the unit pivoting after a kiting
     // target through the whole recovery, which the game does not do.
+    //
+    // That rule is about the SAME target. A DIFFERENT one — the player pointed the group at
+    // somebody else, or the last victim died and the unit picked the next — is turned to the
+    // moment the blow in hand has gone out (`swingLeft < 0`: past the damage point), cooldown
+    // or not, so the turn is already done when the weapon is ready rather than started then.
+    // Waiting out the cooldown before even turning put a whole turn's delay on every re-target
+    // (the developer's report: units must "turn after their attack animation has been done but
+    // even before they can re-attack again").
     this.settleSpread(u, t);
     u.inCombat = true;
-    if (u.cooldownLeft <= 0) u.desiredFacing = Math.atan2(t.y - u.y, t.x - u.x);
+    if (u.cooldownLeft <= 0 || (u.swingLeft < 0 && u.swingTargetId !== t.id)) u.desiredFacing = Math.atan2(t.y - u.y, t.x - u.x);
     // Don't start a new swing while facing the wrong way, cooling down, or with a
     // swing already mid-flight toward its damage point.
     //
@@ -25094,9 +25232,21 @@ export class SimWorld {
   /** Spirit Link (Aspl): `linkShare` of a post-armor hit is spread equally across the linked
    *  group (each living member, including the target, takes an equal share); the rest stays
    *  on the target. Returns the reduced amount the target itself should take. */
+  /** Take `u` out of its Spirit Link: it stops sharing, and the rest of the group stops sharing
+   *  with it. The others stay linked among themselves for as long as their own buffs last —
+   *  a dispel lands on ONE unit and takes that unit's buff, nobody else's. */
+  private breakSpiritLink(u: SimUnit): void {
+    for (const id of u.linkGroup) {
+      const m = id === u.id ? undefined : this.units.get(id);
+      if (m) m.linkGroup = m.linkGroup.filter((x) => x !== u.id);
+    }
+    u.linkT = 0;
+    u.linkGroup = [];
+  }
+
   private spiritLinkSplit(target: SimUnit, dmg: number): number {
     if (target.linkT <= 0 || target.linkGroup.length < 2 || dmg <= 0) return dmg;
-    const members = target.linkGroup.map((id) => this.units.get(id)).filter((u): u is SimUnit => !!u && u.hp > 0);
+    const members = target.linkGroup.map((id) => this.units.get(id)).filter((u): u is SimUnit => !!u && u.hp > 0 && u.linkT > 0);
     if (members.length < 2) return dmg;
     const share = target.linkShare;
     const per = (dmg * share) / members.length; // equal slice for every linked unit
@@ -26806,7 +26956,10 @@ export class SimWorld {
       const fired = this.applyItemAbility(u, ad, held, targetId, x, y);
       if (fired === "unhandled") continue; // ability we don't handle — try the next one
       if (!fired) return false; // handled code but nothing to do (already full) — no charge spent
-      this.consumeItemUse(u, slot, def, ad.levelData[0]?.cooldown || 0);
+      // …and a Town Portal's charge waits for the arrival (SimUnit.portalItem): the press
+      // starts its cooldown and nothing more. An instant one (a map that edited the wait away)
+      // has already arrived, and spent it, by now.
+      this.consumeItemUse(u, slot, def, ad.levelData[0]?.cooldown || 0, ad.code !== "AItp");
       // …and a pressed item BREAKS A CHANNEL, the user's own. Using an item is an order, and a
       // channel is held only for as long as the caster is given no other: "If you use potions it
       // will interrupt the Starfall" (Liquipedia, Starfall) — the Keeper who drinks mid-
@@ -27140,7 +27293,7 @@ export class SimWorld {
           break;
         }
         case "AIct": fired = this.itemArtificialNight(ad); break; // Moonstone
-        case "AItp": fired = this.itemTownPortal(u, ad, x, y); break; // Scroll of Town Portal
+        case "AItp": fired = this.itemTownPortal(u, ad, x, y, held); break; // Scroll of Town Portal
         case "AIrt": // Amulet of Recall …
         case "AUds": fired = this.itemRecall(u, ad, x, y); break; // …and the Diamond of Summoning
         case "Ablp": fired = this.itemBlight(u, ad, x, y); break; // Sacrificial Skull
@@ -27361,13 +27514,10 @@ export class SimWorld {
    * stops three different healing potions being drunk back to back, and what stops a fourth
    * bought mid-cooldown being a way round it.
    */
-  private consumeItemUse(u: SimUnit, slot: number, def: ItemDef, cooldown: number): void {
+  private consumeItemUse(u: SimUnit, slot: number, def: ItemDef, cooldown: number, charge = true): void {
     const held = u.inventory[slot];
     if (!held) return;
-    if (def.charges > 0) {
-      held.charges -= 1;
-      if (held.charges <= 0 && def.perishable) { u.inventory[slot] = null; this.itemAbilityDefs.delete(held.id); this.recomputeStats(u); }
-    }
+    if (charge) this.spendItemCharge(u, slot, def);
     // "Even though the ability has a cooldown, it will be set to 0 when this is True"
     // (ItemDef.ignoreCooldown) — so such an item neither waits nor makes its group wait.
     if (def.ignoreCooldown) return;
@@ -27383,6 +27533,14 @@ export class SimWorld {
       const od = this.itemReg.get(other.itemId);
       if (od && !od.ignoreCooldown && od.cooldownGroup === group) other.cooldownLeft = Math.max(other.cooldownLeft, cooldown);
     }
+  }
+
+  /** Spend one charge of the item in `slot`, and let a perishable one go with its last. */
+  private spendItemCharge(u: SimUnit, slot: number, def: ItemDef): void {
+    const held = u.inventory[slot];
+    if (!held || def.charges <= 0) return;
+    held.charges -= 1;
+    if (held.charges <= 0 && def.perishable) { u.inventory[slot] = null; this.itemAbilityDefs.delete(held.id); this.recomputeStats(u); }
   }
 
   /** The cooldown an item ARRIVING in `u`'s inventory starts on: whatever is left of its
@@ -27491,12 +27649,15 @@ export class SimWorld {
    *
    *  `Cast1` = 5. The scroll is the one item in the game that is not instant, and those five
    *  seconds are the whole character of it — see SimUnit.portalLeft for Blizzard's own
-   *  description of what happens during them. The charge is spent HERE, on the press, because
-   *  "under no circumstances can the town portal be aborted once started": there is no state
-   *  in which the scroll is half-used and could be got back. */
-  private itemTownPortal(u: SimUnit, ad: AbilityDef, x: number, y: number): boolean {
+   *  description of what happens during them. "Under no circumstances can the town portal be
+   *  aborted once started" — but it can FAIL: a hall knocked down inside the five seconds
+   *  (with no other hall near the point to take its place) teleports nobody, and the scroll is
+   *  then not used up. So the press starts the cooldown and the CHARGE waits for the arrival
+   *  (SimUnit.portalItem, spent in resolveTeleport); useItem is told not to spend it. */
+  private itemTownPortal(u: SimUnit, ad: AbilityDef, x: number, y: number, held: HeldItem | null): boolean {
     if (!this.nearestHall(u.owner, x, y)) return false;
     const lvl = ad.levelData[0] ?? emptyAbilityLevel();
+    u.portalItem = held?.id ?? 0;
     this.beginTeleport(u, ad, lvl.castTime, 0, x, y);
     return true;
   }
@@ -27654,7 +27815,18 @@ export class SimWorld {
    *  played on the unit the Archmage aimed at beyond the shared `To`. */
   private resolveTeleport(u: SimUnit, ad: AbilityDef): void {
     const dest = u.portalDestId ? this.units.get(u.portalDestId) : this.nearestHall(u.owner, u.portalX, u.portalY);
-    if (!dest || dest.hp <= 0) return; // the destination died during the channel — everyone stays put
+    // The scroll this channel may spend (SimUnit.portalItem) — read and let go whatever happens.
+    const scroll = u.portalItem;
+    u.portalItem = 0;
+    if (!dest || dest.hp <= 0) return; // the destination died during the channel — everyone stays put, the scroll too
+    // …it arrives, so the scroll is used up NOW (itemTownPortal). Looked up by the item's
+    // entity id rather than a slot: the slot it was pressed from is not promised to it.
+    if (scroll) {
+      const slot = u.inventory.findIndex((h) => h?.id === scroll);
+      const held = slot >= 0 ? u.inventory[slot] : null;
+      const def = held ? this.itemReg?.get(held.itemId) : undefined;
+      if (def) this.spendItemCharge(u, slot, def);
+    }
     const lvl = ad.levelData[0] ?? emptyAbilityLevel();
     // `Area1` / `DataA "Maximum Number of Units"`: 1100 and 90 on the scroll, 800 and 24 on
     // the Archmage's ultimate. The fallbacks are each row's own shipped value, for a map that

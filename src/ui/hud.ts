@@ -312,6 +312,12 @@ export interface MinimapBlight {
   rows: number;
   corners: Uint8Array;
   color: readonly [number, number, number];
+  /** The window of TILES the minimap shows (its playable area, `mapBounds`): the first
+   *  column and row, and how many of each. The lattice above is the whole terrain grid. */
+  tileX: number;
+  tileY: number;
+  tileCols: number;
+  tileRows: number;
 }
 
 export interface HudDriver {
@@ -367,7 +373,8 @@ export interface HudDriver {
   /** Persistent map glyphs — gold mines and the neutral buildings that carry a
    *  minimap icon — as a world position and the BLP to stamp there. */
   minimapIcons(): Array<{ x: number; y: number; icon: string }>;
-  /** World rect covered by the map: [originX, originY, width, height]. */
+  /** World rect the minimap shows — the map's PLAYABLE AREA, which is what its picture
+   *  (war3mapMap.blp) is rendered of: [originX, originY, width, height]. */
   mapBounds(): [number, number, number, number];
   /** Fog-of-war state at a world point: 0 unexplored, 1 explored, 2 visible. */
   fogAt(wx: number, wy: number): number;
@@ -503,6 +510,9 @@ export interface HudDriver {
   /** Has the local player anyone to address as "Allies"? Decides whether the entry line has
    *  two modes to Tab between or only one (see `defaultChatTarget`). */
   chatHasAllies(): boolean;
+  /** May the chat entry line open at all? False while WATCHING A REPLAY: the match it shows is
+   *  over and its players are recorded inputs, so there is nobody for a line to reach. */
+  chatAllowed(): boolean;
 
   /** Push the resource readout to the FDF top bar (ui/consoleUi.ts), which owns that text now. */
   setResources(next: ConsoleResources): void;
@@ -1386,13 +1396,13 @@ function tooltipFill(bg: HTMLCanvasElement): string | null {
 /** Crop war3mapMap.blp down to the map itself.
  *
  *  The World Editor always writes a SQUARE minimap image (256×256 in every stock
- *  melee map) with the map contain-fitted into it and the leftover margins left
- *  fully transparent. Verified against the real maps: (2)BootyBay is 193×97 tiles
- *  (2:1), and its alpha goes solid at y=64 = (256 − 256/2) / 2; (2)PlunderIsle is
- *  97×129 (3:4) and goes solid at x=32 = (256 − 256·3/4) / 2. So the margins are
- *  exactly the letterbox, and cropping them leaves a canvas whose aspect equals
- *  the map's — which lets the dots canvas and the click→pan mapping share one
- *  rect with the picture. */
+ *  melee map) with the map's PLAYABLE AREA contain-fitted into it and the leftover
+ *  margins left fully transparent. Verified against the real maps: (2)BootyBay's
+ *  playable area is 160×72 tiles (its grid 192×96), and its alpha goes solid at
+ *  y=70 = (256 − 256·72/160) / 2; (2)PlunderIsle's is 84×116 and goes solid at
+ *  x=35. So the margins are exactly the letterbox, and cropping them leaves a canvas
+ *  whose aspect equals the playable area's — which lets the dots canvas and the
+ *  click→pan mapping share one rect with the picture (`HudDriver.mapBounds`). */
 function cropMinimapLetterbox(src: HTMLCanvasElement, aspect: number): HTMLCanvasElement {
   const sw = aspect >= 1 ? src.width : Math.round(src.width * aspect);
   const sh = aspect >= 1 ? Math.round(src.height / aspect) : src.height;
@@ -2436,6 +2446,7 @@ export class GameHud {
 
   /** Open the chat entry line addressed at `target` (Enter → the default, Shift+Enter → all, Ctrl+Enter → allies). */
   openChat(target: ChatTarget): void {
+    if (!this.driver.chatAllowed()) return; // a replay (HudDriver.chatAllowed)
     this.chatTarget = this.clampChatTarget(target);
     this.chatPromptEl.textContent = this.driver.chatPrompt(this.chatTarget);
     this.chatBar.hidden = false;
@@ -2457,7 +2468,7 @@ export class GameHud {
       this.closeChat();
       return null;
     }
-    if (!this.acceptsInput()) return null;
+    if (!this.acceptsInput() || !this.driver.chatAllowed()) return null;
     this.openChat(this.defaultChatTarget());
     return this.chatInput;
   }
@@ -5076,7 +5087,9 @@ export class GameHud {
     }
     if (b.version === this.blightVersion) return;
     this.blightVersion = b.version;
-    const tw = b.columns - 1, th = b.rows - 1;
+    // Only the tiles the picture covers (the playable area), clipped to the lattice.
+    const x0 = Math.max(0, b.tileX), y0 = Math.max(0, b.tileY);
+    const tw = Math.min(b.columns - 1 - x0, b.tileCols), th = Math.min(b.rows - 1 - y0, b.tileRows);
     if (tw <= 0 || th <= 0) {
       c.hidden = true;
       return;
@@ -5091,9 +5104,9 @@ export class GameHud {
     let any = false;
     for (let ty = 0; ty < th; ty++) {
       // Canvas rows run north → south; the lattice's run south → north (the minimap is north-up).
-      const row = th - 1 - ty;
+      const row = y0 + th - 1 - ty;
       for (let tx = 0; tx < tw; tx++) {
-        const i = row * b.columns + tx;
+        const i = row * b.columns + x0 + tx;
         const n = k[i] + k[i + 1] + k[i + b.columns] + k[i + b.columns + 1];
         if (!n) continue;
         any = true;

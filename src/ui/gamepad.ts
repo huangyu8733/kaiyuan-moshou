@@ -807,6 +807,13 @@ function cursorPoint(): [number, number] {
   return virtualCursor.point();
 }
 
+/** Put the drawn cursor at (`x`, `y`) if the pad is driving it — the match's first frame, so
+ *  nothing pointed at during the loading screen carries into the game (mapViewer
+ *  `forgetLoadingInput`). A real mouse's cursor is the OS's and cannot be moved. */
+export function centreGamepadCursor(x: number, y: number): void {
+  if (virtualCursor.isShown) virtualCursor.move(x, y);
+}
+
 function showCursor(): void {
   virtualCursor.show();
 }

@@ -2,9 +2,10 @@
 // so the matches people actually play can be studied and, in time, an AI that plays like a
 // person can be trained on them.
 //
-// Where they go is not decided yet, and that is what `REPLAY_UPLOAD_URL` is for: empty, the
-// uploader does nothing at all, and the day the storage exists it is this one line. Everything
-// else is in place:
+// They go to OUR OWN storage: the site's `/api/replays` endpoint writes the bytes into the
+// Warcraft Open OSS bucket (`replays/<date>/`), so no third party holds them and no key ever
+// reaches the browser. `REPLAY_UPLOAD_URL` is that one line; empty (dev), the uploader does
+// nothing at all. Everything else is in place:
 //
 //   · a replay is offered the moment its match ends (MapViewerScene.closeReplay), in memory;
 //   · a send that fails is kept in a small queue in IndexedDB — the page's own store, which the
@@ -23,8 +24,18 @@
 
 import { REPLAY_FORMAT } from "./replay";
 
-/** Where replays are sent. EMPTY: no storage has been chosen yet, so nothing is sent. Ours. */
-export const REPLAY_UPLOAD_URL = "";
+/** The site the collection lives on. The browser build is served by it; a packaged desktop build
+ *  is not same-origin (it runs from the app's local server), so it names the site outright. */
+const SITE = (
+  (import.meta.env.VITE_WARCRAFT_OPEN_SITE_URL as string | undefined) ?? "https://warcraft.hhkj.me"
+).replace(/\/+$/, "");
+
+/** Where replays are sent: our own site's endpoint, which writes them into our OSS bucket.
+ *  Empty in dev, where there is no collection to send to — unless `VITE_REPLAY_UPLOAD_URL`
+ *  names another door (a dev site, a test endpoint). */
+export const REPLAY_UPLOAD_URL =
+  (import.meta.env.VITE_REPLAY_UPLOAD_URL as string | undefined) ??
+  (import.meta.env.DEV ? "" : `${SITE}/api/replays`);
 
 /** The most replays kept waiting for a connection. Ours. */
 const MAX_QUEUED = 50;
